@@ -1,0 +1,18 @@
+{
+  "name": "vct-connect-frontend",
+  "private": true,
+  "workspaces": [
+    "apps/*",
+    "packages/*"
+  ],
+  "scripts": {
+    "dev": "npm run dev -w @vct/web",
+    "build": "npm run build -w @vct/web",
+    "test": "tsx --test packages/api-client/src/index.test.ts apps/web/app/analysis-status.test.ts apps/web/app/api/_backend.test.ts",
+    "typecheck": "tsc -b packages/contracts packages/api-client apps/web"
+  },
+  "devDependencies": {
+    "tsx": "^4.23.15",
+    "typescript": "^5.8.3"
+  }
+}

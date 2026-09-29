@@ -1,0 +1,34 @@
+name: Verify dev fixture
+on:
+  workflow_dispatch:
+
+permissions:
+  contents: read
+  id-token: write
+
+jobs:
+  fixture:
+    if: github.ref == 'refs/heads/main'
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-python@v5
+        with:
+          python-version: '3.12'
+      - uses: azure/login@v2
+        with:
+          client-id: ${{ vars.AZURE_CLIENT_ID }}
+          tenant-id: ${{ vars.AZURE_TENANT_ID }}
+          subscription-id: 93bd5d96-c7a2-4072-9aa3-458ab6132d92
+      - name: Verify target and signed-in fixture
+        env:
+          VAULT_NAME: ${{ vars.AZURE_KEY_VAULT_NAME }}
+        run: |
+          python scripts/verify_azure_target.py
+          WEB_URL=$(az containerapp show --name vct-connect-dev-web --resource-group VCT_Connect_Service_Bus --query 'properties.configuration.ingress.fqdn' -o tsv)
+          API_URL=$(az containerapp show --name vct-connect-dev-api --resource-group VCT_Connect_Service_Bus --query 'properties.configuration.ingress.fqdn' -o tsv)
+          CLERK_SMOKE_TOKEN=$(az keyvault secret show --vault-name "$VAULT_NAME" --name smoke-session-token --query value -o tsv)
+          echo "::add-mask::$CLERK_SMOKE_TOKEN"
+          export CLERK_SMOKE_TOKEN
+          python scripts/smoke_dev.py --web-url "https://$WEB_URL" --api-url "https://$API_URL"
+          echo 'Signed-in fixture and ingress gate passed for this dev deployment.' >> "$GITHUB_STEP_SUMMARY"

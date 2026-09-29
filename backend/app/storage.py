@@ -1,0 +1,499 @@
+from __future__ import annotations
+
+from datetime import datetime, timezone
+import json
+from uuid import UUID, uuid4
+
+import psycopg
+from psycopg.rows import dict_row
+
+
+class LeaseLost(RuntimeError):
+    pass
+
+
+class ResultConflict(RuntimeError):
+    pass
+
+
+class Store:
+    def __init__(self, database_url: str):
+        self.database_url = database_url
+
+    def connect(self):
+        from .migrations import psycopg_url
+
+        parameters = psycopg.conninfo.conninfo_to_dict(psycopg_url(self.database_url))
+        options = parameters.get("options", "")
+        parameters["options"] = f"{options} -c timezone=UTC".strip()
+        return psycopg.connect(**parameters, row_factory=dict_row)
+
+    def initialize(self):
+        from .migrations import apply_migrations
+
+        apply_migrations(self.database_url)
+
+    def resolve_user(self, clerk_user_id: str, email: str | None = None) -> dict:
+        user_id = uuid4()
+        with self.connect() as conn:
+            with conn.transaction():
+                row = conn.execute(
+                    """INSERT INTO users (id, clerk_user_id, email, role)
+                       VALUES (%s, %s, %s, 'CUSTOMER')
+                       ON CONFLICT (clerk_user_id) DO NOTHING
+                       RETURNING id, clerk_user_id, email, role""",
+                    (user_id, clerk_user_id, email),
+                ).fetchone()
+                if row is None:
+                    row = conn.execute(
+                        """SELECT id, clerk_user_id, email, role
+                           FROM users WHERE clerk_user_id = %s""",
+                        (clerk_user_id,),
+                    ).fetchone()
+                if email and row["email"] != email:
+                    row = conn.execute(
+                        """UPDATE users SET email = %s, updated_at = now()
+                           WHERE id = %s RETURNING id, clerk_user_id, email, role""",
+                        (email, row["id"]),
+                    ).fetchone()
+        return row
+
+    @staticmethod
+    def _event(
+        conn,
+        analysis_id: UUID,
+        status: str,
+        attempt: int,
+        *,
+        failure_code: str | None = None,
+        next_retry_at=None,
+        disposition: str | None = None,
+    ) -> None:
+        conn.execute(
+            """INSERT INTO analysis_status_events
+                 (analysis_id, status, attempt, failure_code, next_retry_at, disposition)
+               VALUES (%s, %s, %s, %s, %s, %s)""",
+            (analysis_id, status, attempt, failure_code, next_retry_at, disposition),
+        )
+
+    def _insert_analysis(self, conn, analysis_id: UUID, source_url: str, user_id: UUID | None):
+        conn.execute(
+            """INSERT INTO analyses (id, source_url, status, user_id)
+               VALUES (%s, %s, 'QUEUED', %s)""",
+            (analysis_id, source_url, user_id),
+        )
+        self._event(conn, analysis_id, "QUEUED", 0)
+
+    def submit_local(self, source_url: str, user_id: UUID | None = None) -> UUID:
+        analysis_id = uuid4()
+        with self.connect() as conn:
+            with conn.transaction():
+                self._insert_analysis(conn, analysis_id, source_url, user_id)
+                conn.execute("INSERT INTO local_queue (analysis_id) VALUES (%s)", (analysis_id,))
+        return analysis_id
+
+    def submit_azure(self, source_url: str, user_id: UUID | None = None) -> UUID:
+        """Atomically create customer-visible work and its publication record."""
+        analysis_id = uuid4()
+        with self.connect() as conn:
+            with conn.transaction():
+                self._insert_analysis(conn, analysis_id, source_url, user_id)
+                conn.execute(
+                    "INSERT INTO analysis_outbox (analysis_id, message_id) VALUES (%s, %s)",
+                    (analysis_id, analysis_id),
+                )
+        return analysis_id
+
+    _SELECT = """
+        SELECT a.id, a.source_url, a.status, a.created_at, a.completed_at,
+               a.attempt_count, a.failure_code, a.next_retry_at,
+               a.final_disposition, r.payload AS result,
+               COALESCE((
+                 SELECT jsonb_agg(jsonb_build_object(
+                   'status', e.status, 'attempt', e.attempt,
+                   'failure_code', e.failure_code, 'next_retry_at', e.next_retry_at,
+                   'disposition', e.disposition, 'created_at', e.created_at
+                 ) ORDER BY e.id)
+                 FROM analysis_status_events e WHERE e.analysis_id = a.id
+               ), '[]'::jsonb) AS events
+        FROM analyses a LEFT JOIN analysis_results r ON r.analysis_id = a.id
+    """
+
+    def get(self, analysis_id: UUID) -> dict | None:
+        with self.connect() as conn:
+            return conn.execute(self._SELECT + " WHERE a.id = %s", (analysis_id,)).fetchone()
+
+    def get_for_user(self, analysis_id: UUID, user_id: UUID) -> dict | None:
+        with self.connect() as conn:
+            return conn.execute(
+                self._SELECT + " WHERE a.id = %s AND a.user_id = %s",
+                (analysis_id, user_id),
+            ).fetchone()
+
+    def claim_outbox(self, lease_seconds: int, max_attempts: int) -> dict | None:
+        token = uuid4()
+        with self.connect() as conn:
+            with conn.transaction():
+                row = conn.execute(
+                    """SELECT analysis_id, attempts FROM analysis_outbox
+                       WHERE state = 'PENDING' AND next_attempt_at <= now()
+                         AND (leased_until IS NULL OR leased_until < now())
+                       ORDER BY next_attempt_at, analysis_id
+                       FOR UPDATE SKIP LOCKED LIMIT 1"""
+                ).fetchone()
+                if row is None:
+                    return None
+                if row["attempts"] >= max_attempts:
+                    self._finalize_outbox(conn, row["analysis_id"])
+                    return {"outcome": "exhausted", "analysis_id": row["analysis_id"]}
+                return conn.execute(
+                    """UPDATE analysis_outbox
+                       SET lease_token = %s,
+                           leased_until = now() + %s * interval '1 second',
+                           attempts = attempts + 1, updated_at = now()
+                       WHERE analysis_id = %s
+                       RETURNING 'claimed' AS outcome, analysis_id, message_id,
+                                 attempts, lease_token""",
+                    (token, lease_seconds, row["analysis_id"]),
+                ).fetchone()
+
+    def mark_outbox_published(self, analysis_id: UUID, token: UUID) -> None:
+        with self.connect() as conn:
+            row = conn.execute(
+                """UPDATE analysis_outbox
+                   SET state = 'PUBLISHED', published_at = now(), lease_token = NULL,
+                       leased_until = NULL, last_error_code = NULL, updated_at = now()
+                   WHERE analysis_id = %s AND lease_token = %s AND state = 'PENDING'
+                   RETURNING analysis_id""",
+                (analysis_id, token),
+            ).fetchone()
+            if row is None:
+                raise LeaseLost("Outbox lease is no longer current")
+
+    def _finalize_outbox(self, conn, analysis_id: UUID, token: UUID | None = None) -> None:
+        condition = "analysis_id = %s AND state = 'PENDING'"
+        parameters: tuple = (analysis_id,)
+        if token is not None:
+            condition += " AND lease_token = %s"
+            parameters = (analysis_id, token)
+        changed = conn.execute(
+            f"""UPDATE analysis_outbox SET state = 'FAILED_FINAL',
+                      lease_token = NULL, leased_until = NULL,
+                      last_error_code = 'OUTBOX_PUBLISH_EXHAUSTED', updated_at = now()
+                   WHERE {condition} RETURNING analysis_id""",
+            parameters,
+        ).fetchone()
+        if changed is None:
+            raise LeaseLost("Outbox lease is no longer current")
+        analysis = conn.execute(
+            """UPDATE analyses
+               SET status = 'FAILED_FINAL', failure_code = 'OUTBOX_PUBLISH_EXHAUSTED',
+                   final_disposition = 'PUBLICATION_FAILED', next_retry_at = NULL
+               WHERE id = %s AND status = 'QUEUED'
+               RETURNING attempt_count""",
+            (analysis_id,),
+        ).fetchone()
+        if analysis:
+            self._event(
+                conn, analysis_id, "FAILED_FINAL", analysis["attempt_count"],
+                failure_code="OUTBOX_PUBLISH_EXHAUSTED",
+                disposition="PUBLICATION_FAILED",
+            )
+
+    def record_outbox_failure(
+        self,
+        analysis_id: UUID,
+        token: UUID,
+        *,
+        max_attempts: int,
+        base_backoff_seconds: int,
+        max_backoff_seconds: int,
+    ) -> bool:
+        with self.connect() as conn:
+            with conn.transaction():
+                row = conn.execute(
+                    """SELECT attempts FROM analysis_outbox
+                       WHERE analysis_id = %s AND lease_token = %s AND state = 'PENDING'
+                       FOR UPDATE""",
+                    (analysis_id, token),
+                ).fetchone()
+                if row is None:
+                    raise LeaseLost("Outbox lease is no longer current")
+                final = row["attempts"] >= max_attempts
+                if final:
+                    self._finalize_outbox(conn, analysis_id, token)
+                else:
+                    delay = min(
+                        base_backoff_seconds * (2 ** max(row["attempts"] - 1, 0)),
+                        max_backoff_seconds,
+                    )
+                    conn.execute(
+                        """UPDATE analysis_outbox
+                           SET lease_token = NULL, leased_until = NULL,
+                               next_attempt_at = now() + %s * interval '1 second',
+                               last_error_code = 'OUTBOX_PUBLISH_RETRY', updated_at = now()
+                           WHERE analysis_id = %s AND lease_token = %s""",
+                        (delay, analysis_id, token),
+                    )
+                return final
+
+    def observe_delivery(self, analysis_id: UUID) -> None:
+        """Reconcile an accepted message with any ambiguous publisher outcome."""
+        with self.connect() as conn:
+            with conn.transaction():
+                conn.execute(
+                    """UPDATE analysis_outbox
+                       SET state = 'PUBLISHED', published_at = COALESCE(published_at, now()),
+                           lease_token = NULL, leased_until = NULL,
+                           last_error_code = NULL, updated_at = now()
+                       WHERE analysis_id = %s""",
+                    (analysis_id,),
+                )
+                reopened = conn.execute(
+                    """UPDATE analyses SET status = 'QUEUED', failure_code = NULL,
+                              final_disposition = NULL, next_retry_at = NULL
+                       WHERE id = %s AND status = 'FAILED_FINAL'
+                         AND failure_code = 'OUTBOX_PUBLISH_EXHAUSTED'
+                         AND final_disposition = 'PUBLICATION_FAILED'
+                       RETURNING attempt_count""",
+                    (analysis_id,),
+                ).fetchone()
+                if reopened:
+                    self._event(conn, analysis_id, "QUEUED", reopened["attempt_count"])
+
+    def claim_local(self, lease_seconds: int = 300) -> dict | None:
+        token = uuid4()
+        with self.connect() as conn:
+            with conn.transaction():
+                row = conn.execute(
+                    """SELECT analysis_id FROM local_queue
+                       WHERE available_at <= now() AND (claimed_until IS NULL OR claimed_until < now())
+                       ORDER BY available_at, analysis_id FOR UPDATE SKIP LOCKED LIMIT 1"""
+                ).fetchone()
+                if row is None:
+                    return None
+                return conn.execute(
+                    """UPDATE local_queue
+                       SET claimed_until = now() + %s * interval '1 second',
+                           claim_token = %s, attempts = attempts + 1
+                       WHERE analysis_id = %s
+                       RETURNING analysis_id, claim_token, attempts""",
+                    (lease_seconds, token, row["analysis_id"]),
+                ).fetchone()
+
+    def claim_processing(
+        self, analysis_id: UUID, lease_seconds: int, max_attempts: int
+    ) -> dict:
+        token = uuid4()
+        with self.connect() as conn:
+            with conn.transaction():
+                row = conn.execute(
+                    """SELECT id, source_url, status, attempt_count, next_retry_at,
+                              processing_claimed_until
+                       FROM analyses WHERE id = %s FOR UPDATE""",
+                    (analysis_id,),
+                ).fetchone()
+                if row is None:
+                    return {"outcome": "unknown"}
+                if row["status"] == "COMPLETED":
+                    return {"outcome": "completed"}
+                if row["status"] == "FAILED_FINAL":
+                    return {"outcome": "final"}
+                now = datetime.now(timezone.utc)
+                if row["processing_claimed_until"] and row["processing_claimed_until"] > now:
+                    return {
+                        "outcome": "busy",
+                        "available_at": row["processing_claimed_until"],
+                    }
+                if row["next_retry_at"] and row["next_retry_at"] > now:
+                    return {"outcome": "waiting", "available_at": row["next_retry_at"]}
+                if row["attempt_count"] >= max_attempts:
+                    conn.execute(
+                        """UPDATE analyses SET status = 'FAILED_FINAL',
+                                  failure_code = 'PROCESSING_ATTEMPTS_EXHAUSTED',
+                                  next_retry_at = NULL, final_disposition = 'DLQ_PENDING',
+                                  processing_claim_token = NULL,
+                                  processing_claimed_until = NULL
+                           WHERE id = %s""",
+                        (analysis_id,),
+                    )
+                    self._event(
+                        conn, analysis_id, "FAILED_FINAL", row["attempt_count"],
+                        failure_code="PROCESSING_ATTEMPTS_EXHAUSTED",
+                        disposition="DLQ_PENDING",
+                    )
+                    return {"outcome": "final"}
+                attempt = row["attempt_count"] + 1
+                conn.execute(
+                    """UPDATE analyses SET status = 'PROCESSING', attempt_count = %s,
+                           processing_claim_token = %s,
+                           processing_claimed_until = now() + %s * interval '1 second',
+                           processing_started_at = COALESCE(processing_started_at, now()),
+                           failure_code = NULL, next_retry_at = NULL, final_disposition = NULL
+                       WHERE id = %s""",
+                    (attempt, token, lease_seconds, analysis_id),
+                )
+                self._event(conn, analysis_id, "PROCESSING", attempt)
+                return {
+                    "outcome": "acquired", "analysis_id": analysis_id,
+                    "source_url": row["source_url"], "attempt": attempt, "token": token,
+                }
+
+    def record_result_conflict(self, analysis_id: UUID) -> None:
+        """Keep the first result and leave durable evidence for the duplicate."""
+        with self.connect() as conn:
+            with conn.transaction():
+                row = conn.execute(
+                    """SELECT a.attempt_count
+                       FROM analyses a JOIN analysis_results r ON r.analysis_id = a.id
+                       WHERE a.id = %s FOR UPDATE OF a""",
+                    (analysis_id,),
+                ).fetchone()
+                if row is None:
+                    raise LookupError(f"No stored result for analysis {analysis_id}")
+                conn.execute(
+                    """UPDATE analyses SET status = 'COMPLETED',
+                              completed_at = COALESCE(completed_at, now()),
+                              failure_code = 'RESULT_CONFLICT', next_retry_at = NULL,
+                              final_disposition = NULL, processing_claim_token = NULL,
+                              processing_claimed_until = NULL
+                       WHERE id = %s""",
+                    (analysis_id,),
+                )
+                self._event(
+                    conn, analysis_id, "COMPLETED", row["attempt_count"],
+                    failure_code="RESULT_CONFLICT",
+                )
+
+    def complete_processing(self, analysis_id: UUID, token: UUID, payload: dict) -> str:
+        with self.connect() as conn:
+            with conn.transaction():
+                row = conn.execute(
+                    """SELECT a.status, a.processing_claim_token, a.attempt_count, r.payload
+                       FROM analyses a LEFT JOIN analysis_results r ON r.analysis_id = a.id
+                       WHERE a.id = %s FOR UPDATE OF a""",
+                    (analysis_id,),
+                ).fetchone()
+                if row is None:
+                    raise LookupError(f"Unknown analysis {analysis_id}")
+                if row["status"] == "COMPLETED":
+                    if row["payload"] == payload:
+                        return "replay"
+                    raise ResultConflict("Completed analysis has a different immutable result")
+                if row["processing_claim_token"] != token or row["status"] != "PROCESSING":
+                    raise LeaseLost("Processing lease is no longer current")
+                inserted = conn.execute(
+                    """INSERT INTO analysis_results (analysis_id, payload)
+                       VALUES (%s, %s::jsonb) ON CONFLICT (analysis_id) DO NOTHING
+                       RETURNING payload""",
+                    (analysis_id, json.dumps(payload)),
+                ).fetchone()
+                if inserted is None:
+                    stored = conn.execute(
+                        "SELECT payload FROM analysis_results WHERE analysis_id = %s",
+                        (analysis_id,),
+                    ).fetchone()["payload"]
+                    if stored != payload:
+                        raise ResultConflict("Stored result conflicts with computed result")
+                conn.execute(
+                    """UPDATE analyses SET status = 'COMPLETED', completed_at = now(),
+                           failure_code = NULL, next_retry_at = NULL, final_disposition = NULL,
+                           processing_claim_token = NULL, processing_claimed_until = NULL
+                       WHERE id = %s AND processing_claim_token = %s""",
+                    (analysis_id, token),
+                )
+                self._event(conn, analysis_id, "COMPLETED", row["attempt_count"])
+                return "completed"
+
+    def record_processing_failure(
+        self,
+        analysis_id: UUID,
+        token: UUID,
+        *,
+        failure_code: str,
+        max_attempts: int,
+        retry_delay_seconds: int,
+        local_claim_token: UUID | None = None,
+    ) -> bool:
+        with self.connect() as conn:
+            with conn.transaction():
+                row = conn.execute(
+                    """SELECT status, attempt_count FROM analyses
+                       WHERE id = %s AND processing_claim_token = %s FOR UPDATE""",
+                    (analysis_id, token),
+                ).fetchone()
+                if row is None or row["status"] != "PROCESSING":
+                    raise LeaseLost("Processing lease is no longer current")
+                final = row["attempt_count"] >= max_attempts
+                status = "FAILED_FINAL" if final else "FAILED_RETRYABLE"
+                disposition = "DLQ_PENDING" if final else None
+                updated = conn.execute(
+                    """UPDATE analyses SET status = %s, failure_code = %s,
+                           next_retry_at = CASE WHEN %s THEN NULL
+                             ELSE now() + %s * interval '1 second' END,
+                           final_disposition = %s,
+                           processing_claim_token = NULL, processing_claimed_until = NULL
+                       WHERE id = %s AND processing_claim_token = %s
+                       RETURNING next_retry_at""",
+                    (status, failure_code, final, retry_delay_seconds, disposition,
+                     analysis_id, token),
+                ).fetchone()
+                if local_claim_token is not None:
+                    if final:
+                        result = conn.execute(
+                            "DELETE FROM local_queue WHERE analysis_id = %s AND claim_token = %s",
+                            (analysis_id, local_claim_token),
+                        )
+                    else:
+                        result = conn.execute(
+                            """UPDATE local_queue SET claim_token = NULL, claimed_until = NULL,
+                                      available_at = %s
+                               WHERE analysis_id = %s AND claim_token = %s""",
+                            (updated["next_retry_at"], analysis_id, local_claim_token),
+                        )
+                    if result.rowcount != 1:
+                        raise LeaseLost("Local queue lease is no longer current")
+                self._event(
+                    conn, analysis_id, status, row["attempt_count"],
+                    failure_code=failure_code, next_retry_at=updated["next_retry_at"],
+                    disposition=disposition,
+                )
+                return final
+
+    def finish_local(self, analysis_id: UUID, claim_token: UUID) -> None:
+        with self.connect() as conn:
+            result = conn.execute(
+                "DELETE FROM local_queue WHERE analysis_id = %s AND claim_token = %s",
+                (analysis_id, claim_token),
+            )
+            if result.rowcount != 1:
+                raise LeaseLost("Local queue lease is no longer current")
+
+    def release_local(self, analysis_id: UUID, claim_token: UUID, delay_seconds: int = 2) -> None:
+        with self.connect() as conn:
+            result = conn.execute(
+                """UPDATE local_queue SET claim_token = NULL, claimed_until = NULL,
+                          available_at = now() + %s * interval '1 second'
+                   WHERE analysis_id = %s AND claim_token = %s""",
+                (delay_seconds, analysis_id, claim_token),
+            )
+            if result.rowcount != 1:
+                raise LeaseLost("Local queue lease is no longer current")
+
+    def mark_dead_lettered(self, analysis_id: UUID) -> bool:
+        with self.connect() as conn:
+            with conn.transaction():
+                row = conn.execute(
+                    """UPDATE analyses SET final_disposition = 'DEAD_LETTERED'
+                       WHERE id = %s AND status = 'FAILED_FINAL'
+                         AND final_disposition IS DISTINCT FROM 'DEAD_LETTERED'
+                       RETURNING attempt_count, failure_code""",
+                    (analysis_id,),
+                ).fetchone()
+                if row is None:
+                    return False
+                self._event(
+                    conn, analysis_id, "FAILED_FINAL", row["attempt_count"],
+                    failure_code=row["failure_code"], disposition="DEAD_LETTERED",
+                )
+                return True

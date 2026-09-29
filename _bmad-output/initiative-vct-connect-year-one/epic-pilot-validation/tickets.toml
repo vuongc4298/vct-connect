@@ -1,0 +1,79 @@
+[[entry]]
+id = 1
+type = "story"
+title = "Observe one deployed report from URL to cost"
+description = "Instrument extraction method/coverage/errors, queue time/retry/DLQ, worker stages, LLM tokens, estimated/provider-reported per-feature cost, and end-to-end latency for one deployed report."
+verify = "An operator can trace one report by analysis ID across extraction, queue, model feature calls, score, completion, latency, and estimated/provider-reported cost."
+covers = ["R14"]
+after = ["1.5", "2.7", "3.7", "4.1"]
+hitl = false
+risk = "high"
+
+[[entry]]
+id = 7
+type = "story"
+title = "Prepare pilot recruitment and outcome measures"
+description = "An operator prepares participant recruitment, interview prompts, and event definitions for registered use, URL volume, returning users, report usefulness, and upgrade intent before live rollout."
+verify = "The pilot has a recruitable participant list, interview guide, and documented metric denominators before enrollment begins."
+covers = ["R15"]
+after = [1]
+hitl = true
+risk = "medium"
+
+[[entry]]
+id = 2
+type = "story"
+title = "Set production privacy and budget gates"
+description = "Verify the evaluation epic's private media access and configure retention/deletion, guest rate and Playwright/LLM spend caps, Key Vault checks, and a documented source-term review; an operator approves retention and source use."
+verify = "Pilot access tests reject expired media and over-budget requests, a deletion drill removes expired media, and approved retention/source rules are recorded."
+covers = ["R12", "R14"]
+after = ["1.5", "1.6", "2.6", "6.3"]
+hitl = true
+risk = "high"
+unknown = "Retention duration and platform terms require an owner decision before production media collection."
+
+[[entry]]
+id = 3
+type = "story"
+title = "Exercise load, recovery, and latency targets"
+description = "Run representative three-platform load and injected-failure checks, tune bounded worker/browser/model concurrency and DLQ recovery, and measure report-time distributions."
+verify = "Pilot dashboards show supported-link latency against the 20-30 second goal plus partial/blocked/failure rates and successful DLQ reprocessing without duplicate effects."
+covers = ["R14", "R15"]
+after = [1, 2, "3.9", "5.6"]
+hitl = false
+risk = "high"
+unknown = "Final Azure SKUs and scaling limits follow measured load and cost."
+
+[[entry]]
+id = 4
+type = "story"
+title = "Recruit and run the MVP trial"
+description = "An operator enrolls prepared pilot users, collects URL analyses and repeat-use/upgrade-intent events, and conducts buyer feedback sessions under the free trial rules."
+verify = "A pilot dashboard counts registered users, analyzed URLs, returning users, and upgrade intent without recording paid conversion or charging anyone."
+covers = ["R15"]
+after = [2, 3, 7, "5.7", "6.5"]
+hitl = true
+risk = "high"
+unknown = "Recruitment pace may prevent reaching 100 users or 500-1,000 URLs inside the aspirational first month."
+
+[[entry]]
+id = 5
+type = "story"
+title = "Review pilot evidence and decide next investments"
+description = "Compare platform/mode extraction, usefulness, latency, cost, human agreement, high-confidence errors, repeat use, and upgrade intent against the source targets and document the next model and roadmap choices."
+verify = "A decision record cites measured denominators and gaps for each target and recommends model, scaling, and post-MVP priorities without enabling billing."
+covers = ["R14", "R15"]
+after = [3, 4, "6.6"]
+hitl = true
+risk = "high"
+
+[[entry]]
+id = 6
+type = "story"
+title = "Refactor sweep"
+description = "Clean up operational code and configuration identified during pilot work without extending scope to post-MVP features."
+verify = "Monitoring, privacy, budget, recovery, and pilot-metric checks still pass after cleanup."
+covers = ["R12", "R14", "R15"]
+after = [1, 2, 3, 4, 5, 7]
+hitl = false
+risk = "low"

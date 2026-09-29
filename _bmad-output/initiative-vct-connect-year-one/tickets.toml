@@ -1,0 +1,47 @@
+[[epic]]
+id = 1
+slug = "epic-platform-foundation"
+title = "Run the secure platform and analysis job baseline"
+covers = ["R1", "R2", "R3", "R12"]
+
+[[epic]]
+id = 2
+slug = "epic-extraction"
+title = "Extract and normalize evidence from supported platforms"
+covers = ["R4"]
+after = [{ epic = 1, needs = "the shared contract, database, and queued analysis path" }]
+
+[[epic]]
+id = 3
+slug = "epic-analysis-intelligence"
+title = "Interpret supplier evidence and compute transparent risk"
+covers = ["R5", "R6", "R7", "R8"]
+after = [{ epic = 2, needs = "the normalized SupplierData contract and representative snapshots" }]
+
+[[epic]]
+id = 4
+slug = "epic-reporting"
+title = "Deliver evidence-backed Vietnamese reports"
+covers = ["R9"]
+after = [{ epic = 3, needs = "versioned interpretation, findings, and scores" }]
+
+[[epic]]
+id = 5
+slug = "epic-product-workflows"
+title = "Support repeat use through account and extension workflows"
+covers = ["R10", "R11"]
+after = [{ epic = 1, needs = "identity and entitlement contracts" }, { epic = 4, needs = "report access and verdict contract" }]
+
+[[epic]]
+id = 6
+slug = "epic-human-evaluation"
+title = "Evaluate model decisions with blind human review"
+covers = ["R13"]
+after = [{ epic = 1, needs = "internal roles" }, { epic = 3, needs = "model-run provenance and review verdicts" }]
+
+[[epic]]
+id = 7
+slug = "epic-pilot-validation"
+title = "Operate and validate the MVP pilot"
+covers = ["R12", "R14", "R15"]
+after = [{ epic = 4, needs = "deployed report flow" }, { epic = 5, needs = "trial and extension flows" }, { epic = 6, needs = "human evaluation metrics" }]

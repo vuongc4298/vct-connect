@@ -1,0 +1,11 @@
+.env
+.env.clerk
+frontend/apps/web/.env.local
+**/.env*.local
+.venv/
+.uv-cache/
+__pycache__/
+.pytest_cache/
+frontend/node_modules/
+frontend/apps/web/.next/
+*.tsbuildinfo

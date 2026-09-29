@@ -1,0 +1,101 @@
+[[entry]]
+id = 1
+type = "story"
+title = "Interpret one supplier fixture through YEScale"
+description = "Create the backend LLMProvider and YEScale adapter so one normalized supplier fixture produces structured Vietnamese interpretation with a pinned candidate and full run provenance."
+verify = "A fixture stores Vietnamese output JSON, confidence, model/prompt/pipeline/schema versions, settings, latency, tokens, cost, and created_at without a client-side gateway key."
+covers = ["R5"]
+after = ["2.1", "1.5"]
+hitl = false
+risk = "high"
+unknown = "The production model remains open; a pinned candidate is used until the human benchmark."
+
+[[entry]]
+id = 2
+type = "story"
+title = "Find recurring complaints and statistical review anomalies"
+description = "Group review complaints and implement reproducible duplicate, timing, rating/text mismatch, and review-volume signals with evidence IDs and reliability."
+verify = "Review fixtures expose recurring complaint topics and suspicious patterns without labeling any individual review definitively fake."
+covers = ["R6"]
+after = ["2.1"]
+hitl = false
+risk = "medium"
+
+[[entry]]
+id = 3
+type = "story"
+title = "Add semantic and structured review interpretation"
+description = "Use off-the-shelf embeddings and structured LLM output to cluster near-duplicate language, classify complaint category/severity, and reduce trust in manipulated review evidence."
+verify = "A mixed review fixture yields category, severity, suspicious-pattern, review-reliability, confidence, and evidence outputs with run provenance."
+covers = ["R5", "R6"]
+after = [1, 2]
+hitl = false
+risk = "high"
+
+[[entry]]
+id = 4
+type = "story"
+title = "Aggregate factory and trader evidence"
+description = "Score sourced identity signals by direction, strength, and reliability into factory/trader likelihood, confidence, supporting evidence, and uncertainty."
+verify = "Contradictory and self-claim-only fixtures remain uncertain, and trader classification alone creates no supplier-risk penalty."
+covers = ["R7"]
+after = [1]
+hitl = false
+risk = "high"
+
+[[entry]]
+id = 5
+type = "story"
+title = "Compute versioned Risk, Confidence, and Coverage"
+description = "Have a product owner approve conservative critical-signal eligibility, then implement v0.1.0 scoring that downweights review-derived Quality, Delivery, and After-sales confidence when manipulation risk rises."
+verify = "Fixed fixtures reproduce the seven dimension weights, confidence factors, labels, insufficient-information thresholds, manipulation adjustments, and approved critical floors without treating one ambiguous review as critical."
+covers = ["R8", "R6", "R7"]
+after = [2, 3, 4]
+hitl = true
+risk = "high"
+unknown = "Critical-floor evidence eligibility must be approved before implementing the override; reliability calibration continues through the pilot."
+
+[[entry]]
+id = 6
+type = "story"
+title = "Interpret accessible review images and video"
+description = "Extend structured review interpretation to permitted image/video fixtures or approved evidence and record media consistency, uncertainty, provenance, and private references."
+verify = "Text-only and accessible multimodal fixtures produce media-consistency findings, while inaccessible media is marked missing rather than guessed."
+covers = ["R6", "R5"]
+after = [3, "2.6"]
+hitl = false
+risk = "high"
+unknown = "Source terms and media retention rules may limit which media can be persisted."
+
+[[entry]]
+id = 7
+type = "story"
+title = "Run the complete assessment in the analysis worker"
+description = "Connect text interpretation, review, factory/trader, and scoring modules to normalized snapshots and add LLMReviewRun/finding/evidence/score migrations before handing the still-locked job to REPORTING."
+verify = "A live supported snapshot reaches REPORTING with one reproducible score and evidence set, and replay causes no duplicate AI spend or assessment effects."
+covers = ["R5", "R6", "R7", "R8"]
+after = [3, 4, 5, "1.4"]
+hitl = false
+risk = "high"
+
+[[entry]]
+id = 9
+type = "story"
+title = "Integrate permitted multimodal evidence into assessment"
+description = "Connect the media interpretation module to the analysis worker so permitted image/video evidence influences review reliability, risk, and model-run provenance without delaying text-only reports."
+verify = "A permitted multimodal fixture enriches the same report path, while a text-only fixture still completes with no media dependency."
+covers = ["R5", "R6", "R8"]
+after = [6, 7]
+hitl = false
+risk = "high"
+
+[[entry]]
+id = 8
+type = "story"
+title = "Refactor sweep"
+description = "Clean up analysis module boundaries and deferred review findings without changing the versioned assessment contract."
+verify = "The fixed scoring fixtures and live worker assessment still pass with the same stored version and evidence linkage."
+covers = ["R5", "R6", "R7", "R8"]
+after = [1, 2, 3, 4, 5, 6, 7, 9]
+hitl = false
+risk = "low"

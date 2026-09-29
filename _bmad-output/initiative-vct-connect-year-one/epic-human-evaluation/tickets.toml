@@ -1,0 +1,90 @@
+[[entry]]
+id = 1
+type = "story"
+title = "Label one review blindly in the internal console"
+description = "Add evaluation storage and reviewer-only case retrieval/submission so one sampled review can be labeled before its stored model verdict is revealed."
+verify = "The API withholds model output until an authorized reviewer submits an independent label, then reveals the comparison; customers and guests are denied."
+covers = ["R13"]
+after = ["1.2", "3.7"]
+hitl = false
+risk = "high"
+
+[[entry]]
+id = 2
+type = "story"
+title = "Capture complete review annotation fields"
+description = "Extend blind labels to sentiment, complaint category, severity, suspicious indicators, correctness, human confidence, and notes using the specified value lists."
+verify = "A reviewer can submit and retrieve all specified fields, with invalid values rejected and the pre-submit model verdict hidden."
+covers = ["R13"]
+after = [1]
+hitl = false
+risk = "medium"
+
+[[entry]]
+id = 3
+type = "story"
+title = "Review private image and video evidence"
+description = "Add ReviewMedia/MediaAnnotation storage, short-lived authenticated media viewing, image notes, video time ranges, and media-consistency labels to the blind workflow."
+verify = "An authorized reviewer labels an image/video case through a time-limited link, while unauthorized or expired links fail."
+covers = ["R13"]
+after = [2, "3.6"]
+hitl = false
+risk = "high"
+unknown = "Production media retention and source terms gate live-media rollout."
+
+[[entry]]
+id = 4
+type = "story"
+title = "Sample edge cases and adjudicate disagreement"
+description = "Mix random and targeted case selection, assign independent second reviews to a configured subset, and preserve both labels through adjudication."
+verify = "Targeted and random cases can be double-labeled while each reviewer sees neither the model verdict nor the other's label before submission."
+covers = ["R13"]
+after = [2, 3]
+hitl = false
+risk = "high"
+unknown = "Sample sizes and double-review fraction must be set for the pilot benchmark."
+
+[[entry]]
+id = 8
+type = "story"
+title = "Blindly label supplier-level interpretation and risk cases"
+description = "Add independent supplier-case labels for Vietnamese interpretation, factory/trader evidence and probability, risk dimensions, unsupported claims, and confidence before model outputs are revealed."
+verify = "A reviewer labels a supplier fixture without model influence and can later compare translation, identity, evidence, risk, and uncertainty against the pinned run."
+covers = ["R13"]
+after = [4, "3.5"]
+hitl = false
+risk = "high"
+
+[[entry]]
+id = 5
+type = "story"
+title = "Report model and reviewer agreement metrics"
+description = "Aggregate complaint precision/recall, severity, suspicious-pattern and multimodal agreement, factory/trader consistency, unsupported claims, high-confidence errors, latency, and cost by model, prompt, platform, complaint, and media type."
+verify = "The internal stats route reproduces review and supplier metrics from a fixed labeled set and excludes cases without a valid human comparison."
+covers = ["R13"]
+after = [4, 8, "3.1"]
+hitl = false
+risk = "medium"
+
+[[entry]]
+id = 6
+type = "story"
+title = "Benchmark candidate model configurations"
+description = "Run pinned candidate models against the same labeled review/supplier set and document quality, structured-output, latency, and cost tradeoffs for Decision 7B."
+verify = "An internal reviewer compares candidates on the same review and supplier cases, including complaint, multimodal, identity, risk, and high-confidence error measures, and records a model recommendation."
+covers = ["R13"]
+after = [5]
+hitl = true
+risk = "high"
+unknown = "The final model cannot be chosen before representative human labels and quality thresholds exist."
+
+[[entry]]
+id = 7
+type = "story"
+title = "Refactor sweep"
+description = "Clean up evaluation code and reviewer UX findings from completed build records without weakening blind labels or role controls."
+verify = "Blind submission, private media, double review, and metric calculations still pass after cleanup."
+covers = ["R13"]
+after = [1, 2, 3, 4, 5, 6, 8]
+hitl = false
+risk = "low"

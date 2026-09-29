@@ -1,0 +1,80 @@
+[[entry]]
+id = 1
+type = "story"
+title = "Trace one queued analysis through the platform"
+description = "Create a locally running web and shared TypeScript types/API client, FastAPI, PostgreSQL, and worker tracer backed by an operator-provisioned Azure dev Service Bus queue."
+verify = "From the local web app against Azure dev Service Bus, submit a fixture URL and observe QUEUED through COMPLETED with one stored result and pollable analysis ID."
+covers = ["R1", "R3"]
+after = []
+hitl = true
+risk = "high"
+unknown = "Azure dev access and the final minimum fixture/schema shape must be confirmed at implementation."
+
+[[entry]]
+id = 3
+type = "story"
+title = "Persist the core business and evidence schema"
+description = "Add migrations for users, entitlements, suppliers, snapshots, and analyses with relation keys and JSONB conventions; later stories own ReviewMedia, LLMReviewRun, MediaAnnotation, PaymentOrder, and CreditTransaction tables."
+verify = "A clean database applies and reverses migrations, and a sample analysis joins its snapshot, user, and entitlement records."
+covers = ["R1", "R2", "R3"]
+after = [1]
+hitl = false
+risk = "high"
+unknown = "Extraction story 2.1 owns SupplierData field optionality; product workflows story 5.7 owns future-ready payment/credit table detail."
+
+[[entry]]
+id = 2
+type = "story"
+title = "Verify Clerk identity and API roles"
+description = "Add Clerk JWT verification, user mapping, and CUSTOMER, INTERNAL_REVIEWER, and ADMIN authorization to protected API routes while keeping guest requests anonymous."
+verify = "Valid role tokens reach their allowed routes, while invalid, expired, guest, and lower-role requests receive the expected denials."
+covers = ["R2", "R12"]
+after = [1, 3]
+hitl = false
+risk = "high"
+
+[[entry]]
+id = 4
+type = "story"
+title = "Harden Service Bus processing and state transitions"
+description = "Add MessageId=analysis_id, Peek-Lock completion after persistence, idempotent replay, bounded retry/final states, DLQ handling, and observable status transitions."
+verify = "Replay and injected failures create no duplicate report or usage effect, preserve the final result, and expose retry/final/DLQ status."
+covers = ["R3"]
+after = [1, 3]
+hitl = false
+risk = "high"
+
+[[entry]]
+id = 5
+type = "story"
+title = "Deploy the development baseline and protect secrets"
+description = "Provision Container Apps/Jobs, PostgreSQL, Service Bus Standard, Key Vault, and CI deployment for the modular monolith without placing Clerk or YEScale server secrets in client bundles."
+verify = "A clean deployment runs the queued fixture end to end in Azure dev, CI passes, and bundle inspection finds no server secret."
+covers = ["R1", "R12"]
+after = [2, 3, 4]
+hitl = true
+risk = "high"
+unknown = "Azure resource access and region/SKU availability must be confirmed by the operator."
+
+[[entry]]
+id = 6
+type = "story"
+title = "Enforce guest admission and audit provenance"
+description = "Add POST /api/v1/guest-analyses with configurable guest request limits and analysis admission checks while retaining method, mode, actor, and scoring-version audit fields for later pipeline stages."
+verify = "An anonymous guest can queue a limited analysis, over-limit requests are refused before queueing, protected requests require authorization, and accepted jobs retain actor and mode provenance."
+covers = ["R2", "R12"]
+after = [2, 3, 4]
+hitl = false
+risk = "medium"
+unknown = "Numeric guest and authenticated quotas remain product decisions; this slice makes them configurable."
+
+[[entry]]
+id = 7
+type = "story"
+title = "Refactor sweep"
+description = "Clean up shared platform code and deployment configuration identified by completed build records without changing the agreed feature scope."
+verify = "The foundation deployment and its contract, identity, queue, and migration checks still pass after cleanup."
+covers = ["R1", "R2", "R3", "R12"]
+after = [2, 3, 4, 5, 6]
+hitl = false
+risk = "low"
