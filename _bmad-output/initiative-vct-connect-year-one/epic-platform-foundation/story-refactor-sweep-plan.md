@@ -3,7 +3,7 @@ title: 'Refactor sweep'
 type: 'refactor'
 ticket: '7'
 created: '2026-09-29'
-status: 'in-review'
+status: 'built'
 baseline_revision: 'de721f0cdd472f989e0b09bba8ec03c3283aa178'
 route: 'full'
 route_source: 'auto'
@@ -85,7 +85,9 @@ The two explicit workflow steps remain visible around migration; only their dupl
 
 ## Verification
 
-**Local result (2026-09-29):** 19 focused deployment tests passed; Bash syntax, Bicep compile, 73 backend tests, 13 frontend tests, and frontend typecheck passed. The local backend run skipped 27 PostgreSQL tests because Docker Engine is off; CI's PostgreSQL service must pass before hosted acceptance. GitHub CI and Azure deployment are pending.
+**Local result (2026-09-29):** 19 focused deployment tests passed; Bash syntax, Bicep compile, 73 backend tests, 13 frontend tests, and frontend typecheck passed. The local backend run skipped 27 PostgreSQL tests because Docker Engine was off.
+
+**Hosted result (2026-09-29):** CI run `36586971118` passed with its PostgreSQL service, frontend checks, image builds, and Azure template compile. Deploy run `36587445034` passed early configuration validation, processor quiescence, baseline deployment, private migration Job, activation, and the public guest fixture through the deployed queue. The analysis Job returned to its Event trigger, the dispatcher minimum is one replica, and Service Bus has zero active, scheduled, or dead-lettered messages. Customer authorization remains covered by CI and the signed-in Story 1.6 acceptance run; no identity path changed in this refactor.
 
 **Commands:**
 - `bash -n scripts/deploy_dev.sh` — shell syntax passes.
