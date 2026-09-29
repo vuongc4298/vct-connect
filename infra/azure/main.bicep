@@ -21,8 +21,8 @@ param runtimeIdentityName string = 'vct-connect-dev-runtime'
 @minValue(32)
 @maxValue(1024)
 param postgresStorageGiB int = 32
-@allowed(['B_Standard_B1ms', 'B_Standard_B2s', 'GP_Standard_D2s_v3'])
-param postgresSku string = 'B_Standard_B1ms'
+@allowed(['Standard_B1ms', 'Standard_B2s', 'Standard_D2s_v3'])
+param postgresSku string = 'Standard_B1ms'
 @allowed(['Burstable', 'GeneralPurpose'])
 param postgresTier string = 'Burstable'
 @minValue(1)
