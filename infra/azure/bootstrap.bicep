@@ -4,9 +4,9 @@ targetScope = 'resourceGroup'
 @allowed(['southeastasia'])
 param location string = 'southeastasia'
 
-@description('GitHub repository allowed to deploy from main.')
-@allowed(['vuongc4298/vct-connect'])
-param githubRepository string = 'vuongc4298/vct-connect'
+@description('Immutable GitHub OIDC subject allowed to deploy from main.')
+@allowed(['repo:vuongc4298@156062555/vct-connect@1393991860:ref:refs/heads/main'])
+param githubSubject string = 'repo:vuongc4298@156062555/vct-connect@1393991860:ref:refs/heads/main'
 
 @description('Object ID of the operator who will seed the two Key Vault secrets.')
 param operatorObjectId string
@@ -57,10 +57,10 @@ resource deployIdentity 'Microsoft.ManagedIdentity/userAssignedIdentities@2023-0
 
 resource githubMain 'Microsoft.ManagedIdentity/userAssignedIdentities/federatedIdentityCredentials@2023-01-31' = {
   parent: deployIdentity
-  name: 'github-main'
+  name: 'github-main-immutable'
   properties: {
     issuer: 'https://token.actions.githubusercontent.com'
-    subject: 'repo:${githubRepository}:ref:refs/heads/main'
+    subject: githubSubject
     audiences: ['api://AzureADTokenExchange']
   }
 }
