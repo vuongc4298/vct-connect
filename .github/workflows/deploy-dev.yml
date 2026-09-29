@@ -73,6 +73,10 @@ jobs:
           fi
           if az containerapp show --name vct-connect-dev-dispatcher --resource-group VCT_Connect_Service_Bus --query id -o tsv > /dev/null 2>&1; then
             az containerapp update --name vct-connect-dev-dispatcher --resource-group VCT_Connect_Service_Bus --min-replicas 0 --output none
+            while IFS= read -r REVISION; do
+              [ -z "$REVISION" ] && continue
+              az containerapp revision deactivate --name vct-connect-dev-dispatcher --resource-group VCT_Connect_Service_Bus --revision "$REVISION" --output none
+            done < <(az containerapp revision list --name vct-connect-dev-dispatcher --resource-group VCT_Connect_Service_Bus --query '[?properties.active].name' -o tsv)
             for attempt in {1..30}; do
               REPLICAS=$(az containerapp replica list --name vct-connect-dev-dispatcher --resource-group VCT_Connect_Service_Bus --query 'length(@)' -o tsv)
               [ "$REPLICAS" = 0 ] && break
