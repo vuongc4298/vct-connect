@@ -1,0 +1,90 @@
+[[entry]]
+id = 1
+type = "story"
+title = "Show signed-in profile and trial state"
+description = "Expose a PostgreSQL-backed /me view and web account state for role, plan, free-trial entitlement, and usage with protected authorization."
+verify = "A signed-in user sees their own plan/trial/usage state, and a different user or guest cannot retrieve it."
+covers = ["R10"]
+after = ["1.2", "1.3"]
+hitl = false
+risk = "medium"
+unknown = "Trial dates and plan quotas need configurable product defaults before pilot enrollment."
+
+[[entry]]
+id = 2
+type = "story"
+title = "Browse personal analysis history"
+description = "Add authorized history API and dashboard views that link prior analyses to their report and status."
+verify = "A user sees only their own completed and pending analyses and can reopen an authorized report."
+covers = ["R10"]
+after = [1, "4.1"]
+hitl = false
+risk = "medium"
+
+[[entry]]
+id = 3
+type = "story"
+title = "Save and remove suppliers in Watchlist"
+description = "Add Watchlist storage and user-scoped create/list/delete behavior from report and dashboard views with supplier deduplication."
+verify = "A user can save, list, and remove one supplier without duplicates or access to another user's Watchlist."
+covers = ["R10"]
+after = [1, 2]
+hitl = false
+risk = "medium"
+
+[[entry]]
+id = 4
+type = "story"
+title = "Sign in from the supported-page extension"
+description = "Build the React Chrome extension shell using the shared TypeScript types/API client, detect supported pages, and require Clerk identity before extension-enhanced requests."
+verify = "A supported page offers sign-in and an authenticated analysis entry point, while unsupported pages and signed-out requests cannot submit enhanced evidence."
+covers = ["R11"]
+after = ["1.2", "2.1"]
+hitl = false
+risk = "high"
+unknown = "Web-to-extension session synchronization depends on tested Clerk/Chrome behavior."
+
+[[entry]]
+id = 5
+type = "story"
+title = "Send permitted page evidence for enhanced analysis"
+description = "Connect extension DOM/page-state extraction to the backend merge contract without transmitting platform passwords, cookies, or session tokens."
+verify = "A signed-in supported page enriches a report and a network inspection confirms no platform credential or session material leaves the browser."
+covers = ["R11"]
+after = [4, "2.6", "4.1"]
+hitl = false
+risk = "high"
+
+[[entry]]
+id = 6
+type = "story"
+title = "Show extension progress and condensed verdict"
+description = "Poll analysis status from the extension, display coverage-aware progress and verdict, and open the authorized full web report."
+verify = "A signed-in user sees queued/running/final states and can open the matching full report, including blocked or insufficient cases."
+covers = ["R11"]
+after = [5, "4.4"]
+hitl = false
+risk = "medium"
+
+[[entry]]
+id = 7
+type = "story"
+title = "Expire trial entitlements without charging"
+description = "Apply free MVP trial entitlements and expiry-to-Free behavior to API admission and account state, with future-ready PaymentOrder/CreditTransaction records but no payment execution."
+verify = "A trial user receives the intended free access, then returns to Free after expiry with no PaymentOrder charge or automatic renewal."
+covers = ["R10"]
+after = [1, "1.6"]
+hitl = false
+risk = "high"
+unknown = "The eligible-participant reward threshold is deferred until paid launch; no reward is automatically granted here."
+
+[[entry]]
+id = 8
+type = "story"
+title = "Refactor sweep"
+description = "Clean up account, trial, and extension code identified by completed build records without changing access or data-minimization rules."
+verify = "History, Watchlist, trial expiry, and extension analysis still pass their authorization and privacy checks."
+covers = ["R10", "R11"]
+after = [1, 2, 3, 4, 5, 6, 7]
+hitl = false
+risk = "low"

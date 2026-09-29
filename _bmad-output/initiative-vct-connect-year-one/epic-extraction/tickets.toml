@@ -1,0 +1,91 @@
+[[entry]]
+id = 1
+type = "story"
+title = "Extract a 1688 URL into the shared SupplierData contract"
+description = "Freeze the shared SupplierData contract, validate a 1688 URL, use httpx/selectolax, and persist raw/normalized snapshots plus accessible reviews through the queued analysis path."
+verify = "A representative 1688 URL yields a pollable snapshot with source URL, method, mode, version, completeness, missing fields, and timestamp."
+covers = ["R4"]
+after = ["1.3", "1.4"]
+hitl = false
+risk = "high"
+unknown = "Representative 1688 pages and field-level optionality must be agreed from observed pages."
+
+[[entry]]
+id = 2
+type = "story"
+title = "Classify extraction failures and bounded HTTP retries"
+description = "Freeze the shared extraction status contract and map invalid, redirected, inaccessible, changed, timed-out, and partial pages to it while guiding auth-required or blocked users toward the extension."
+verify = "Fixture cases return SUCCESS, PARTIAL, AUTH_REQUIRED, BLOCKED, UNSUPPORTED_PAGE, TIMEOUT, or PARSE_FAILED as appropriate."
+covers = ["R4"]
+after = [1]
+hitl = false
+risk = "medium"
+
+[[entry]]
+id = 3
+type = "story"
+title = "Add the Taobao source adapter"
+description = "Implement Taobao supplier/product URL normalization and HTTP extraction against the established SupplierData and status contracts."
+verify = "Representative Taobao URLs produce versioned snapshots or the correct explicit access/failure status."
+covers = ["R4"]
+after = [1, 2]
+hitl = false
+risk = "high"
+unknown = "Public Taobao field accessibility varies by page and region and must be measured."
+
+[[entry]]
+id = 4
+type = "story"
+title = "Add the Alibaba source adapter"
+description = "Implement Alibaba supplier/product URL normalization and HTTP extraction against the established SupplierData and status contracts."
+verify = "Representative Alibaba URLs produce versioned snapshots or the correct explicit access/failure status."
+covers = ["R4"]
+after = [1, 2]
+hitl = false
+risk = "high"
+
+[[entry]]
+id = 5
+type = "story"
+title = "Use Playwright only when public HTTP evidence is insufficient"
+description = "Add a bounded Chromium fallback for supported public pages and stop on login, CAPTCHA, or explicit block conditions rather than bypassing them."
+verify = "A fixture needing rendering gains evidence within the configured budget, while blocked/login fixtures return their access status without bypass."
+covers = ["R4"]
+after = [2, 3, 4]
+hitl = false
+risk = "high"
+unknown = "Fallback budget and completeness threshold need cost/coverage evidence before pilot tuning."
+
+[[entry]]
+id = 6
+type = "story"
+title = "Accept and merge extension evidence safely"
+description = "Define the extension page-state payload and separate merge module, combining permitted rendered supplier/review evidence with server and historical evidence using stable deduplication and provenance without editing platform adapters."
+verify = "An extension fixture enriches a snapshot without duplicate evidence or any platform cookie, password, or session token in the accepted payload."
+covers = ["R4"]
+after = [1, 2]
+hitl = false
+risk = "high"
+unknown = "Permitted fields and source-platform terms must be reviewed before production collection."
+
+[[entry]]
+id = 7
+type = "story"
+title = "Exercise extraction layouts and re-normalization"
+description = "Add representative layout, missing-field, high-review-volume, redirect, parser-change, and timeout cases, and support re-normalizing preserved raw snapshots."
+verify = "The fixture matrix reports correct statuses and coverage, and a parser revision re-normalizes an old raw snapshot without crawling again."
+covers = ["R4"]
+after = [3, 4, 5, 6]
+hitl = false
+risk = "medium"
+
+[[entry]]
+id = 8
+type = "story"
+title = "Refactor sweep"
+description = "Clean up shared extraction and adapter code identified by build records while preserving the platform-specific contract and failure behavior."
+verify = "The deployed three-platform extraction matrix and extension merge checks still pass after cleanup."
+covers = ["R4"]
+after = [2, 3, 4, 5, 6, 7]
+hitl = false
+risk = "low"

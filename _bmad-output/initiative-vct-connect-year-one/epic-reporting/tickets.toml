@@ -1,0 +1,67 @@
+[[entry]]
+id = 1
+type = "story"
+title = "Fetch one authorized report from an assessment"
+description = "Add report storage, persist a payload from versioned findings and scores before the worker marks COMPLETED and acknowledges Service Bus, and expose an authorized endpoint with evidence IDs, limitations, and recommended actions."
+verify = "A completed supported analysis has a safely persisted Vietnamese report before queue acknowledgment and returns risk, confidence, coverage, evidence, missing data, and pre-order actions to its authorized owner."
+covers = ["R9"]
+after = ["3.7", "1.2"]
+hitl = false
+risk = "high"
+unknown = "Public report sharing stays disabled until its authorization and expiry policy is decided."
+
+[[entry]]
+id = 2
+type = "story"
+title = "Render the full Vietnamese report"
+description = "Build shared report UI components and the full web layout for risk, confidence, coverage, factory/trader likelihood, risks, positive signals, review summary, supplier summary, actions, and sources."
+verify = "A buyer can open a completed full report and trace every material finding to evidence and freshness in a readable Vietnamese interface."
+covers = ["R9"]
+after = [1]
+hitl = false
+risk = "medium"
+unknown = "The final visual design and content hierarchy need a product/UX review."
+
+[[entry]]
+id = 3
+type = "story"
+title = "Show a limited and honest guest preview"
+description = "Serve a guest-safe report projection that shows its actual coverage and confidence, explains missing evidence, and prompts registration or extension use."
+verify = "An anonymous visitor sees coverage, confidence, and a clear lower-coverage explanation without an artificial low-risk verdict, while the full report endpoint remains protected."
+covers = ["R9"]
+after = [1, 2, "1.6"]
+hitl = false
+risk = "high"
+
+[[entry]]
+id = 4
+type = "story"
+title = "Handle progress, insufficiency, and failure states"
+description = "Connect report pages to analysis polling and show accessible pending, blocked, failed, and insufficient-information outcomes with a suitable next action."
+verify = "A buyer can distinguish running, completed, blocked, failed, and insufficient analyses without ever seeing missing evidence as low risk."
+covers = ["R9"]
+after = [2, 3]
+hitl = false
+risk = "medium"
+
+[[entry]]
+id = 5
+type = "story"
+title = "Verify report evidence and access boundaries"
+description = "Check report generation against fixture findings, translation, authorization, and evidence provenance, including stale, contradictory, and missing-source cases."
+verify = "The deployed report path exposes no unsupported material claim or unauthorized full report and labels missing or stale evidence visibly."
+covers = ["R9"]
+after = [2, 3, 4]
+hitl = false
+risk = "high"
+
+[[entry]]
+id = 6
+type = "story"
+title = "Refactor sweep"
+description = "Clean up report payload and UI code identified by completed build records without changing authorization or report meaning."
+verify = "The guest and full-report paths, evidence display, and all status cases still pass after cleanup."
+covers = ["R9"]
+after = [1, 2, 3, 4, 5]
+hitl = false
+risk = "low"

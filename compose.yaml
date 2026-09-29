@@ -1,0 +1,18 @@
+services:
+  db:
+    image: postgres:16-alpine
+    environment:
+      POSTGRES_USER: vct
+      POSTGRES_PASSWORD: vct_local_only
+      POSTGRES_DB: vct
+    ports:
+      - "127.0.0.1:5432:5432"
+    volumes:
+      - vct_pgdata:/var/lib/postgresql/data
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -U vct -d vct"]
+      interval: 2s
+      timeout: 2s
+      retries: 20
+volumes:
+  vct_pgdata:
