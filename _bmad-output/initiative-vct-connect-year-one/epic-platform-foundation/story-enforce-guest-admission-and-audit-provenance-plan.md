@@ -107,7 +107,7 @@ The browser key limits repeat use but can be cleared; a separate database-wide c
 
 **Local result (2026-09-29):** PostgreSQL 16 integration suite: 80 passed, 1 opt-in Azure test skipped. Frontend: 13 passed; typecheck and production build passed. Secret scan reported no configured server credentials in the frontend build. Azure Bicep template compiled.
 
-**Hosted result (2026-09-29):** CI run `36555359044` passed with PostgreSQL integration tests. Deploy run `36555693608` quiesced processors, applied migration 0006, reactivated the dispatcher and event-triggered analysis Job, and completed the public guest fixture through the deployed queue with cookie-scoped status, attempt count one, and expected provenance. The signed-in fixture smoke gate remains a separate manual check requiring a fresh Clerk session.
+**Hosted result (2026-09-29):** CI run `36555359044` passed with PostgreSQL integration tests. Deploy run `36555693608` quiesced processors, applied migration 0006, reactivated the dispatcher and event-triggered analysis Job, and completed the public guest fixture through the deployed queue with cookie-scoped status, attempt count one, and expected provenance. A signed-in customer then submitted demo ID `B909E927`; its private PostgreSQL record was `COMPLETED` after one attempt, with one result matching `scripts/smoke_dev.py`'s `EXPECTED_RESULT`, one completion event, `ACCOUNT_PUBLIC` mode, `CUSTOMER` actor, `FIXTURE` method, and `v0.1.0` scoring version. The latest analysis Job succeeded; Service Bus had zero active, scheduled, and dead-lettered messages.
 
 **Commands:**
 - `.venv/Scripts/python.exe -m pytest backend/tests -q` — guest/customer admission, migration, auth, and queue tests pass against an isolated PostgreSQL test database.
