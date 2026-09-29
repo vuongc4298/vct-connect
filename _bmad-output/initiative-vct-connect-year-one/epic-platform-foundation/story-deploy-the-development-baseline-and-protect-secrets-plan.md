@@ -3,7 +3,7 @@ title: 'Deploy the development baseline and protect secrets'
 type: 'feature'
 ticket: '5'
 created: '2026-09-28'
-status: 'in-review'
+status: 'built'
 baseline_revision: 'NO_VCS'
 route: 'full'
 route_source: 'auto'
@@ -60,12 +60,12 @@ context:
 ## Tasks & Acceptance
 
 **Execution:**
-- [ ] `infra/azure/` — define dev resources, private database, internal ingress, identities/secret references, existing Standard queue integration, Job scaler, diagnostics, and bounded parameters.
-- [ ] `backend/worker/main.py`, `backend/app/main.py`, `backend/app/config.py` — add finite Job, continuous dispatcher, and internal API mode; preserve local and queue behavior.
-- [ ] `frontend/apps/web/Dockerfile`, `backend/Dockerfile`, `.dockerignore` — build images without secret files and set runtime API routing.
-- [ ] `.github/workflows/ci.yml`, `.github/workflows/deploy-dev.yml` — test/build/scan, use OIDC, publish immutable images, apply IaC/migrations, smoke test.
-- [ ] `scripts/`, `README.md`, `.env.example` — add deployment/rollback instructions and secret scan.
-- [ ] `backend/tests/` and deployment scripts — cover finite Job, dispatcher recovery, ingress mode, and matrix faults.
+- [x] `infra/azure/` — define dev resources, private database, internal ingress, identities/secret references, existing Standard queue integration, Job scaler, diagnostics, and bounded parameters.
+- [x] `backend/worker/main.py`, `backend/app/main.py`, `backend/app/config.py` — add finite Job, continuous dispatcher, and internal API mode; preserve local and queue behavior.
+- [x] `frontend/apps/web/Dockerfile`, `backend/Dockerfile`, `.dockerignore` — build images without secret files and set runtime API routing.
+- [x] `.github/workflows/ci.yml`, `.github/workflows/deploy-dev.yml` — test/build/scan, use OIDC, publish immutable images, apply IaC/migrations, smoke test.
+- [x] `scripts/`, `README.md`, `.env.example` — add deployment/rollback instructions and secret scan.
+- [x] `backend/tests/` and deployment scripts — cover finite Job, dispatcher recovery, ingress mode, and matrix faults.
 
 **Acceptance Criteria:**
 - Given approved Azure dev access and an empty or previously deployed resource group, when the deployment pipeline runs, then infrastructure converges and a signed-in fixture analysis completes exactly once through Service Bus Standard.
@@ -76,6 +76,10 @@ context:
 ## Implementation Notes
 
 ## Plan Change Log
+
+- First hosted deployment exposed GitHub's immutable OIDC subject format. Federation now binds to verified owner and repository IDs; the obsolete name-based credential was removed.
+- Registered the subscription's missing Network, OperationalInsights, App, DBforPostgreSQL, and Insights providers.
+- Corrected PostgreSQL's SKU to the region-supported `Standard_B1ms`.
 
 ## Review Triage Log
 
@@ -102,7 +106,7 @@ context:
 | Blind | Apps and dispatcher lack explicit probes | low: Azure supplies ingress probes to web/API; a probe would not detect the dispatcher's caught network outage. | reject |
 | Blind | Bootstrap absent from deploy workflow | false for the approved target: bootstrap is an operator prerequisite that establishes OIDC trust before CI can authenticate. | reject |
 
-The intent auditor found the remaining evidence gap: local files and tests exist, while live Azure fixture and ingress acceptance still require deployment. Complete those checks before calling the story built.
+The signed-in fixture passed the live acceptance gate. The separate `Verify dev fixture` workflow remains available for future runs with a fresh session token; this acceptance run used the signed-in browser and direct Azure/database inspection.
 
 ## Design Notes
 
@@ -110,10 +114,12 @@ The worker must publish outbox records even when the queue is empty. A Service B
 
 ## Verification
 
+**Live Azure evidence (2026-09-29):** Hosted CI run `36506025687` passed tests, web build, secret scan, image builds, and Bicep compilation. Deployment run `36506267714` passed resource convergence, private-network migrations, processor activation, and ingress smoke. The PostgreSQL server is Ready, `vct` exists, API ingress is internal-only, and the dispatcher and event Job are provisioned. A separate local ingress smoke also passed. The operator signed in to the deployed web app and submitted the fixture. Analysis `aa94cabf-f8c9-4b00-b014-1d610010c3a6` reached `COMPLETED`; the private database showed one attempt, one completion event, and exactly one stored result matching the expected fixture URL, supplier, and fixture flag. Azure Job execution `vct-connect-dev-analysis-pjth5` succeeded; the Standard queue had zero active and zero dead-lettered messages. The direct API ingress check passed in the deployment smoke.
+
 **Commands:**
 - `.venv\Scripts\python.exe -m pytest backend/tests` — worker modes, auth, migrations, queue replay, and database tests pass.
 - `npm test --prefix frontend` and `npm run build --prefix frontend` — contracts and deployable web build pass.
 - `.venv\Scripts\python.exe scripts/scan_frontend_secrets.py` — no configured server credential appears in client output.
 - `az bicep build --file infra/azure/main.bicep` — deployment template compiles.
 - `docker build` for web and Python images — each image builds without ignored secret files.
-- Hosted CI plus deployed smoke command — fixture reaches `COMPLETED`, one result persists, and direct API ingress is denied.
+- Hosted CI and deployment smoke — build, secret, migration, and ingress checks pass; signed-in browser acceptance plus private database inspection confirms the fixture reaches `COMPLETED` with one result.
