@@ -3,7 +3,7 @@ title: 'Enforce guest admission and audit provenance'
 type: 'feature'
 ticket: '6'
 created: '2026-09-29'
-status: 'in-review'
+status: 'built'
 baseline_revision: 'dabf8ff47012b0404dcb2254a491a7dc4c1f82f5'
 route: 'full'
 route_source: 'auto'
@@ -78,6 +78,7 @@ context:
 ## Plan Change Log
 
 - First hosted Story 1.6 deployment failed before migrations while quiescing the existing event Job. Azure requires `manualTriggerConfig` when switching its trigger to `Manual`; the workflow now submits the trigger and manual configuration together.
+- The next deployment found that setting the dispatcher minimum to zero left its active revision running. The workflow now deactivates active revisions and verifies zero replicas before migrations.
 
 ## Review Triage Log
 
@@ -104,7 +105,9 @@ The browser key limits repeat use but can be cleared; a separate database-wide c
 
 ## Verification
 
-**Local result (2026-09-29):** PostgreSQL 16 integration suite: 80 passed, 1 opt-in Azure test skipped. Frontend: 13 passed; typecheck and production build passed. Secret scan reported no configured server credentials in the frontend build. Azure Bicep template compiled. Live dev guest smoke remains pending deployment.
+**Local result (2026-09-29):** PostgreSQL 16 integration suite: 80 passed, 1 opt-in Azure test skipped. Frontend: 13 passed; typecheck and production build passed. Secret scan reported no configured server credentials in the frontend build. Azure Bicep template compiled.
+
+**Hosted result (2026-09-29):** CI run `36555359044` passed with PostgreSQL integration tests. Deploy run `36555693608` quiesced processors, applied migration 0006, reactivated the dispatcher and event-triggered analysis Job, and completed the public guest fixture through the deployed queue with cookie-scoped status, attempt count one, and expected provenance. The signed-in fixture smoke gate remains a separate manual check requiring a fresh Clerk session.
 
 **Commands:**
 - `.venv/Scripts/python.exe -m pytest backend/tests -q` — guest/customer admission, migration, auth, and queue tests pass against an isolated PostgreSQL test database.
