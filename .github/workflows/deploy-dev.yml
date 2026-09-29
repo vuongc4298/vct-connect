@@ -64,7 +64,11 @@ jobs:
         run: |
           if az containerapp job show --name vct-connect-dev-analysis --resource-group VCT_Connect_Service_Bus --query id -o tsv > /dev/null 2>&1; then
             JOB_ID=$(az containerapp job show --name vct-connect-dev-analysis --resource-group VCT_Connect_Service_Bus --query id -o tsv)
-            az resource update --ids "$JOB_ID" --api-version 2025-01-01 --set properties.configuration.triggerType=Manual --output none
+            az resource update --ids "$JOB_ID" --api-version 2025-01-01 \
+              --set properties.configuration.triggerType=Manual \
+                    properties.configuration.manualTriggerConfig.parallelism=1 \
+                    properties.configuration.manualTriggerConfig.replicaCompletionCount=1 \
+              --output none
             az containerapp job stop --name vct-connect-dev-analysis --resource-group VCT_Connect_Service_Bus --output none
           fi
           if az containerapp show --name vct-connect-dev-dispatcher --resource-group VCT_Connect_Service_Bus --query id -o tsv > /dev/null 2>&1; then

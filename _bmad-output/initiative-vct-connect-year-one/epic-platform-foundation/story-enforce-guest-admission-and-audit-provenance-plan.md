@@ -77,6 +77,8 @@ context:
 
 ## Plan Change Log
 
+- First hosted Story 1.6 deployment failed before migrations while quiescing the existing event Job. Azure requires `manualTriggerConfig` when switching its trigger to `Manual`; the workflow now submits the trigger and manual configuration together.
+
 ## Review Triage Log
 
 | Lens | Finding | Verdict and evidence | Route |
