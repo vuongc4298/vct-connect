@@ -20,6 +20,11 @@ jobs:
       github.event.workflow_run.head_branch == 'main' &&
       github.event.workflow_run.head_repository.full_name == 'vuongc4298/vct-connect'
     runs-on: ubuntu-latest
+    env:
+      REGISTRY_NAME: ${{ vars.AZURE_REGISTRY_NAME }}
+      VAULT_NAME: ${{ vars.AZURE_KEY_VAULT_NAME }}
+      NEXT_PUBLIC_CLERK_PUBLISHABLE_KEY: ${{ vars.NEXT_PUBLIC_CLERK_PUBLISHABLE_KEY }}
+      CLERK_ISSUER: ${{ vars.CLERK_ISSUER }}
     steps:
       - uses: actions/checkout@v4
         with:
@@ -27,6 +32,14 @@ jobs:
       - uses: actions/setup-python@v5
         with:
           python-version: '3.12'
+      - name: Validate deployment configuration
+        run: |
+          for variable in REGISTRY_NAME VAULT_NAME NEXT_PUBLIC_CLERK_PUBLISHABLE_KEY CLERK_ISSUER; do
+            if [ -z "${!variable:-}" ]; then
+              echo "Missing required deployment variable: $variable" >&2
+              exit 1
+            fi
+          done
       - uses: azure/login@v2
         with:
           client-id: ${{ vars.AZURE_CLIENT_ID }}
@@ -35,17 +48,12 @@ jobs:
       - name: Verify approved target and existing queue
         run: python scripts/verify_azure_target.py
       - name: Verify Key Vault prerequisites
-        env:
-          VAULT_NAME: ${{ vars.AZURE_KEY_VAULT_NAME }}
         run: |
           for secret in postgres-admin-password clerk-secret-key; do
             az keyvault secret show --vault-name "$VAULT_NAME" --name "$secret" --query id -o tsv > /dev/null
           done
       - name: Build, push, and resolve image digests
-        id: images
         env:
-          REGISTRY_NAME: ${{ vars.AZURE_REGISTRY_NAME }}
-          NEXT_PUBLIC_CLERK_PUBLISHABLE_KEY: ${{ vars.NEXT_PUBLIC_CLERK_PUBLISHABLE_KEY }}
           SOURCE_SHA: ${{ github.event.workflow_run.head_sha }}
         run: |
           IMAGE_TAG="$SOURCE_SHA-$GITHUB_RUN_ID-$GITHUB_RUN_ATTEMPT"
@@ -58,8 +66,8 @@ jobs:
           WEB_DIGEST=$(docker buildx imagetools inspect "$REGISTRY_NAME.azurecr.io/vct-web:$IMAGE_TAG" --format '{{json .Manifest}}' | jq -er '.digest')
           [[ "$BACKEND_DIGEST" =~ ^sha256:[0-9a-f]{64}$ ]]
           [[ "$WEB_DIGEST" =~ ^sha256:[0-9a-f]{64}$ ]]
-          echo "backend_digest=$BACKEND_DIGEST" >> "$GITHUB_OUTPUT"
-          echo "web_digest=$WEB_DIGEST" >> "$GITHUB_OUTPUT"
+          echo "BACKEND_DIGEST=$BACKEND_DIGEST" >> "$GITHUB_ENV"
+          echo "WEB_DIGEST=$WEB_DIGEST" >> "$GITHUB_ENV"
       - name: Quiesce existing processors before migrations
         run: |
           if az containerapp job show --name vct-connect-dev-analysis --resource-group VCT_Connect_Service_Bus --query id -o tsv > /dev/null 2>&1; then
@@ -85,43 +93,11 @@ jobs:
             [ "$REPLICAS" = 0 ] || { echo 'Dispatcher did not quiesce before migrations.'; exit 1; }
           fi
       - name: Converge web, API, database, and migration Job
-        env:
-          REGISTRY_NAME: ${{ vars.AZURE_REGISTRY_NAME }}
-          VAULT_NAME: ${{ vars.AZURE_KEY_VAULT_NAME }}
-          NEXT_PUBLIC_CLERK_PUBLISHABLE_KEY: ${{ vars.NEXT_PUBLIC_CLERK_PUBLISHABLE_KEY }}
-          CLERK_ISSUER: ${{ vars.CLERK_ISSUER }}
-          BACKEND_DIGEST: ${{ steps.images.outputs.backend_digest }}
-          WEB_DIGEST: ${{ steps.images.outputs.web_digest }}
-        run: |
-          az deployment group create \
-            --resource-group VCT_Connect_Service_Bus \
-            --name "vct-base-$GITHUB_RUN_ID-$GITHUB_RUN_ATTEMPT" \
-            --template-file infra/azure/main.bicep \
-            --parameters backendImageDigest="$BACKEND_DIGEST" webImageDigest="$WEB_DIGEST" \
-              enableProcessing=false registryName="$REGISTRY_NAME" \
-              vaultName="$VAULT_NAME" clerkPublishableKey="$NEXT_PUBLIC_CLERK_PUBLISHABLE_KEY" \
-              clerkIssuer="$CLERK_ISSUER" \
-            --only-show-errors --output none
+        run: bash scripts/deploy_dev.sh baseline
       - name: Apply migrations in private network
         run: python scripts/wait_container_job.py
       - name: Activate dispatcher and finite analysis Job
-        env:
-          REGISTRY_NAME: ${{ vars.AZURE_REGISTRY_NAME }}
-          VAULT_NAME: ${{ vars.AZURE_KEY_VAULT_NAME }}
-          NEXT_PUBLIC_CLERK_PUBLISHABLE_KEY: ${{ vars.NEXT_PUBLIC_CLERK_PUBLISHABLE_KEY }}
-          CLERK_ISSUER: ${{ vars.CLERK_ISSUER }}
-          BACKEND_DIGEST: ${{ steps.images.outputs.backend_digest }}
-          WEB_DIGEST: ${{ steps.images.outputs.web_digest }}
-        run: |
-          az deployment group create \
-            --resource-group VCT_Connect_Service_Bus \
-            --name "vct-active-$GITHUB_RUN_ID-$GITHUB_RUN_ATTEMPT" \
-            --template-file infra/azure/main.bicep \
-            --parameters backendImageDigest="$BACKEND_DIGEST" webImageDigest="$WEB_DIGEST" \
-              enableProcessing=true registryName="$REGISTRY_NAME" \
-              vaultName="$VAULT_NAME" clerkPublishableKey="$NEXT_PUBLIC_CLERK_PUBLISHABLE_KEY" \
-              clerkIssuer="$CLERK_ISSUER" \
-            --only-show-errors --output none
+        run: bash scripts/deploy_dev.sh activation
       - name: Check deployed ingress and guest fixture
         env:
           RESOURCE_GROUP: VCT_Connect_Service_Bus

@@ -40,3 +40,6 @@
 - source_plan: `_bmad-output/initiative-vct-connect-year-one/epic-platform-foundation/story-deploy-the-development-baseline-and-protect-secrets-plan.md`
   summary: Reconcile analyses left in DLQ_PENDING if PostgreSQL confirmation fails after Service Bus dead lettering.
   evidence: The Story 1.4 settlement path dead letters before marking the row, so an intervening database outage can leave the final disposition pending.
+- source_plan: `_bmad-output/initiative-vct-connect-year-one/epic-platform-foundation/story-refactor-sweep-plan.md`
+  summary: Validate the configured Clerk issuer's URL and trust domain before deployment.
+  evidence: The existing deployment accepted any nonempty issuer, and a malformed value can leave authentication unusable; Story 1.7 preserves Clerk configuration behavior while consolidating deployment commands.
