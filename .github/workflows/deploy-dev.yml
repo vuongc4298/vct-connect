@@ -114,11 +114,11 @@ jobs:
               vaultName="$VAULT_NAME" clerkPublishableKey="$NEXT_PUBLIC_CLERK_PUBLISHABLE_KEY" \
               clerkIssuer="$CLERK_ISSUER" \
             --only-show-errors --output none
-      - name: Check deployed ingress and web response
+      - name: Check deployed ingress and guest fixture
         env:
           RESOURCE_GROUP: VCT_Connect_Service_Bus
         run: |
           WEB_URL=$(az containerapp show --name vct-connect-dev-web --resource-group "$RESOURCE_GROUP" --query 'properties.configuration.ingress.fqdn' -o tsv)
           API_URL=$(az containerapp show --name vct-connect-dev-api --resource-group "$RESOURCE_GROUP" --query 'properties.configuration.ingress.fqdn' -o tsv)
-          python scripts/smoke_dev.py --ingress-only --web-url "https://$WEB_URL" --api-url "https://$API_URL"
-          echo 'Deployment and ingress checks passed. Signed-in fixture gate is pending: run Verify dev fixture with a fresh Clerk session.' >> "$GITHUB_STEP_SUMMARY"
+          python scripts/smoke_dev.py --ingress-only --guest-fixture --web-url "https://$WEB_URL" --api-url "https://$API_URL"
+          echo 'Deployment ingress and guest fixture checks passed. Signed-in fixture gate is pending: run Verify dev fixture with a fresh Clerk session.' >> "$GITHUB_STEP_SUMMARY"

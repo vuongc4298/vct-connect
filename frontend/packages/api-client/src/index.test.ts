@@ -1,7 +1,7 @@
 import assert from "node:assert/strict";
 import test from "node:test";
 
-import { ApiError, getAnalysis, submitAnalysis } from "./index";
+import { ApiError, getAnalysis, getGuestAnalysis, submitAnalysis, submitGuestAnalysis } from "./index";
 
 
 test("adds a fresh bearer token to submission and polling requests", async () => {
@@ -51,6 +51,26 @@ test("adds a fresh bearer token to submission and polling requests", async () =>
     requests.map(request => request.headers.get("Authorization")),
     ["Bearer session-token", "Bearer session-token"],
   );
+});
+
+test("guest submission and polling use cookie credentials without bearer identity", async () => {
+  const originalFetch = globalThis.fetch;
+  const requests: Array<{ url: string; headers: Headers; credentials?: RequestCredentials }> = [];
+  globalThis.fetch = async (input, init) => {
+    requests.push({ url: String(input), headers: new Headers(init?.headers), credentials: init?.credentials });
+    return Response.json({ id: "guest-id", status: "QUEUED" }, { status: init?.method === "POST" ? 202 : 200 });
+  };
+  try {
+    await submitGuestAnalysis({ source_url: "https://detail.1688.com/offer/123456789012.html" });
+    await getGuestAnalysis("guest-id");
+  } finally {
+    globalThis.fetch = originalFetch;
+  }
+  assert.deepEqual(requests.map(request => request.url), [
+    "/api/v1/guest-analyses", "/api/v1/guest-analyses/guest-id",
+  ]);
+  assert.deepEqual(requests.map(request => request.credentials), ["same-origin", "same-origin"]);
+  assert.ok(requests.every(request => !request.headers.has("Authorization")));
 });
 
 test("does not replay a failed submission", async () => {

@@ -18,6 +18,7 @@ from backend.app.auth import ClerkTokenVerifier
 from backend.app.config import Settings, _issuer_from_publishable_key
 from backend.app.fixture import FIXTURE_URL
 from backend.app.main import create_app
+from backend.app.storage import AdmissionDenied
 
 
 ISSUER = "https://vct-test.clerk.accounts.dev"
@@ -81,6 +82,18 @@ class AuthStore:
             "user_id": user_id,
         }
         return analysis_id
+
+    def submit_customer(self, source_url, user_id, *, azure, customer_limit, window_seconds):
+        return self.submit_azure(source_url, user_id) if azure else self.submit_local(source_url, user_id)
+
+    def submit_guest(self, source_url, guest_key, *, azure, browser_limit, global_limit, window_seconds):
+        analysis_id = self.submit_azure(source_url) if azure else self.submit_local(source_url)
+        self.rows[analysis_id]["guest_key"] = guest_key
+        return analysis_id
+
+    def get_for_guest(self, analysis_id, guest_key):
+        row = self.rows.get(analysis_id)
+        return row if row and row.get("guest_key") == guest_key else None
 
     def get(self, analysis_id):
         return self.rows.get(analysis_id)
@@ -316,3 +329,62 @@ def test_jwks_outage_returns_service_unavailable(signing_keys, monkeypatch):
     assert response.status_code == 503
     assert response.json() == {"detail": "Authentication unavailable"}
     assert store.users == {}
+
+
+def test_guest_is_anonymous_and_only_own_key_can_read(signing_keys):
+    _, public = signing_keys
+    client, store = client_and_store(public)
+    key = "a" * 64
+    submitted = client.post(
+        "/api/v1/guest-analyses",
+        headers={"x-vct-guest-key": key},
+        json={"source_url": FIXTURE_URL},
+    )
+    assert submitted.status_code == 202
+    analysis_id = submitted.json()["id"]
+    assert store.users == {}
+    assert store.rows[next(iter(store.rows))]["user_id"] is None
+    assert client.get(
+        f"/api/v1/guest-analyses/{analysis_id}", headers={"x-vct-guest-key": key}
+    ).status_code == 200
+    assert client.get(
+        f"/api/v1/guest-analyses/{analysis_id}", headers={"x-vct-guest-key": "b" * 64}
+    ).status_code == 404
+    assert client.get(f"/api/v1/guest-analyses/{analysis_id}").status_code == 404
+    assert client.get(f"/api/v1/analyses/{analysis_id}").status_code == 401
+    assert store.users == {}
+
+
+def test_guest_fixture_validation_precedes_admission(signing_keys):
+    _, public = signing_keys
+    client, store = client_and_store(public)
+    response = client.post(
+        "/api/v1/guest-analyses",
+        headers={"x-vct-guest-key": "a" * 64},
+        json={"source_url": "https://example.org/other"},
+    )
+    assert response.status_code == 422
+    assert store.rows == {}
+
+
+def test_admission_denial_returns_stable_429_without_queueing(signing_keys):
+    private, public = signing_keys
+    client, store = client_and_store(public)
+
+    def deny(*_args, **_kwargs):
+        raise AdmissionDenied("Submission limit reached")
+
+    store.submit_guest = deny
+    store.submit_customer = deny
+    guest = client.post(
+        "/api/v1/guest-analyses", headers={"x-vct-guest-key": "a" * 64},
+        json={"source_url": FIXTURE_URL},
+    )
+    customer = client.post(
+        "/api/v1/analyses", headers=auth_header(token(private)),
+        json={"source_url": FIXTURE_URL},
+    )
+    assert guest.status_code == customer.status_code == 429
+    assert guest.json() == customer.json() == {"detail": "Submission limit reached"}
+    assert store.rows == {}
+    assert store.outbox == []

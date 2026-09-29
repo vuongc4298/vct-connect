@@ -66,6 +66,18 @@ class MemoryStore:
         self.outbox[analysis_id] = {"message_id": analysis_id, "attempts": 0, "token": None, "state": "PENDING"}
         return analysis_id
 
+    def submit_customer(self, source_url, user_id, *, azure, customer_limit, window_seconds):
+        return self.submit_azure(source_url, user_id) if azure else self.submit_local(source_url, user_id)
+
+    def submit_guest(self, source_url, guest_key, *, azure, browser_limit, global_limit, window_seconds):
+        analysis_id = self.submit_azure(source_url) if azure else self.submit_local(source_url)
+        self.rows[analysis_id]["guest_key"] = guest_key
+        return analysis_id
+
+    def get_for_guest(self, analysis_id, guest_key):
+        row = self.rows.get(analysis_id)
+        return row if row and row.get("guest_key") == guest_key else None
+
     def get(self, analysis_id):
         return self.rows.get(analysis_id)
 

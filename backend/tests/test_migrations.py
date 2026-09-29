@@ -190,6 +190,7 @@ def test_fresh_apply_failure_rollback_and_reapply_are_reproducible(
         ("0003_align_core_schema_to_spec", False),
         ("0004_harden_analysis_processing", False),
         ("0005_expand_processing_dispositions", False),
+        ("0006_guest_admission_and_provenance", False),
     ]
 
     with psycopg.connect(isolated_database_url, autocommit=True) as conn:
@@ -202,6 +203,7 @@ def test_fresh_apply_failure_rollback_and_reapply_are_reproducible(
         ("0003_align_core_schema_to_spec", True),
         ("0004_harden_analysis_processing", True),
         ("0005_expand_processing_dispositions", True),
+        ("0006_guest_admission_and_provenance", True),
     ]
 
 
@@ -221,7 +223,40 @@ def test_populated_legacy_schema_and_active_queue_are_preserved(isolated_databas
             """,
             ([completed_id, queued_id],),
         ).fetchall()
-    assert guest_rows == [(None, None, None, None), (None, None, None, None)]
+    assert guest_rows == [
+        (None, None, "GUEST_PUBLIC", "v0.1.0"),
+        (None, None, "GUEST_PUBLIC", "v0.1.0"),
+    ]
+
+
+def test_snapshot_linked_historical_analysis_keeps_extraction_method(isolated_database_url):
+    _apply_through(isolated_database_url, "0005_expand_processing_dispositions")
+    supplier_id, snapshot_id, analysis_id = uuid4(), uuid4(), uuid4()
+    with psycopg.connect(isolated_database_url) as conn:
+        conn.execute(
+            "INSERT INTO suppliers (id, platform, source_url) VALUES (%s, '1688', %s)",
+            (supplier_id, FIXTURE_URL),
+        )
+        conn.execute(
+            """INSERT INTO supplier_snapshots
+                 (id, supplier_id, raw_payload, normalized_data, extraction_method,
+                  analysis_mode, extractor_version, extracted_at)
+               VALUES (%s, %s, '{}'::jsonb, '{}'::jsonb, 'HTTP',
+                       'ACCOUNT_PUBLIC', 'prior', now())""",
+            (snapshot_id, supplier_id),
+        )
+        conn.execute(
+            """INSERT INTO analyses (id, source_url, status, supplier_snapshot_id, mode)
+               VALUES (%s, %s, 'QUEUED', %s, 'ACCOUNT_PUBLIC')""",
+            (analysis_id, FIXTURE_URL, snapshot_id),
+        )
+    apply_migrations(isolated_database_url)
+    with psycopg.connect(isolated_database_url) as conn:
+        row = conn.execute(
+            "SELECT extraction_method, mode FROM analyses WHERE id = %s",
+            (analysis_id,),
+        ).fetchone()
+    assert row == ("HTTP", "ACCOUNT_PUBLIC")
 
 
 def test_processing_hardening_schema_is_reversible_and_preserves_claims(isolated_database_url):
@@ -364,7 +399,7 @@ def test_alignment_refuses_populated_provisional_core_schema(isolated_database_u
     with pytest.raises(psycopg.errors.RaiseException, match="map them explicitly first"):
         apply_migrations(isolated_database_url)
 
-    assert migration_status(isolated_database_url)[-3] == (
+    assert migration_status(isolated_database_url)[-4] == (
         "0003_align_core_schema_to_spec",
         False,
     )
@@ -781,7 +816,7 @@ def test_core_rollback_preserves_tracer_drops_columns_and_reapplies(isolated_dat
 
     apply_migrations(isolated_database_url)
     assert migration_status(isolated_database_url)[-1] == (
-        "0005_expand_processing_dispositions",
+        "0006_guest_admission_and_provenance",
         True,
     )
     assert {"user_id", "supplier_snapshot_id", "mode", "scoring_version"} <= set(

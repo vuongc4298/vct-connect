@@ -1,4 +1,7 @@
-import type { Analysis, SubmitAnalysisRequest, SubmitAnalysisResponse } from "@vct/contracts";
+import type {
+  Analysis, SubmitAnalysisRequest, SubmitAnalysisResponse,
+  SubmitGuestAnalysisRequest, SubmitGuestAnalysisResponse,
+} from "@vct/contracts";
 
 export type RequestAuth = {
   getToken: () => Promise<string | null>;
@@ -84,5 +87,23 @@ export async function getAnalysis(id: string, auth?: RequestAuth): Promise<Analy
   return request<Analysis>(`/api/v1/analyses/${encodeURIComponent(id)}`, async () => ({
     cache: "no-store",
     headers: await authorizationHeaders(auth),
+  }));
+}
+
+export async function submitGuestAnalysis(
+  body: SubmitGuestAnalysisRequest,
+): Promise<SubmitGuestAnalysisResponse> {
+  return request<SubmitGuestAnalysisResponse>("/api/v1/guest-analyses", async () => ({
+    method: "POST",
+    headers: { "Content-Type": "application/json" },
+    body: JSON.stringify(body),
+    credentials: "same-origin",
+  }));
+}
+
+export async function getGuestAnalysis(id: string): Promise<Analysis> {
+  return request<Analysis>(`/api/v1/guest-analyses/${encodeURIComponent(id)}`, async () => ({
+    cache: "no-store",
+    credentials: "same-origin",
   }));
 }

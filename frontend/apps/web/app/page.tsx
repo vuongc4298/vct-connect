@@ -3,7 +3,7 @@
 import { SignInButton, SignUpButton, UserButton, useAuth } from "@clerk/nextjs";
 import { useEffect, useState, type FormEvent, type ReactNode } from "react";
 import { FIXTURE_URL, type Analysis } from "@vct/contracts";
-import { ApiError, getAnalysis, submitAnalysis } from "@vct/api-client";
+import { ApiError, getAnalysis, getGuestAnalysis, submitAnalysis, submitGuestAnalysis } from "@vct/api-client";
 import { analysisPresentation } from "./analysis-status";
 
 const DEMO_SIGNALS = [
@@ -116,6 +116,41 @@ function Pill({ children, tone = "neutral" }: { children: ReactNode; tone?: "neu
 }
 
 function Landing() {
+  const [guestId, setGuestId] = useState<string | null>(null);
+  const [guestAnalysis, setGuestAnalysis] = useState<Analysis | null>(null);
+  const [guestError, setGuestError] = useState("");
+  const [guestBusy, setGuestBusy] = useState(false);
+
+  useEffect(() => {
+    if (!guestId) return;
+    let active = true;
+    let timer: number | undefined;
+    async function poll() {
+      try {
+        const current = await getGuestAnalysis(guestId!);
+        if (active) { setGuestAnalysis(current); setGuestError(""); }
+        if (!analysisPresentation(current).shouldPoll) return;
+      } catch (cause) {
+        if (active) setGuestError(cause instanceof Error ? cause.message : "Không thể tải phân tích");
+        if (cause instanceof ApiError && cause.status === 404) return;
+      }
+      if (active) timer = window.setTimeout(() => { void poll(); }, 1500);
+    }
+    void poll();
+    return () => { active = false; window.clearTimeout(timer); };
+  }, [guestId]);
+
+  async function submitGuest(event: FormEvent) {
+    event.preventDefault();
+    setGuestBusy(true); setGuestError(""); setGuestAnalysis(null); setGuestId(null);
+    try {
+      const submitted = await submitGuestAnalysis({ source_url: FIXTURE_URL });
+      setGuestId(submitted.id);
+    } catch (cause) {
+      setGuestError(cause instanceof Error ? cause.message : "Không thể gửi phân tích");
+    } finally { setGuestBusy(false); }
+  }
+
   return <div className="landing">
     <nav className="landing-nav">
       <Brand />
@@ -133,6 +168,21 @@ function Landing() {
           <SignUpButton><button type="button" className="button button-primary button-large">Phân tích nhà cung cấp <span>→</span></button></SignUpButton>
           <span className="hero-note">Không cần thẻ thanh toán</span>
         </div>
+        <form onSubmit={submitGuest} className="guest-demo-form">
+          <p>Thử fixture demo mà không cần tài khoản. Giới hạn tạm thời áp dụng cho trình duyệt này.</p>
+          <button type="submit" className="button button-ghost" disabled={guestBusy}>
+            {guestBusy ? "Đang gửi…" : "Thử demo khách"}
+          </button>
+        </form>
+        {guestError && <p role="alert" className="error-banner">{guestError}</p>}
+        {guestId && <ProgressCard analysis={guestAnalysis} delayed={false} />}
+        {guestId && guestAnalysis?.status === "COMPLETED" &&
+          <section className="progress-card" aria-label="Bản xem trước cho khách">
+            <h2>Bản xem trước công khai</h2>
+            <p>Nhà cung cấp demo: {guestAnalysis.result?.supplier_name ?? "Chưa xác định"}</p>
+            <p>Dữ liệu fixture minh họa. Chưa có đánh giá rủi ro hoặc bằng chứng thực tế.</p>
+            <SignUpButton><button type="button" className="button button-primary">Đăng ký để xem luồng báo cáo đầy đủ</button></SignUpButton>
+          </section>}
         <div className="trust-row">
           <div><strong>01</strong><span>luồng demo hoàn chỉnh</span></div>
           <div><strong>&lt; 2 phút</strong><span>mục tiêu phân tích</span></div>

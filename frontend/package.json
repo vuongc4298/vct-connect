@@ -8,7 +8,7 @@
   "scripts": {
     "dev": "npm run dev -w @vct/web",
     "build": "npm run build -w @vct/web",
-    "test": "tsx --test packages/api-client/src/index.test.ts apps/web/app/analysis-status.test.ts apps/web/app/api/_backend.test.ts",
+    "test": "tsx --test packages/api-client/src/index.test.ts apps/web/app/analysis-status.test.ts apps/web/app/api/_backend.test.ts apps/web/app/api/v1/guest-analyses/route.test.ts",
     "typecheck": "tsc -b packages/contracts packages/api-client apps/web"
   },
   "devDependencies": {

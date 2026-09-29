@@ -17,6 +17,10 @@ export type AnalysisStatusEvent = {
 };
 export type SubmitAnalysisRequest = { source_url: string };
 export type SubmitAnalysisResponse = { id: string; status: "QUEUED" };
+export type SubmitGuestAnalysisRequest = SubmitAnalysisRequest;
+export type SubmitGuestAnalysisResponse = SubmitAnalysisResponse;
+export type AnalysisMode = "GUEST_PUBLIC" | "ACCOUNT_PUBLIC" | "EXTENSION_ENHANCED";
+export type AnalysisActor = "GUEST" | "CUSTOMER" | "LEGACY";
 export type FixtureResult = {
   source_url: string;
   supplier_name: string;
@@ -32,6 +36,10 @@ export type Analysis = {
   failure_code: string | null;
   next_retry_at: string | null;
   final_disposition: FinalDisposition | null;
+  mode: AnalysisMode;
+  actor_type: AnalysisActor;
+  extraction_method: string;
+  scoring_version: string;
   events: AnalysisStatusEvent[];
   result: FixtureResult | null;
 };

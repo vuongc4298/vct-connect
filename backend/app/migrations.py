@@ -18,6 +18,7 @@ CORE_IDS = {
     "0003_align_core_schema_to_spec",
     "0004_harden_analysis_processing",
     "0005_expand_processing_dispositions",
+    "0006_guest_admission_and_provenance",
 }
 
 

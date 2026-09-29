@@ -37,6 +37,22 @@ param webMaxReplicas int = 2
 @minValue(30)
 @maxValue(300)
 param jobPollingSeconds int = 30
+@description('Temporary per-browser guest fixture submissions per admission window.')
+@minValue(1)
+@maxValue(10000)
+param guestBrowserLimit int = 3
+@description('Temporary shared guest fixture submissions per admission window.')
+@minValue(1)
+@maxValue(1000000)
+param guestGlobalLimit int = 100
+@description('Temporary customer fixture submissions per admission window.')
+@minValue(1)
+@maxValue(100000)
+param customerLimit int = 20
+@description('Admission window duration in seconds.')
+@minValue(60)
+@maxValue(31536000)
+param admissionWindowSeconds int = 86400
 
 var suffix = uniqueString(resourceGroup().id)
 var postgresName = 'vct-connect-${suffix}'
@@ -177,6 +193,10 @@ resource api 'Microsoft.App/containerApps@2024-03-01' = {
           { name: 'DEVELOPER_MODE', value: 'false' }
           { name: 'API_RUNTIME', value: 'azure' }
           { name: 'QUEUE_TRANSPORT', value: 'azure' }
+          { name: 'GUEST_BROWSER_LIMIT', value: string(guestBrowserLimit) }
+          { name: 'GUEST_GLOBAL_LIMIT', value: string(guestGlobalLimit) }
+          { name: 'CUSTOMER_LIMIT', value: string(customerLimit) }
+          { name: 'ADMISSION_WINDOW_SECONDS', value: string(admissionWindowSeconds) }
           { name: 'AZURE_SERVICE_BUS_NAMESPACE', value: serviceBusNamespace }
           { name: 'AZURE_SERVICE_BUS_QUEUE', value: serviceBusQueue }
           { name: 'AZURE_CLIENT_ID', value: runtimeIdentity.properties.clientId }

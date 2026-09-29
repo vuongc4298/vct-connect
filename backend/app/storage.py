@@ -1,6 +1,7 @@
 from __future__ import annotations
 
 from datetime import datetime, timezone
+from hashlib import sha256
 import json
 from uuid import UUID, uuid4
 
@@ -13,6 +14,10 @@ class LeaseLost(RuntimeError):
 
 
 class ResultConflict(RuntimeError):
+    pass
+
+
+class AdmissionDenied(RuntimeError):
     pass
 
 
@@ -76,38 +81,94 @@ class Store:
             (analysis_id, status, attempt, failure_code, next_retry_at, disposition),
         )
 
-    def _insert_analysis(self, conn, analysis_id: UUID, source_url: str, user_id: UUID | None):
+    def _insert_analysis(
+        self, conn, analysis_id: UUID, source_url: str, user_id: UUID | None,
+        *, guest_key_hash: str | None = None, actor_type: str = "LEGACY",
+    ):
+        mode = "ACCOUNT_PUBLIC" if user_id is not None else "GUEST_PUBLIC"
         conn.execute(
-            """INSERT INTO analyses (id, source_url, status, user_id)
-               VALUES (%s, %s, 'QUEUED', %s)""",
-            (analysis_id, source_url, user_id),
+            """INSERT INTO analyses
+                 (id, source_url, status, user_id, guest_key_hash, mode,
+                  actor_type, extraction_method, scoring_version)
+               VALUES (%s, %s, 'QUEUED', %s, %s, %s, %s, 'FIXTURE', 'v0.1.0')""",
+            (analysis_id, source_url, user_id, guest_key_hash, mode, actor_type),
         )
         self._event(conn, analysis_id, "QUEUED", 0)
 
-    def submit_local(self, source_url: str, user_id: UUID | None = None) -> UUID:
+    @staticmethod
+    def _admit(conn, scope: str, subject: str, limit: int, window_seconds: int) -> None:
+        row = conn.execute(
+            """INSERT INTO admission_counters (scope, subject, window_number, used)
+               VALUES (%s, %s, floor(extract(epoch FROM now()) / %s)::bigint, 1)
+               ON CONFLICT (scope, subject, window_number)
+               DO UPDATE SET used = admission_counters.used + 1
+                 WHERE admission_counters.used < %s
+               RETURNING used""",
+            (scope, subject, window_seconds, limit),
+        ).fetchone()
+        if row is None:
+            raise AdmissionDenied("Submission limit reached")
+
+    def _submit(
+        self, source_url: str, user_id: UUID | None, *, azure: bool,
+        guest_key_hash: str | None = None, actor_type: str = "LEGACY",
+        browser_limit: int | None = None, global_limit: int | None = None,
+        customer_limit: int | None = None, window_seconds: int = 86400,
+    ) -> UUID:
         analysis_id = uuid4()
         with self.connect() as conn:
             with conn.transaction():
-                self._insert_analysis(conn, analysis_id, source_url, user_id)
-                conn.execute("INSERT INTO local_queue (analysis_id) VALUES (%s)", (analysis_id,))
+                if actor_type == "GUEST":
+                    assert guest_key_hash is not None and browser_limit is not None and global_limit is not None
+                    self._admit(conn, "GUEST_BROWSER", guest_key_hash, browser_limit, window_seconds)
+                    self._admit(conn, "GUEST_GLOBAL", "all", global_limit, window_seconds)
+                elif actor_type == "CUSTOMER":
+                    assert user_id is not None and customer_limit is not None
+                    self._admit(conn, "CUSTOMER", str(user_id), customer_limit, window_seconds)
+                self._insert_analysis(
+                    conn, analysis_id, source_url, user_id,
+                    guest_key_hash=guest_key_hash, actor_type=actor_type,
+                )
+                if azure:
+                    conn.execute(
+                        "INSERT INTO analysis_outbox (analysis_id, message_id) VALUES (%s, %s)",
+                        (analysis_id, analysis_id),
+                    )
+                else:
+                    conn.execute("INSERT INTO local_queue (analysis_id) VALUES (%s)", (analysis_id,))
         return analysis_id
+
+    def submit_local(self, source_url: str, user_id: UUID | None = None) -> UUID:
+        return self._submit(source_url, user_id, azure=False)
 
     def submit_azure(self, source_url: str, user_id: UUID | None = None) -> UUID:
         """Atomically create customer-visible work and its publication record."""
-        analysis_id = uuid4()
-        with self.connect() as conn:
-            with conn.transaction():
-                self._insert_analysis(conn, analysis_id, source_url, user_id)
-                conn.execute(
-                    "INSERT INTO analysis_outbox (analysis_id, message_id) VALUES (%s, %s)",
-                    (analysis_id, analysis_id),
-                )
-        return analysis_id
+        return self._submit(source_url, user_id, azure=True)
+
+    def submit_guest(
+        self, source_url: str, guest_key: str, *, azure: bool,
+        browser_limit: int, global_limit: int, window_seconds: int,
+    ) -> UUID:
+        return self._submit(
+            source_url, None, azure=azure, guest_key_hash=sha256(guest_key.encode()).hexdigest(),
+            actor_type="GUEST", browser_limit=browser_limit,
+            global_limit=global_limit, window_seconds=window_seconds,
+        )
+
+    def submit_customer(
+        self, source_url: str, user_id: UUID, *, azure: bool,
+        customer_limit: int, window_seconds: int,
+    ) -> UUID:
+        return self._submit(
+            source_url, user_id, azure=azure, actor_type="CUSTOMER",
+            customer_limit=customer_limit, window_seconds=window_seconds,
+        )
 
     _SELECT = """
         SELECT a.id, a.source_url, a.status, a.created_at, a.completed_at,
                a.attempt_count, a.failure_code, a.next_retry_at,
-               a.final_disposition, r.payload AS result,
+               a.final_disposition, a.mode, a.actor_type, a.extraction_method,
+               a.scoring_version, r.payload AS result,
                COALESCE((
                  SELECT jsonb_agg(jsonb_build_object(
                    'status', e.status, 'attempt', e.attempt,
@@ -128,6 +189,16 @@ class Store:
             return conn.execute(
                 self._SELECT + " WHERE a.id = %s AND a.user_id = %s",
                 (analysis_id, user_id),
+            ).fetchone()
+
+    def get_for_guest(self, analysis_id: UUID, guest_key: str) -> dict | None:
+        key_hash = sha256(guest_key.encode()).hexdigest()
+        with self.connect() as conn:
+            return conn.execute(
+                self._SELECT + " WHERE a.id = %s AND a.guest_key_hash = %s"
+                " AND a.actor_type = 'GUEST'"
+                " AND a.created_at >= now() - 2592000 * interval '1 second'",
+                (analysis_id, key_hash),
             ).fetchone()
 
     def claim_outbox(self, lease_seconds: int, max_attempts: int) -> dict | None:

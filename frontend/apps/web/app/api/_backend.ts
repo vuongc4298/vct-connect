@@ -1,11 +1,14 @@
 const API_ORIGIN = process.env.API_INTERNAL_ORIGIN ?? "http://127.0.0.1:8000";
 
-export async function proxyBackend(request: Request, path: string): Promise<Response> {
+export async function proxyBackend(
+  request: Request, path: string, guestKey?: string,
+): Promise<Response> {
   const headers = new Headers();
   const authorization = request.headers.get("authorization");
   const contentType = request.headers.get("content-type");
-  if (authorization) headers.set("authorization", authorization);
+  if (authorization && !guestKey) headers.set("authorization", authorization);
   if (contentType) headers.set("content-type", contentType);
+  if (guestKey) headers.set("x-vct-guest-key", guestKey);
 
   try {
     const upstream = await fetch(`${API_ORIGIN}${path}`, {

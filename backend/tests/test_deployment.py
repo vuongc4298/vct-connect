@@ -180,6 +180,50 @@ def test_smoke_accepts_unroutable_internal_api(monkeypatch):
     smoke_dev.run("https://web.test", "https://api.test", None, 10, ingress_only=True)
 
 
+def test_guest_smoke_reuses_cookie_session_and_checks_exact_provenance(monkeypatch):
+    opener = object()
+    monkeypatch.setattr(smoke_dev, "build_opener", lambda *_args: opener)
+    calls = []
+    replies = iter([
+        (202, {"id": "guest-id"}),
+        (200, {
+            "status": "COMPLETED", "attempt_count": 1,
+            "result": smoke_dev.EXPECTED_RESULT,
+            "mode": "GUEST_PUBLIC", "actor_type": "GUEST",
+            "extraction_method": "FIXTURE", "scoring_version": "v0.1.0",
+        }),
+    ])
+
+    def mocked_request(url, **kwargs):
+        calls.append((url, kwargs))
+        return next(replies)
+
+    monkeypatch.setattr(smoke_dev, "request", mocked_request)
+    smoke_dev.check_guest_fixture("https://web.test", 10)
+    assert [url for url, _ in calls] == [
+        "https://web.test/api/v1/guest-analyses",
+        "https://web.test/api/v1/guest-analyses/guest-id",
+    ]
+    assert all(kwargs["opener"] is opener for _, kwargs in calls)
+    assert all("token" not in kwargs for _, kwargs in calls)
+
+
+def test_guest_smoke_rejects_incorrect_provenance(monkeypatch):
+    monkeypatch.setattr(smoke_dev, "build_opener", lambda *_args: object())
+    replies = iter([
+        (202, {"id": "guest-id"}),
+        (200, {
+            "status": "COMPLETED", "attempt_count": 1,
+            "result": smoke_dev.EXPECTED_RESULT,
+            "mode": "ACCOUNT_PUBLIC", "actor_type": "GUEST",
+            "extraction_method": "FIXTURE", "scoring_version": "v0.1.0",
+        }),
+    ])
+    monkeypatch.setattr(smoke_dev, "request", lambda *_args, **_kwargs: next(replies))
+    with pytest.raises(AssertionError, match="fixture or provenance"):
+        smoke_dev.check_guest_fixture("https://web.test", 10)
+
+
 def test_wait_container_job_retries_execution_visibility(monkeypatch):
     calls = []
     def fake_az(*args):

@@ -27,6 +27,10 @@ class Settings:
     outbox_max_backoff_seconds: int = 60
     api_runtime: str = "local"
     azure_service_bus_namespace: str | None = None
+    guest_browser_limit: int = 3
+    guest_global_limit: int = 100
+    customer_limit: int = 20
+    admission_window_seconds: int = 86400
 
     def __post_init__(self) -> None:
         if not 1 <= self.processing_max_attempts <= 10:
@@ -35,6 +39,9 @@ class Settings:
             raise ValueError(
                 "PROCESSING_LEASE_SECONDS must be at least AZURE_LOCK_RENEWAL_SECONDS"
             )
+        for name in ("guest_browser_limit", "guest_global_limit", "customer_limit", "admission_window_seconds"):
+            if getattr(self, name) < 1:
+                raise ValueError(f"{name} must be positive")
 
     @classmethod
     def from_env(cls) -> "Settings":
@@ -86,6 +93,10 @@ class Settings:
             outbox_max_backoff_seconds=_bounded_int(
                 "OUTBOX_MAX_BACKOFF_SECONDS", 60, 1, 3600
             ),
+            guest_browser_limit=_bounded_int("GUEST_BROWSER_LIMIT", 3, 1, 10000),
+            guest_global_limit=_bounded_int("GUEST_GLOBAL_LIMIT", 100, 1, 1000000),
+            customer_limit=_bounded_int("CUSTOMER_LIMIT", 20, 1, 100000),
+            admission_window_seconds=_bounded_int("ADMISSION_WINDOW_SECONDS", 86400, 60, 31536000),
         )
         if transport == "azure" and not (
             settings.azure_service_bus_queue and (

@@ -1,5 +1,6 @@
 from uuid import UUID
 from ipaddress import ip_address
+import re
 from typing import Annotated
 
 from fastapi import Depends, FastAPI, HTTPException, Request
@@ -18,7 +19,7 @@ from .auth import (
 )
 from .config import Settings
 from .fixture import validate_fixture_url
-from .storage import Store
+from .storage import AdmissionDenied, Store
 
 
 class Submission(BaseModel):
@@ -39,7 +40,7 @@ def create_app(
     settings = settings or Settings.from_env()
     store = store or Store(settings.database_url)
     verifier = verifier or ClerkTokenVerifier(settings)
-    app = FastAPI(title="VCT Connect authenticated tracer")
+    app = FastAPI(title="VCT Connect tracer")
 
     @app.get("/healthz")
     def healthz():
@@ -87,19 +88,56 @@ def create_app(
 
         return dependency
 
+    def guest_key(request: Request) -> str:
+        key = request.headers.get("x-vct-guest-key", "")
+        if not re.fullmatch(r"[0-9a-f]{64}", key):
+            raise HTTPException(status_code=404, detail="Analysis not found")
+        return key
+
     @app.post("/api/v1/analyses", status_code=202)
     def submit(
         body: Submission,
         principal: Annotated[Principal, Depends(require_roles(CUSTOMER))],
     ):
         try:
-            if settings.queue_transport == "local":
-                analysis_id = store.submit_local(body.source_url, principal.user_id)
-            else:
-                analysis_id = store.submit_azure(body.source_url, principal.user_id)
+            analysis_id = store.submit_customer(
+                body.source_url, principal.user_id,
+                azure=settings.queue_transport == "azure",
+                customer_limit=settings.customer_limit,
+                window_seconds=settings.admission_window_seconds,
+            )
+        except AdmissionDenied as exc:
+            raise HTTPException(status_code=429, detail="Submission limit reached") from exc
         except Exception as exc:
             raise HTTPException(status_code=503, detail="Queue or database unavailable") from exc
         return {"id": analysis_id, "status": "QUEUED"}
+
+    @app.post("/api/v1/guest-analyses", status_code=202)
+    def submit_guest(body: Submission, request: Request):
+        key = guest_key(request)
+        try:
+            analysis_id = store.submit_guest(
+                body.source_url, key, azure=settings.queue_transport == "azure",
+                browser_limit=settings.guest_browser_limit,
+                global_limit=settings.guest_global_limit,
+                window_seconds=settings.admission_window_seconds,
+            )
+        except AdmissionDenied as exc:
+            raise HTTPException(status_code=429, detail="Submission limit reached") from exc
+        except Exception as exc:
+            raise HTTPException(status_code=503, detail="Queue or database unavailable") from exc
+        return {"id": analysis_id, "status": "QUEUED"}
+
+    @app.get("/api/v1/guest-analyses/{analysis_id}")
+    def guest_status(analysis_id: UUID, request: Request):
+        key = guest_key(request)
+        try:
+            row = store.get_for_guest(analysis_id, key)
+        except Exception as exc:
+            raise HTTPException(status_code=503, detail="Database unavailable") from exc
+        if row is None:
+            raise HTTPException(status_code=404, detail="Analysis not found")
+        return row
 
     @app.get("/api/v1/analyses/{analysis_id}")
     def status(
