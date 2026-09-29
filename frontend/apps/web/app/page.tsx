@@ -5,6 +5,7 @@ import { useEffect, useState, type FormEvent, type ReactNode } from "react";
 import { FIXTURE_URL, type Analysis } from "@vct/contracts";
 import { ApiError, getAnalysis, getGuestAnalysis, submitAnalysis, submitGuestAnalysis } from "@vct/api-client";
 import { analysisPresentation } from "./analysis-status";
+import { ExtractionEvidence, isFixtureResult } from "./extraction-evidence";
 
 const DEMO_SIGNALS = [
   { tone: "risk", title: "Thông tin pháp nhân chưa đầy đủ", body: "Kịch bản demo chưa có mã đăng ký kinh doanh để đối chiếu chéo." },
@@ -179,7 +180,7 @@ function Landing() {
         {guestId && guestAnalysis?.status === "COMPLETED" &&
           <section className="progress-card" aria-label="Bản xem trước cho khách">
             <h2>Bản xem trước công khai</h2>
-            <p>Nhà cung cấp demo: {guestAnalysis.result?.supplier_name ?? "Chưa xác định"}</p>
+            <p>Nhà cung cấp demo: {isFixtureResult(guestAnalysis.result) ? guestAnalysis.result.supplier_name : "Chưa xác định"}</p>
             <p>Dữ liệu fixture minh họa. Chưa có đánh giá rủi ro hoặc bằng chứng thực tế.</p>
             <SignUpButton><button type="button" className="button button-primary">Đăng ký để xem luồng báo cáo đầy đủ</button></SignUpButton>
           </section>}
@@ -226,12 +227,13 @@ function Sidebar({ view, historyCount, onViewChange }: { view: WorkspaceView; hi
 
 function ProgressCard({ analysis, delayed }: { analysis: Analysis | null; delayed: boolean }) {
   const presentation = analysisPresentation(analysis);
+  const liveExtraction = analysis?.extraction_method === "PUBLIC_HTTP";
   return <section className="progress-card" aria-live="polite">
     <div className="progress-top"><div><span className={`status-orb ${presentation.orbClass}`}>{presentation.orbSymbol}</span><div><strong>{presentation.headline}</strong><p>{presentation.detail}</p></div></div><Pill tone={presentation.pillTone}>{presentation.pillLabel}</Pill></div>
     <div className="steps">
       <div className="done"><span>✓</span><strong>Đã nhận URL</strong><small>Kiểm tra nguồn</small></div><i />
-      <div className={presentation.complete ? "done" : presentation.final ? "" : "current"}><span>{presentation.complete ? "✓" : "2"}</span><strong>Phân tích</strong><small>Tổng hợp tín hiệu</small></div><i />
-      <div className={presentation.complete ? "done" : ""}><span>{presentation.complete ? "✓" : "3"}</span><strong>Báo cáo</strong><small>Đưa ra khuyến nghị</small></div>
+      <div className={presentation.complete ? "done" : presentation.final ? "" : "current"}><span>{presentation.complete ? "✓" : "2"}</span><strong>{liveExtraction ? "Trích xuất" : "Phân tích"}</strong><small>{liveExtraction ? "Đọc bằng chứng" : "Tổng hợp tín hiệu"}</small></div><i />
+      <div className={presentation.complete ? "done" : ""}><span>{presentation.complete ? "✓" : "3"}</span><strong>{liveExtraction ? "Bằng chứng" : "Báo cáo"}</strong><small>{liveExtraction ? "Độ phủ và nguồn" : "Đưa ra khuyến nghị"}</small></div>
     </div>
     {presentation.retrying && analysis?.next_retry_at && <p className="delay-note">Lần thử tiếp theo dự kiến lúc {new Date(analysis.next_retry_at).toLocaleTimeString("vi-VN")}.</p>}
     {delayed && !presentation.terminal && !presentation.retrying && <p className="delay-note">Quá trình đang lâu hơn dự kiến. VCT Connect sẽ tiếp tục kiểm tra.</p>}
@@ -459,14 +461,15 @@ export default function Page() {
   }, [getToken, id, isSignedIn]);
 
   useEffect(() => {
-    if (!id || analysis?.status !== "COMPLETED" || !historyReady) return;
+    if (!id || analysis?.status !== "COMPLETED" || !historyReady || !isFixtureResult(analysis.result)) return;
+    const fixture = analysis.result;
     setHistory(current => {
       if (current.some(entry => entry.id === id)) return current;
       const completedEntry: HistoryEntry = {
         id,
         supplier: "Developer Fixture Supplier",
         platform: "1688",
-        sourceUrl: analysis.result?.source_url ?? url,
+        sourceUrl: fixture.source_url,
         analyzedAt: new Date().toISOString(),
         riskScore: 64,
         confidence: 72,
@@ -508,18 +511,19 @@ export default function Page() {
     <div className="workspace">
       <header className="workspace-header"><div><span>Không gian Pilot</span><i>/</i><strong>{view === "analysis" ? "Phân tích mới" : "Lịch sử"}</strong></div><nav className="mobile-nav" aria-label="Điều hướng di động"><button type="button" className={view === "analysis" ? "active" : ""} aria-current={view === "analysis" ? "page" : undefined} onClick={() => setView("analysis")}>Phân tích</button><button type="button" className={view === "history" ? "active" : ""} aria-current={view === "history" ? "page" : undefined} onClick={() => setView("history")}>Lịch sử</button></nav><div className="header-tools"><button type="button" className="icon-button" aria-label="Thông báo">♢<i /></button><span className="language">VI</span><UserButton /></div></header>
       {view === "history" ? <HistoryWorkspace history={history} selectedId={selectedHistoryId} storageError={historyStorageError} onSelect={setSelectedHistoryId} onNoteChange={updateHistoryNote} onNewAnalysis={showNewAnalysis} /> : <main className="dashboard" id="analysis">
-        <section className="dashboard-intro"><div><Pill tone="good">BẢN DEMO TƯƠNG TÁC</Pill><h1>Phân tích nhà cung cấp</h1><p>Dán liên kết sản phẩm để xem luồng báo cáo rủi ro VCT Connect.</p></div>{(analysis?.status === "COMPLETED" || analysis?.status === "FAILED_FINAL") && <button type="button" className="button button-ghost" onClick={() => { setId(null); setAnalysis(null); }}>+ Phân tích mới</button>}</section>
+        <section className="dashboard-intro"><div><Pill tone="good">BẢN DEMO TƯƠNG TÁC</Pill><h1>Phân tích nhà cung cấp</h1><p>Dán liên kết 1688 để xem bằng chứng công khai và độ phủ. URL mẫu hiển thị báo cáo rủi ro minh họa.</p></div>{(analysis?.status === "COMPLETED" || analysis?.status === "FAILED_FINAL") && <button type="button" className="button button-ghost" onClick={() => { setId(null); setAnalysis(null); }}>+ Phân tích mới</button>}</section>
         <section className="analyze-card">
           <form onSubmit={submit}>
-            <label htmlFor="source-url">LIÊN KẾT FIXTURE CỦA BẢN DEMO</label>
-            <div className="url-field"><span className="link-icon">↗</span><input id="source-url" value={url} readOnly aria-describedby="url-help" /><button className="button button-primary" disabled={busy}>{busy ? <><i className="spinner" /> Đang gửi</> : <>Phân tích demo <span>→</span></>}</button></div>
-            <div className="form-meta" id="url-help"><span><b>1688</b> Bản demo hiện dùng một URL fixture cố định.</span><Pill>Dữ liệu fixture</Pill></div>
+            <label htmlFor="source-url">LIÊN KẾT SẢN PHẨM 1688</label>
+            <div className="url-field"><span className="link-icon">↗</span><input id="source-url" type="url" required value={url} onChange={event => setUrl(event.target.value)} aria-describedby="url-help" /><button className="button button-primary" disabled={busy}>{busy ? <><i className="spinner" /> Đang gửi</> : <>Trích xuất <span>→</span></>}</button></div>
+            <div className="form-meta" id="url-help"><span><b>1688</b> Nhập URL HTTPS detail.1688.com/offer/…html. URL mẫu hiện tại chạy fixture demo.</span><Pill>{url === FIXTURE_URL ? "Dữ liệu fixture" : "Trích xuất công khai"}</Pill></div>
           </form>
         </section>
         {error && <div role="alert" className="error-banner"><span>!</span><div><strong>Không thể tiếp tục</strong><p>{error === "Analysis not found" ? "Không tìm thấy phân tích. Vui lòng gửi lại dữ liệu demo." : error}</p></div></div>}
         {id && <ProgressCard analysis={analysis} delayed={delayed} />}
-        {id && analysis?.status === "COMPLETED" && <DemoReport analysisId={id} sourceUrl={analysis.result?.source_url ?? url} />}
-        {!id && <section className="empty-guide"><div className="guide-icon">◎</div><h2>Một URL, một báo cáo rõ ràng</h2><p>Bản demo sẽ chạy fixture qua API, Azure Service Bus và worker hiện tại, sau đó hiển thị trải nghiệm báo cáo dự kiến.</p><div><span>1</span>Gửi URL mẫu<i /><span>2</span>Chờ xử lý<i /><span>3</span>Xem báo cáo demo</div></section>}
+        {id && analysis?.status === "COMPLETED" && isFixtureResult(analysis.result) && <DemoReport analysisId={id} sourceUrl={analysis.result.source_url} />}
+        {id && analysis?.status === "COMPLETED" && !isFixtureResult(analysis.result) && <ExtractionEvidence analysis={analysis} />}
+        {!id && <section className="empty-guide"><div className="guide-icon">◎</div><h2>Một URL, bằng chứng rõ nguồn</h2><p>URL 1688 công khai được trích xuất khi truy cập được; URL mẫu chạy báo cáo fixture minh họa. Trang bị chặn sẽ hiển thị trạng thái rõ ràng.</p><div><span>1</span>Gửi URL<i /><span>2</span>Chờ xử lý<i /><span>3</span>Xem kết quả</div></section>}
       </main>}
     </div>
   </div>;

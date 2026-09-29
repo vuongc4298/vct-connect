@@ -43,3 +43,6 @@
 - source_plan: `_bmad-output/initiative-vct-connect-year-one/epic-platform-foundation/story-refactor-sweep-plan.md`
   summary: Validate the configured Clerk issuer's URL and trust domain before deployment.
   evidence: The existing deployment accepted any nonempty issuer, and a malformed value can leave authentication unusable; Story 1.7 preserves Clerk configuration behavior while consolidating deployment commands.
+- source_plan: `_bmad-output/initiative-vct-connect-year-one/epic-extraction/story-extract-a-1688-url-into-the-shared-supplierdata-contract-plan.md`
+  summary: Run GitHub CI and an Azure dev smoke check of a queued live 1688 snapshot after a push.
+  evidence: The supplied URL returns an anti-bot challenge, so the adapter correctly records BLOCKED without a snapshot; an accessible public URL is needed to verify the deployed success path.

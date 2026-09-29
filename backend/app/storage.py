@@ -86,12 +86,13 @@ class Store:
         *, guest_key_hash: str | None = None, actor_type: str = "LEGACY",
     ):
         mode = "ACCOUNT_PUBLIC" if user_id is not None else "GUEST_PUBLIC"
+        extraction_method = "FIXTURE" if source_url.endswith("/123456789012.html") else "PUBLIC_HTTP"
         conn.execute(
             """INSERT INTO analyses
                  (id, source_url, status, user_id, guest_key_hash, mode,
                   actor_type, extraction_method, scoring_version)
-               VALUES (%s, %s, 'QUEUED', %s, %s, %s, %s, 'FIXTURE', 'v0.1.0')""",
-            (analysis_id, source_url, user_id, guest_key_hash, mode, actor_type),
+               VALUES (%s, %s, 'QUEUED', %s, %s, %s, %s, %s, 'v0.1.0')""",
+            (analysis_id, source_url, user_id, guest_key_hash, mode, actor_type, extraction_method),
         )
         self._event(conn, analysis_id, "QUEUED", 0)
 
@@ -169,6 +170,10 @@ class Store:
                a.attempt_count, a.failure_code, a.next_retry_at,
                a.final_disposition, a.mode, a.actor_type, a.extraction_method,
                a.scoring_version, r.payload AS result,
+               s.id AS supplier_snapshot_id, s.normalized_data AS supplier_data,
+               s.raw_payload AS raw_evidence,
+               COALESCE((SELECT jsonb_agg(rv.payload ORDER BY rv.ordinal)
+                 FROM supplier_reviews rv WHERE rv.snapshot_id = s.id), '[]'::jsonb) AS reviews,
                COALESCE((
                  SELECT jsonb_agg(jsonb_build_object(
                    'status', e.status, 'attempt', e.attempt,
@@ -178,6 +183,7 @@ class Store:
                  FROM analysis_status_events e WHERE e.analysis_id = a.id
                ), '[]'::jsonb) AS events
         FROM analyses a LEFT JOIN analysis_results r ON r.analysis_id = a.id
+        LEFT JOIN supplier_snapshots s ON s.id = a.supplier_snapshot_id
     """
 
     def get(self, analysis_id: UUID) -> dict | None:
@@ -359,7 +365,7 @@ class Store:
         with self.connect() as conn:
             with conn.transaction():
                 row = conn.execute(
-                    """SELECT id, source_url, status, attempt_count, next_retry_at,
+                    """SELECT id, source_url, mode, status, attempt_count, next_retry_at,
                               processing_claimed_until
                        FROM analyses WHERE id = %s FOR UPDATE""",
                     (analysis_id,),
@@ -407,7 +413,8 @@ class Store:
                 self._event(conn, analysis_id, "PROCESSING", attempt)
                 return {
                     "outcome": "acquired", "analysis_id": analysis_id,
-                    "source_url": row["source_url"], "attempt": attempt, "token": token,
+                    "source_url": row["source_url"], "mode": row["mode"],
+                    "attempt": attempt, "token": token,
                 }
 
     def record_result_conflict(self, analysis_id: UUID) -> None:
@@ -437,35 +444,110 @@ class Store:
                 )
 
     def complete_processing(self, analysis_id: UUID, token: UUID, payload: dict) -> str:
+        public_payload = {key: value for key, value in payload.items()
+                          if key not in {"raw_payload", "reviews", "supplier_data"}}
         with self.connect() as conn:
             with conn.transaction():
                 row = conn.execute(
-                    """SELECT a.status, a.processing_claim_token, a.attempt_count, r.payload
+                    """SELECT a.status, a.source_url, a.mode, a.supplier_snapshot_id,
+                              a.processing_claim_token, a.attempt_count, r.payload
                        FROM analyses a LEFT JOIN analysis_results r ON r.analysis_id = a.id
                        WHERE a.id = %s FOR UPDATE OF a""",
                     (analysis_id,),
                 ).fetchone()
                 if row is None:
                     raise LookupError(f"Unknown analysis {analysis_id}")
+                extracted = payload.get("extraction_status") in {"SUCCESS", "PARTIAL"}
+                supplier_data = payload.get("supplier_data")
+                if extracted and (
+                    not isinstance(supplier_data, dict)
+                    or not isinstance(payload.get("raw_payload"), dict)
+                    or not isinstance(payload.get("reviews"), list)
+                    or supplier_data.get("source_url") != row["source_url"]
+                    or supplier_data.get("analysis_mode") != row["mode"]
+                    or supplier_data.get("platform") != "1688"
+                ):
+                    raise ValueError("Extracted result is missing matching supplier evidence")
                 if row["status"] == "COMPLETED":
-                    if row["payload"] == payload:
-                        return "replay"
-                    raise ResultConflict("Completed analysis has a different immutable result")
+                    if row["payload"] != public_payload:
+                        raise ResultConflict("Completed analysis has a different immutable result")
+                    if extracted:
+                        snapshot = conn.execute(
+                            "SELECT raw_payload, normalized_data FROM supplier_snapshots WHERE id = %s",
+                            (row["supplier_snapshot_id"],),
+                        ).fetchone()
+                        reviews = conn.execute(
+                            "SELECT payload FROM supplier_reviews WHERE snapshot_id = %s ORDER BY ordinal",
+                            (row["supplier_snapshot_id"],),
+                        ).fetchall()
+                        if (snapshot is None or snapshot["raw_payload"] != payload["raw_payload"]
+                                or snapshot["normalized_data"] != supplier_data
+                                or [item["payload"] for item in reviews] != payload["reviews"]):
+                            raise ResultConflict("Completed analysis has different supplier evidence")
+                    elif row["supplier_snapshot_id"] is not None:
+                        raise ResultConflict("Completed analysis has a supplier snapshot")
+                    return "replay"
                 if row["processing_claim_token"] != token or row["status"] != "PROCESSING":
                     raise LeaseLost("Processing lease is no longer current")
                 inserted = conn.execute(
                     """INSERT INTO analysis_results (analysis_id, payload)
                        VALUES (%s, %s::jsonb) ON CONFLICT (analysis_id) DO NOTHING
                        RETURNING payload""",
-                    (analysis_id, json.dumps(payload)),
+                    (analysis_id, json.dumps(public_payload)),
                 ).fetchone()
                 if inserted is None:
                     stored = conn.execute(
                         "SELECT payload FROM analysis_results WHERE analysis_id = %s",
                         (analysis_id,),
                     ).fetchone()["payload"]
-                    if stored != payload:
+                    if stored != public_payload:
                         raise ResultConflict("Stored result conflicts with computed result")
+                if extracted:
+                    supplier_id = uuid4()
+                    external_id = supplier_data.get("platform_supplier_id")
+                    if external_id:
+                        supplier = conn.execute(
+                            """INSERT INTO suppliers (id, platform, platform_supplier_id, name, source_url)
+                               VALUES (%s, '1688', %s, %s, %s)
+                               ON CONFLICT (platform, platform_supplier_id)
+                               DO UPDATE SET name = COALESCE(EXCLUDED.name, suppliers.name),
+                                             source_url = EXCLUDED.source_url,
+                                             updated_at = now()
+                               RETURNING id""",
+                            (supplier_id, external_id, supplier_data.get("supplier_name"), supplier_data["source_url"]),
+                        ).fetchone()
+                        supplier_id = supplier["id"]
+                    else:
+                        conn.execute(
+                            """INSERT INTO suppliers (id, platform, name, source_url)
+                               VALUES (%s, '1688', %s, %s)""",
+                            (supplier_id, supplier_data.get("supplier_name"), supplier_data["source_url"]),
+                        )
+                    snapshot_id = uuid4()
+                    conn.execute(
+                        """INSERT INTO supplier_snapshots
+                             (id, supplier_id, analysis_id, extracted_at, raw_payload,
+                              normalized_data, completeness, missing_fields,
+                              extraction_method, analysis_mode, extractor_version)
+                           VALUES (%s, %s, %s, %s, %s::jsonb, %s::jsonb, %s,
+                                   %s::jsonb, %s, %s, %s)""",
+                        (snapshot_id, supplier_id, analysis_id, supplier_data["extracted_at"],
+                         json.dumps(payload["raw_payload"]), json.dumps(supplier_data),
+                         supplier_data["completeness"], json.dumps(supplier_data["missing_fields"]),
+                         supplier_data["extraction_method"], supplier_data["analysis_mode"],
+                         supplier_data["extractor_version"]),
+                    )
+                    for ordinal, review in enumerate(payload.get("reviews") or []):
+                        conn.execute(
+                            """INSERT INTO supplier_reviews (id, snapshot_id, ordinal, payload)
+                               VALUES (%s, %s, %s, %s::jsonb)""",
+                            (uuid4(), snapshot_id, ordinal, json.dumps(review)),
+                        )
+                    conn.execute(
+                        """UPDATE analyses SET supplier_snapshot_id = %s,
+                                  extraction_method = %s WHERE id = %s""",
+                        (snapshot_id, supplier_data["extraction_method"], analysis_id),
+                    )
                 conn.execute(
                     """UPDATE analyses SET status = 'COMPLETED', completed_at = now(),
                            failure_code = NULL, next_retry_at = NULL, final_disposition = NULL,

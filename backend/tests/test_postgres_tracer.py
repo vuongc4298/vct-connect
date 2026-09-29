@@ -11,6 +11,7 @@ os.environ["QUEUE_TRANSPORT"] = "local"
 from backend.app.auth import InvalidIdentity, VerifiedIdentity
 from backend.app.config import Settings
 from backend.app.fixture import FIXTURE_URL, fixture_result
+from backend.app.extraction import parse_1688_page
 from backend.app.main import create_app
 from backend.app.queue import AzureQueue
 from backend.app.storage import LeaseLost, ResultConflict, Store
@@ -45,9 +46,20 @@ def store():
 
 def remove(store: Store, analysis_id: UUID):
     with store.connect() as conn:
+        linked = conn.execute(
+            "SELECT supplier_id FROM supplier_snapshots WHERE analysis_id = %s", (analysis_id,)
+        ).fetchone()
         conn.execute("DELETE FROM local_queue WHERE analysis_id = %s", (analysis_id,))
         conn.execute("DELETE FROM analysis_results WHERE analysis_id = %s", (analysis_id,))
+        conn.execute("UPDATE analyses SET supplier_snapshot_id = NULL WHERE id = %s", (analysis_id,))
+        conn.execute("DELETE FROM supplier_snapshots WHERE analysis_id = %s", (analysis_id,))
         conn.execute("DELETE FROM analyses WHERE id = %s", (analysis_id,))
+        if linked:
+            conn.execute(
+                "DELETE FROM suppliers WHERE id = %s AND NOT EXISTS "
+                "(SELECT 1 FROM supplier_snapshots WHERE supplier_id = %s)",
+                (linked["supplier_id"], linked["supplier_id"]),
+            )
 
 
 def remove_user(store: Store, clerk_user_id: str):
@@ -95,6 +107,98 @@ def test_postgres_exact_replay_preserves_first_result(store):
         assert store.get(analysis_id)["result"] == first["result"]
         assert store.get(analysis_id)["status"] == "COMPLETED"
         assert store.get(analysis_id)["events"][-1]["failure_code"] == "RESULT_CONFLICT"
+    finally:
+        remove(store, analysis_id)
+
+
+def test_live_snapshot_transaction_linkage_owner_scope_and_replay(store):
+    url = "https://detail.1688.com/offer/996518024136.html"
+    owner = store.resolve_user(f"owner_{uuid4().hex}")
+    other = store.resolve_user(f"other_{uuid4().hex}")
+    analysis_id = store.submit_local(url, owner["id"])
+    html = '<html><head><link rel="canonical" href="' + url + '"></head><body>' \
+           '<div class="title-content"><h1>Dress</h1></div>' \
+           '<div class="review-item">Accessible review</div></body></html>'
+    payload = parse_1688_page(html, url)
+    try:
+        assert process_local_once(store, compute=lambda _: payload)
+        client = TestClient(create_app(
+            store=store,
+            settings=Settings(store.database_url, "local", None, None, True),
+            verifier=HeaderSubjectVerifier(),
+        ))
+        endpoint = f"/api/v1/analyses/{analysis_id}"
+        first_response = client.get(endpoint, headers={"authorization": f"Bearer subject:{owner['clerk_user_id']}"})
+        assert first_response.status_code == 200
+        first = first_response.json()
+        assert first["status"] == "COMPLETED"
+        assert first["result"]["extraction_status"] == "PARTIAL"
+        assert first["supplier_snapshot_id"]
+        assert first["supplier_data"]["products"][0]["title"] == "Dress"
+        assert first["supplier_data"]["source_url"] == url
+        assert first["supplier_data"]["extraction_method"] == "PUBLIC_HTTP"
+        assert first["supplier_data"]["analysis_mode"] == "ACCOUNT_PUBLIC"
+        assert first["supplier_data"]["extractor_version"]
+        assert first["supplier_data"]["extracted_at"]
+        assert 0 < first["supplier_data"]["completeness"] < 1
+        assert "supplier_name" in first["supplier_data"]["missing_fields"]
+        assert first["raw_evidence"]["public_fields"]["title"] == "Dress"
+        assert first["reviews"] == [{"text": "Accessible review", "source_url": url}]
+        assert client.get(endpoint, headers={"authorization": f"Bearer subject:{other['clerk_user_id']}"}).status_code == 404
+        assert store.complete_processing(analysis_id, uuid4(), payload) == "replay"
+        changed_evidence = {**payload, "supplier_data": {**payload["supplier_data"], "supplier_name": "Changed"}}
+        with pytest.raises(ResultConflict):
+            store.complete_processing(analysis_id, uuid4(), changed_evidence)
+        with store.connect() as conn:
+            snapshot_count = conn.execute(
+                "SELECT count(*) AS total FROM supplier_snapshots WHERE analysis_id = %s", (analysis_id,)
+            ).fetchone()["total"]
+            review_count = conn.execute(
+                "SELECT count(*) AS total FROM supplier_reviews WHERE snapshot_id = %s",
+                (first["supplier_snapshot_id"],),
+            ).fetchone()["total"]
+        assert (snapshot_count, review_count) == (1, 1)
+        assert not process_local_once(store)
+    finally:
+        remove(store, analysis_id)
+        remove_user(store, owner["clerk_user_id"])
+        remove_user(store, other["clerk_user_id"])
+
+
+def test_blocked_offer_completes_without_a_snapshot(store):
+    url = "https://detail.1688.com/offer/996518024136.html"
+    analysis_id = store.submit_local(url)
+    blocked = {"source_url": url, "extraction_status": "BLOCKED", "reason": "ACCESS_CHALLENGE"}
+    try:
+        assert process_local_once(store, compute=lambda _: blocked)
+        result = store.get(analysis_id)
+        assert result["status"] == "COMPLETED"
+        assert result["result"] == blocked
+        assert result["supplier_snapshot_id"] is None
+        assert result["supplier_data"] is None
+        assert result["raw_evidence"] is None
+        assert result["reviews"] == []
+    finally:
+        remove(store, analysis_id)
+
+
+def test_success_without_supplier_evidence_cannot_complete(store):
+    url = "https://detail.1688.com/offer/996518024136.html"
+    analysis_id = store.submit_local(url)
+    try:
+        claim = store.claim_processing(analysis_id, 300, 5)
+        with pytest.raises(ValueError, match="missing matching supplier evidence"):
+            store.complete_processing(
+                analysis_id, claim["token"],
+                {"source_url": url, "extraction_status": "SUCCESS"},
+            )
+        assert store.get(analysis_id)["result"] is None
+        with store.connect() as conn:
+            count = conn.execute(
+                "SELECT count(*) AS total FROM supplier_snapshots WHERE analysis_id = %s",
+                (analysis_id,),
+            ).fetchone()["total"]
+        assert count == 0
     finally:
         remove(store, analysis_id)
 

@@ -87,6 +87,18 @@ def _apply_through(database_url: str, migration_id: str) -> None:
         migrations_module._close_backend(backend)
 
 
+def _rollback_extraction_revisions(database_url: str) -> None:
+    backend = migrations_module.get_backend(migrations_module._yoyo_url(database_url))
+    try:
+        migrations = migrations_module.read_migrations(str(migrations_module.MIGRATIONS_DIR))
+        with backend.lock():
+            revisions = [migration for migration in backend.to_rollback(migrations)
+                         if migration.id in {"0007_1688_extraction_evidence", "0008_allow_public_extraction"}]
+            backend.rollback_migrations(revisions)
+    finally:
+        migrations_module._close_backend(backend)
+
+
 def _table_names(database_url: str) -> set[str]:
     with psycopg.connect(database_url) as conn:
         return {
@@ -191,6 +203,8 @@ def test_fresh_apply_failure_rollback_and_reapply_are_reproducible(
         ("0004_harden_analysis_processing", False),
         ("0005_expand_processing_dispositions", False),
         ("0006_guest_admission_and_provenance", False),
+        ("0007_1688_extraction_evidence", False),
+        ("0008_allow_public_extraction", False),
     ]
 
     with psycopg.connect(isolated_database_url, autocommit=True) as conn:
@@ -204,6 +218,8 @@ def test_fresh_apply_failure_rollback_and_reapply_are_reproducible(
         ("0004_harden_analysis_processing", True),
         ("0005_expand_processing_dispositions", True),
         ("0006_guest_admission_and_provenance", True),
+        ("0007_1688_extraction_evidence", True),
+        ("0008_allow_public_extraction", True),
     ]
 
 
@@ -295,6 +311,9 @@ def test_processing_hardening_schema_is_reversible_and_preserves_claims(isolated
     ])
     assert migrated_outbox == (created_id, "PENDING")
 
+    with pytest.raises(RuntimeError, match="0008_allow_public_extraction"):
+        rollback_core_migration(isolated_database_url)
+    _rollback_extraction_revisions(isolated_database_url)
     assert rollback_core_migration(isolated_database_url)
     assert _analysis_columns(isolated_database_url) == [
         "id", "source_url", "status", "created_at", "completed_at"
@@ -399,7 +418,7 @@ def test_alignment_refuses_populated_provisional_core_schema(isolated_database_u
     with pytest.raises(psycopg.errors.RaiseException, match="map them explicitly first"):
         apply_migrations(isolated_database_url)
 
-    assert migration_status(isolated_database_url)[-4] == (
+    assert migration_status(isolated_database_url)[-6] == (
         "0003_align_core_schema_to_spec",
         False,
     )
@@ -790,6 +809,9 @@ def test_core_rollback_preserves_tracer_drops_columns_and_reapplies(isolated_dat
             (user_id, snapshot_id, completed_id),
         )
 
+    with pytest.raises(RuntimeError, match="0008_allow_public_extraction"):
+        rollback_core_migration(isolated_database_url)
+    _rollback_extraction_revisions(isolated_database_url)
     assert rollback_core_migration(isolated_database_url)
     assert not rollback_core_migration(isolated_database_url)
     assert _tracer_snapshot(isolated_database_url) == before
@@ -816,7 +838,7 @@ def test_core_rollback_preserves_tracer_drops_columns_and_reapplies(isolated_dat
 
     apply_migrations(isolated_database_url)
     assert migration_status(isolated_database_url)[-1] == (
-        "0006_guest_admission_and_provenance",
+        "0008_allow_public_extraction",
         True,
     )
     assert {"user_id", "supplier_snapshot_id", "mode", "scoring_version"} <= set(

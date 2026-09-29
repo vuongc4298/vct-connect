@@ -6,7 +6,8 @@ import time
 from uuid import UUID
 
 from backend.app.config import Settings
-from backend.app.fixture import fixture_result
+from backend.app.fixture import FIXTURE_URL, fixture_result
+from backend.app.extraction import extract_1688
 from backend.app.queue import AzureQueue
 from backend.app.storage import LeaseLost, ResultConflict, Store
 
@@ -27,6 +28,14 @@ def _failure_code(error: Exception) -> str:
     if isinstance(error, LeaseLost):
         return "LEASE_LOST"
     return "PROCESSING_ERROR"
+
+
+def _compute_claim(claim: dict, compute) -> dict:
+    if compute is not None:
+        return compute(claim["source_url"])
+    if claim["source_url"] == FIXTURE_URL:
+        return fixture_result(claim["source_url"])
+    return extract_1688(claim["source_url"], analysis_mode=claim.get("mode") or "ACCOUNT_PUBLIC")
 
 
 def dispatch_outbox_once(store: Store, queue: AzureQueue, settings: Settings) -> bool:
@@ -60,7 +69,7 @@ def process_local_once(
     store: Store,
     settings: Settings | None = None,
     *,
-    compute=fixture_result,
+    compute=None,
 ) -> bool:
     max_attempts, lease_seconds, _ = _limits(settings)
     local_claim = store.claim_local(lease_seconds)
@@ -75,7 +84,7 @@ def process_local_once(
         store.finish_local(analysis_id, local_claim["claim_token"])
         return True
     try:
-        payload = compute(claim["source_url"])
+        payload = _compute_claim(claim, compute)
         store.complete_processing(analysis_id, claim["token"], payload)
         store.finish_local(analysis_id, local_claim["claim_token"])
     except ResultConflict:
@@ -150,7 +159,7 @@ def process_azure_once(
     queue: AzureQueue,
     settings: Settings | None = None,
     *,
-    compute=fixture_result,
+    compute=None,
     sleep=time.sleep,
     clock=time.monotonic,
 ) -> bool:
@@ -229,7 +238,7 @@ def process_azure_once(
                     continue
 
                 try:
-                    payload = compute(claim["source_url"])
+                    payload = _compute_claim(claim, compute)
                     store.complete_processing(analysis_id, claim["token"], payload)
                 except ResultConflict:
                     store.record_result_conflict(analysis_id)

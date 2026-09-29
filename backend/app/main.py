@@ -19,6 +19,7 @@ from .auth import (
 )
 from .config import Settings
 from .fixture import validate_fixture_url
+from .extraction import normalize_1688_url
 from .storage import AdmissionDenied, Store
 
 
@@ -27,8 +28,11 @@ class Submission(BaseModel):
 
     @field_validator("source_url")
     @classmethod
-    def fixture_only(cls, value: str) -> str:
-        return validate_fixture_url(value)
+    def supported_offer(cls, value: str) -> str:
+        try:
+            return validate_fixture_url(value)
+        except ValueError:
+            return normalize_1688_url(value)
 
 
 def create_app(

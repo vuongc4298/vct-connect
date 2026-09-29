@@ -302,6 +302,30 @@ def test_local_queue_happy_path_and_exactly_one_result():
     assert not process_local_once(store)
 
 
+def test_live_offer_uses_queued_worker_path_and_exposes_blocked_outcome(monkeypatch):
+    live_url = "https://detail.1688.com/offer/996518024136.html"
+    seen = []
+
+    def blocked(url, *, analysis_mode):
+        seen.append((url, analysis_mode))
+        return {"source_url": url, "extraction_status": "BLOCKED", "reason": "ACCESS_CHALLENGE"}
+
+    monkeypatch.setattr("backend.worker.main.extract_1688", blocked)
+    store = MemoryStore()
+    client = TestClient(create_app(store=store, settings=SETTINGS, verifier=StaticVerifier()))
+    submitted = client.post("/api/v1/analyses", json={"source_url": live_url + "?spm=track"})
+    assert submitted.status_code == 202
+    analysis_id = UUID(submitted.json()["id"])
+    assert process_local_once(store)
+    assert seen == [(live_url, "ACCOUNT_PUBLIC")]
+    status = client.get(f"/api/v1/analyses/{analysis_id}")
+    assert status.status_code == 200
+    assert status.json()["result"] == {
+        "source_url": live_url, "extraction_status": "BLOCKED", "reason": "ACCESS_CHALLENGE"
+    }
+    assert not process_local_once(store)
+
+
 def test_azure_outbox_ambiguous_publish_reuses_message_id_and_preserves_result():
     store = MemoryStore()
     analysis_id = store.submit_azure(FIXTURE_URL)
