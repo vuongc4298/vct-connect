@@ -2,6 +2,7 @@ import os
 from uuid import UUID, uuid4
 
 import pytest
+import httpx
 from fastapi.testclient import TestClient
 
 os.environ.setdefault("DEVELOPER_MODE", "true")
@@ -11,7 +12,7 @@ os.environ["QUEUE_TRANSPORT"] = "local"
 from backend.app.auth import InvalidIdentity, VerifiedIdentity
 from backend.app.config import Settings
 from backend.app.fixture import FIXTURE_URL, fixture_result
-from backend.app.extraction import parse_1688_page
+from backend.app.extraction import extract_1688, parse_1688_page
 from backend.app.extraction.extension1688 import DomCapture, normalize_capture
 from backend.app.main import create_app
 from backend.app.queue import AzureQueue
@@ -279,6 +280,113 @@ def test_blocked_offer_completes_without_a_snapshot(store):
         assert result["reviews"] == []
     finally:
         remove(store, analysis_id)
+
+
+@pytest.mark.parametrize(("source_failure", "status", "reason", "requests"), [
+    (401, "AUTH_REQUIRED", "LOGIN_REQUIRED", 1),
+    (403, "BLOCKED", "ACCESS_CHALLENGE", 1),
+    (404, "UNSUPPORTED_PAGE", "HTTP_ERROR", 1),
+    (503, "PARSE_FAILED", "UPSTREAM_UNAVAILABLE", 3),
+    ("timeout", "TIMEOUT", "HTTP_TIMEOUT", 3),
+    ("malformed", "PARSE_FAILED", "MALFORMED_PAGE", 1),
+    ("raw-nan", "PARSE_FAILED", "MALFORMED_PAGE", 1),
+    ("surrogate", "PARSE_FAILED", "MALFORMED_PAGE", 1),
+])
+def test_owner_polls_one_terminal_source_failure_without_processing_retry(
+    store, monkeypatch, source_failure, status, reason, requests,
+):
+    url = "https://detail.1688.com/offer/996518024136.html"
+    owner = store.resolve_user(f"source_failure_owner_{uuid4().hex}")
+    other = store.resolve_user(f"source_failure_other_{uuid4().hex}")
+    client = TestClient(create_app(
+        store=store, settings=Settings(store.database_url, "local", None, None, True),
+        verifier=HeaderSubjectVerifier(),
+    ))
+    headers = {"authorization": f"Bearer subject:{owner['clerk_user_id']}"}
+    submitted = client.post("/api/v1/analyses", headers=headers, json={"source_url": url})
+    assert submitted.status_code == 202
+    analysis_id = UUID(submitted.json()["id"])
+    calls, delays = [], []
+
+    def respond(request):
+        calls.append(request)
+        if source_failure == "timeout":
+            raise httpx.ReadTimeout("private exception details")
+        if source_failure == "malformed":
+            return httpx.Response(200, headers={"content-type": "text/html"}, text=(
+                f'<link rel="canonical" href="{url}"><script>}})(window.contextPath,'
+                '{"result":{"data":{"productTitle":{"fields":{"rateInfo":{"commonTagNodeList":7}}}}}})</script>'
+            ))
+        if source_failure in {"raw-nan", "surrogate"}:
+            fields = ('{"rateInfo":{"commonTagNodeList":[{"name":"all","count":NaN}]}}'
+                      if source_failure == "raw-nan" else '{"title":"\\ud800"}')
+            return httpx.Response(200, headers={"content-type": "text/html"}, text=(
+                f'<link rel="canonical" href="{url}"><div class="title-content"><h1>Dress</h1></div>'
+                '<script>})(window.contextPath,{"result":{"data":{"productTitle":{"fields":'
+                + fields + '}}}})</script>'
+            ))
+        return httpx.Response(source_failure)
+
+    with httpx.Client(transport=httpx.MockTransport(respond)) as source_client:
+        monkeypatch.setattr("backend.worker.main.extract_1688", lambda source_url, analysis_mode:
+                            extract_1688(source_url, analysis_mode=analysis_mode, client=source_client,
+                                         dns_check=lambda _: True, sleep=delays.append))
+        try:
+            endpoint = f"/api/v1/analyses/{analysis_id}"
+            assert client.get(endpoint, headers=headers).json()["status"] == "QUEUED"
+            assert process_local_once(store)
+            first = client.get(endpoint, headers=headers).json()
+            assert first["status"] == "COMPLETED" and first["attempt_count"] == 1
+            assert first["result"] == {"source_url": url, "extraction_status": status, "reason": reason}
+            assert first["failure_code"] is None and first["next_retry_at"] is None
+            assert first["supplier_data"] is None and first["raw_evidence"] is None
+            assert first["supplier_snapshot_id"] is None and first["reviews"] == []
+            assert [event["status"] for event in first["events"]] == ["QUEUED", "PROCESSING", "COMPLETED"]
+            assert len(calls) == requests and delays == ([0.5, 1.0] if requests == 3 else [])
+            assert client.get(endpoint, headers=headers).json() == first
+            assert client.get(endpoint, headers={
+                "authorization": f"Bearer subject:{other['clerk_user_id']}",
+            }).status_code == 404
+            assert store.complete_processing(analysis_id, uuid4(), first["result"]) == "replay"
+            with store.connect() as conn:
+                assert conn.execute("SELECT 1 FROM supplier_snapshots WHERE analysis_id = %s", (analysis_id,)).fetchone() is None
+                assert conn.execute("SELECT 1 FROM local_queue WHERE analysis_id = %s", (analysis_id,)).fetchone() is None
+        finally:
+            remove(store, analysis_id)
+            remove_user(store, owner["clerk_user_id"])
+            remove_user(store, other["clerk_user_id"])
+
+
+def test_recovered_http_retries_remain_one_processing_attempt(store, monkeypatch):
+    url = "https://detail.1688.com/offer/996518024136.html"
+    analysis_id = store.submit_local(url)
+    calls, delays = [], []
+
+    def respond(request):
+        calls.append(request)
+        if len(calls) < 3:
+            return httpx.Response(503)
+        return httpx.Response(200, headers={"content-type": "text/html"}, text=(
+            f'<link rel="canonical" href="{url}"><div class="title-content"><h1>Dress</h1></div>'
+        ))
+
+    with httpx.Client(transport=httpx.MockTransport(respond)) as source_client:
+        monkeypatch.setattr("backend.worker.main.extract_1688", lambda source_url, analysis_mode:
+                            extract_1688(source_url, analysis_mode=analysis_mode, client=source_client,
+                                         dns_check=lambda _: True, sleep=delays.append))
+        try:
+            assert process_local_once(store)
+            result = store.get(analysis_id)
+            assert result["status"] == "COMPLETED" and result["attempt_count"] == 1
+            assert result["result"]["extraction_status"] == "PARTIAL"
+            assert result["supplier_snapshot_id"]
+            assert result["supplier_data"]["products"][0]["title"] == "Dress"
+            assert result["supplier_data"]["supplier_name"] is None
+            assert result["supplier_data"]["completeness"] == round(1 / 12, 4)
+            assert len(calls) == 3 and delays == [0.5, 1.0]
+            assert [event["status"] for event in result["events"]] == ["QUEUED", "PROCESSING", "COMPLETED"]
+        finally:
+            remove(store, analysis_id)
 
 
 def test_success_without_supplier_evidence_cannot_complete(store):

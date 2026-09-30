@@ -11,10 +11,11 @@ from datetime import datetime, timezone
 from hashlib import sha256
 import ipaddress
 import json
+import math
 import socket
 import ssl
 import time
-from urllib.parse import urljoin
+from urllib.parse import urljoin, urlsplit
 
 import certifi
 import httpcore
@@ -28,34 +29,102 @@ EXTRACTOR_VERSION = "1688-http.v1"
 UPLOAD_EXTRACTOR_VERSION = "1688-user-upload.v1"
 MAX_HTML_BYTES = 2_000_000
 MAX_REDIRECTS = 3
+FETCH_BUDGET_SECONDS = 25
+RETRY_DELAYS = (0.5, 1.0)
+TRANSIENT_HTTP_STATUSES = {500, 502, 503, 504}
 
 
 class UnsafeDestination(OSError):
     """DNS did not resolve only to public addresses for the approved host."""
 
 
+class TemporaryDNSFailure(OSError):
+    """A resolver failure that may recover within the extraction budget."""
+
+
+class DNSResolutionFailed(OSError):
+    """A permanent resolver failure, without exposing resolver details."""
+
+
+def _public_addresses(host, port):
+    try:
+        addresses = {item[4][0] for item in socket.getaddrinfo(host, port, type=socket.SOCK_STREAM)}
+    except socket.gaierror as exc:
+        if exc.errno == socket.EAI_AGAIN:
+            raise TemporaryDNSFailure("Temporary DNS failure") from exc
+        raise DNSResolutionFailed("DNS resolution failed") from exc
+    except TimeoutError as exc:
+        raise httpx.ConnectTimeout("DNS timeout") from exc
+    except OSError as exc:
+        raise TemporaryDNSFailure("Temporary DNS failure") from exc
+    try:
+        if not addresses or not all(ipaddress.ip_address(address).is_global for address in addresses):
+            raise UnsafeDestination("Destination must have only public addresses")
+    except ValueError as exc:
+        raise UnsafeDestination("Invalid DNS address") from exc
+    return addresses
+
+
+class DeadlineStream(httpcore.NetworkStream):
+    """Clamp every socket operation, including later body reads, to one deadline."""
+
+    def __init__(self, stream, deadline, clock):
+        self.stream, self.deadline, self.clock = stream, deadline, clock
+
+    def _timeout(self, timeout, error):
+        remaining = self.deadline - self.clock()
+        if remaining <= 0:
+            raise error("Extraction deadline elapsed")
+        return min(timeout, remaining) if timeout is not None else remaining
+
+    def read(self, max_bytes, timeout=None):
+        return self.stream.read(max_bytes, timeout=self._timeout(timeout, httpcore.ReadTimeout))
+
+    def write(self, buffer, timeout=None):
+        return self.stream.write(buffer, timeout=self._timeout(timeout, httpcore.WriteTimeout))
+
+    def start_tls(self, ssl_context, server_hostname=None, timeout=None):
+        stream = self.stream.start_tls(ssl_context, server_hostname=server_hostname,
+                                       timeout=self._timeout(timeout, httpcore.ConnectTimeout))
+        return DeadlineStream(stream, self.deadline, self.clock)
+
+    def close(self):
+        self.stream.close()
+
+    def get_extra_info(self, info):
+        return self.stream.get_extra_info(info)
+
+
 class PublicOnlyBackend(httpcore.SyncBackend):
+    def __init__(self, *, deadline=None, clock=time.monotonic):
+        self.deadline, self.clock = deadline, clock
+
     def connect_tcp(self, host, port, timeout=None, local_address=None, socket_options=None):
         if host != "detail.1688.com" or port != 443:
             raise UnsafeDestination("Unapproved connection destination")
-        try:
-            answers = socket.getaddrinfo(host, port, type=socket.SOCK_STREAM)
-            addresses = {item[4][0] for item in answers}
-            if not addresses or not all(ipaddress.ip_address(address).is_global for address in addresses):
-                raise UnsafeDestination("Destination must have only public addresses")
-        except (OSError, ValueError) as exc:
-            raise UnsafeDestination("Destination DNS check failed") from exc
+        started = self.clock()
+        addresses = _public_addresses(host, port)
+        # OS DNS resolution cannot be forcibly cancelled here. Recheck the
+        # budget before connecting, and debit its elapsed time from connect.
+        if timeout is not None:
+            timeout -= self.clock() - started
+        if self.deadline is not None:
+            remaining = self.deadline - self.clock()
+            timeout = min(timeout, remaining) if timeout is not None else remaining
+        if timeout is not None and timeout <= 0:
+            raise httpcore.ConnectTimeout("Extraction deadline elapsed")
         # Connect to the checked literal IP. The HTTP origin stays the hostname,
         # so TLS still verifies detail.1688.com and sends the correct SNI.
-        return super().connect_tcp(sorted(addresses)[0], port, timeout, local_address, socket_options)
+        stream = super().connect_tcp(sorted(addresses)[0], port, timeout, local_address, socket_options)
+        return DeadlineStream(stream, self.deadline, self.clock) if self.deadline is not None else stream
 
 
-def _public_transport() -> httpx.HTTPTransport:
+def _public_transport(*, deadline, clock) -> httpx.HTTPTransport:
     transport = httpx.HTTPTransport(trust_env=False)
     transport._pool.close()
     transport._pool = httpcore.ConnectionPool(
         ssl_context=ssl.create_default_context(cafile=certifi.where()),
-        network_backend=PublicOnlyBackend(),
+        network_backend=PublicOnlyBackend(deadline=deadline, clock=clock),
         max_connections=1,
         max_keepalive_connections=0,
     )
@@ -71,33 +140,72 @@ def _text(node) -> str | None:
 
 def _embedded_model(tree: HTMLParser) -> dict:
     marker = "})(window.contextPath,"
+    malformed = False
     for script in tree.css("script"):
         content = script.text()
         at = content.find(marker)
         if at >= 0:
             try:
-                return json.JSONDecoder().raw_decode(content[at + len(marker):])[0]
+                model = json.JSONDecoder().raw_decode(content[at + len(marker):].lstrip(" \t\r\n"))[0]
+                if isinstance(model, dict):
+                    return model
+                malformed = True
             except (ValueError, TypeError):
+                malformed = True
                 continue
+    if malformed:
+        raise MalformedPage
     return {}
+
+
+class MalformedPage(ValueError):
+    """An observed embedded structure cannot safely supply evidence."""
+
+
+def _validate_json_evidence(value):
+    """Reject source values that PostgreSQL JSONB cannot retain."""
+    if isinstance(value, str):
+        if "\x00" in value:
+            raise MalformedPage
+        try:
+            value.encode("utf-8")
+        except UnicodeEncodeError as exc:
+            raise MalformedPage from exc
+    elif isinstance(value, float) and not math.isfinite(value):
+        raise MalformedPage
+    elif isinstance(value, dict):
+        for key, item in value.items():
+            _validate_json_evidence(key)
+            _validate_json_evidence(item)
+    elif isinstance(value, list):
+        for item in value:
+            _validate_json_evidence(item)
 
 
 def _field(model: dict, *path):
     value = model
     for key in path:
-        if not isinstance(value, dict):
+        if value is None:
             return None
+        if not isinstance(value, dict):
+            raise MalformedPage
         value = value.get(key)
     return value
 
 
 def _object(value) -> dict:
-    return value if isinstance(value, dict) else {}
+    if value is None:
+        return {}
+    if not isinstance(value, dict):
+        raise MalformedPage
+    return value
 
 
 def _string(value) -> str | None:
     if isinstance(value, str):
         return value.strip() or None
+    if value is not None:
+        raise MalformedPage
     return None
 
 
@@ -109,7 +217,7 @@ def _blocked_page(tree: HTMLParser) -> bool:
     title = (_text(tree.css_first("title")) or "").lower()
     body = (_text(tree.css_first("body")) or "")[:2000].lower()
     markers = ("captcha", "verify you are human", "security verification", "access denied",
-               "滑动验证", "安全验证", "请输入验证码", "登录后", "请登录", "访问受限")
+               "滑动验证", "安全验证", "请输入验证码", "访问受限")
     if any(marker in title or marker in body for marker in markers):
         return True
     # 1688 may return a JavaScript-only challenge with HTTP 200 and no body.
@@ -120,7 +228,30 @@ def _blocked_page(tree: HTMLParser) -> bool:
     return False
 
 
-def parse_1688_page(html: str, source_url: str, *, analysis_mode: str = "ACCOUNT_PUBLIC",
+def _login_page(tree: HTMLParser, *, has_public_evidence=False) -> bool:
+    title = (_text(tree.css_first("title")) or "").lower()
+    body = (_text(tree.css_first("body")) or "")[:2000].lower()
+    markers = ("login required", "please log in", "please sign in", "登录后", "请登录")
+    return (any(marker in title for marker in markers)
+            or title.strip() in {"login", "sign in", "登录", "用户登录", "会员登录", "1688登录"}
+            or not has_public_evidence and any(marker in body for marker in markers))
+
+
+def parse_1688_page(html: str, source_url: str, **kwargs) -> dict:
+    """Parse captured evidence, returning fixed failures for malformed layouts."""
+    source_url = normalize_1688_url(source_url)
+    try:
+        return _parse_1688_page(html, source_url, **kwargs)
+    except (MalformedPage, RecursionError) as exc:
+        tree = HTMLParser(html)
+        visible = _text(tree.css_first(".shop-company-name h1")) or _text(tree.css_first(".title-content h1"))
+        if _login_page(tree, has_public_evidence=bool(visible)):
+            return {"source_url": source_url, "extraction_status": "AUTH_REQUIRED", "reason": "LOGIN_REQUIRED"}
+        return {"source_url": source_url, "extraction_status": "PARSE_FAILED",
+                "reason": "PARSER_LIMIT" if isinstance(exc, RecursionError) else "MALFORMED_PAGE"}
+
+
+def _parse_1688_page(html: str, source_url: str, *, analysis_mode: str = "ACCOUNT_PUBLIC",
                     extracted_at: datetime | None = None,
                     extraction_method: str = "PUBLIC_HTTP",
                     uploaded_bytes: bytes | None = None) -> dict:
@@ -133,6 +264,19 @@ def parse_1688_page(html: str, source_url: str, *, analysis_mode: str = "ACCOUNT
     tree = HTMLParser(html)
     if _blocked_page(tree):
         return {"source_url": source_url, "extraction_status": "BLOCKED", "reason": "ACCESS_CHALLENGE"}
+    if _login_page(tree, has_public_evidence=True):
+        return {"source_url": source_url, "extraction_status": "AUTH_REQUIRED", "reason": "LOGIN_REQUIRED"}
+    model = _embedded_model(tree)
+    data = _object(_field(model, "result", "data"))
+    title_fields = _object(_field(data, "productTitle", "fields"))
+    shop = _object(title_fields.get("shopInfo"))
+    rate = _object(title_fields.get("rateInfo"))
+    price = _object(_field(data, "mainPrice", "fields", "finalPriceModel", "tradeWithoutPromotion"))
+    root = _object(_field(data, "Root", "fields", "dataJson", "offerBaseInfo"))
+    supplier_name = _string(shop.get("authCompanyName")) or _string(shop.get("companyName")) or _text(tree.css_first(".shop-company-name h1"))
+    offer_title = _string(title_fields.get("title")) or _text(tree.css_first(".title-content h1"))
+    if _login_page(tree, has_public_evidence=bool(supplier_name or offer_title)):
+        return {"source_url": source_url, "extraction_status": "AUTH_REQUIRED", "reason": "LOGIN_REQUIRED"}
     canonical = tree.css_first('link[rel="canonical"]')
     matched_offer = False
     if canonical and canonical.attributes.get("href"):
@@ -142,14 +286,15 @@ def parse_1688_page(html: str, source_url: str, *, analysis_mode: str = "ACCOUNT
             matched_offer = True
         except ValueError:
             return {"source_url": source_url, "extraction_status": "PARSE_FAILED", "reason": "OFFER_MISMATCH"}
-
-    model = _embedded_model(tree)
-    data = _object(_field(model, "result", "data"))
-    title_fields = _object(_field(data, "productTitle", "fields"))
-    shop = _object(title_fields.get("shopInfo"))
-    rate = _object(title_fields.get("rateInfo"))
-    price = _object(_field(data, "mainPrice", "fields", "finalPriceModel", "tradeWithoutPromotion"))
-    root = _object(_field(data, "Root", "fields", "dataJson", "offerBaseInfo"))
+    for value in (root.get("offerId"), root.get("sellerUserId"),
+                  *(price.get(key) for key in ("offerMinPrice", "offerMaxPrice", "offerBeginAmount")),
+                  rate.get("goodRates"), rate.get("goodsGrade"), shop.get("byrRepeatRate3m")):
+        if value is not None and (not isinstance(value, (str, int, float)) or isinstance(value, bool)
+                                  or isinstance(value, float) and not math.isfinite(value)):
+            raise MalformedPage
+    for value in (rate.get("goodRates"), rate.get("goodsGrade")):
+        if value is not None and not isinstance(value, (int, float)):
+            raise MalformedPage
     if _present(root.get("offerId")) and str(root["offerId"]) != offer_id(source_url):
         return {"source_url": source_url, "extraction_status": "PARSE_FAILED", "reason": "OFFER_MISMATCH"}
     if _present(root.get("offerId")):
@@ -158,11 +303,16 @@ def parse_1688_page(html: str, source_url: str, *, analysis_mode: str = "ACCOUNT
         return {"source_url": source_url, "extraction_status": "PARSE_FAILED", "reason": "UNVERIFIED_OFFER"}
 
     review_count = None
-    for tag in rate.get("commonTagNodeList") or []:
-        if isinstance(tag, dict) and tag.get("name") == "全部" and isinstance(tag.get("count"), int):
+    tags = rate.get("commonTagNodeList")
+    if tags is not None and (not isinstance(tags, list) or not all(isinstance(tag, dict) for tag in tags)):
+        raise MalformedPage
+    for tag in tags or []:
+        if tag.get("name") == "全部" and type(tag.get("count")) is int:
             review_count = tag["count"]
             break
     supplier_id = root.get("sellerUserId") or _field(model, "result", "global", "globalData", "model", "offerDetail", "sellerUserId")
+    if supplier_id is not None and (not isinstance(supplier_id, (str, int)) or isinstance(supplier_id, bool)):
+        raise MalformedPage
     reviews = []
     seen_reviews = set()
     for card in tree.css(".evaluation-item, .review-item, .comment-item, .od-evaluation-item, [data-review-id]"):
@@ -172,8 +322,6 @@ def parse_1688_page(html: str, source_url: str, *, analysis_mode: str = "ACCOUNT
             reviews.append({"text": review_text[:2000], "source_url": source_url})
         if len(reviews) >= 20:
             break
-    supplier_name = _string(shop.get("authCompanyName")) or _string(shop.get("companyName")) or _text(tree.css_first(".shop-company-name h1"))
-    offer_title = _string(title_fields.get("title")) or _text(tree.css_first(".title-content h1"))
     company_information = {
         key: value for key, value in {
             "registered_name": _string(shop.get("authCompanyName")),
@@ -248,6 +396,8 @@ def parse_1688_page(html: str, source_url: str, *, analysis_mode: str = "ACCOUNT
             "reviews": reviews,
         },
     }
+    _validate_json_evidence(supplier_data)
+    _validate_json_evidence(raw_evidence)
     return {
         "source_url": source_url,
         "extraction_status": "PARTIAL" if missing else "SUCCESS",
@@ -258,66 +408,155 @@ def parse_1688_page(html: str, source_url: str, *, analysis_mode: str = "ACCOUNT
 
 
 def _public_dns(host: str) -> bool:
+    _public_addresses(host, 443)
+    return True
+
+
+def _login_destination(value: str) -> bool:
     try:
-        addresses = {item[4][0] for item in socket.getaddrinfo(host, 443, type=socket.SOCK_STREAM)}
-        return bool(addresses) and all(ipaddress.ip_address(address).is_global for address in addresses)
-    except (OSError, ValueError):
+        target = urlsplit(value)
+        return (target.scheme == "https" and target.netloc == "login.1688.com"
+                and target.path == "/member/signin.htm" and not target.fragment)
+    except ValueError:
         return False
+
+
+def _certificate_failure(exc: Exception) -> bool:
+    seen = set()
+    while exc is not None and id(exc) not in seen:
+        seen.add(id(exc))
+        if isinstance(exc, ssl.SSLCertVerificationError):
+            return True
+        exc = exc.__cause__ or exc.__context__
+    return False
 
 
 def extract_1688(source_url: str, *, analysis_mode: str = "ACCOUNT_PUBLIC",
                  client: httpx.Client | None = None, dns_check=_public_dns,
-                 clock=time.monotonic) -> dict:
-    source_url = normalize_1688_url(source_url)
+                 clock=time.monotonic, sleep=time.sleep) -> dict:
+    try:
+        source_url = normalize_1688_url(source_url)
+    except ValueError:
+        return {"source_url": source_url, "extraction_status": "UNSUPPORTED_PAGE", "reason": "INVALID_URL"}
+    deadline = clock() + FETCH_BUDGET_SECONDS
+
+    def outcome(status, reason):
+        return {"source_url": source_url, "extraction_status": status, "reason": reason}
+
     owns_client = client is None
     if client is None:
-        client = httpx.Client(transport=_public_transport(), follow_redirects=False, trust_env=False,
+        client = httpx.Client(transport=_public_transport(deadline=deadline, clock=clock),
+                              follow_redirects=False, trust_env=False,
                               timeout=httpx.Timeout(10.0, connect=5.0),
                               headers={"User-Agent": "VCTConnectPublicEvidence/1.0", "Accept": "text/html"})
     try:
         current = source_url
-        deadline = clock() + 25
-        for _ in range(MAX_REDIRECTS + 1):
-            if clock() >= deadline:
-                return {"source_url": source_url, "extraction_status": "TIMEOUT", "reason": "HTTP_TIMEOUT"}
-            if not dns_check("detail.1688.com"):
-                return {"source_url": source_url, "extraction_status": "BLOCKED", "reason": "UNSAFE_DESTINATION"}
+        redirects = retries = 0
+        seen_redirects = {source_url}
+        while True:
+            transient = None
             try:
-                with client.stream("GET", current, follow_redirects=False) as response:
+                if clock() >= deadline:
+                    return outcome("TIMEOUT", "HTTP_TIMEOUT")
+                if not dns_check("detail.1688.com"):
+                    return outcome("BLOCKED", "UNSAFE_DESTINATION")
+                remaining = deadline - clock()
+                if remaining <= 0:
+                    return outcome("TIMEOUT", "HTTP_TIMEOUT")
+                timeout = httpx.Timeout(min(10.0, remaining), connect=min(5.0, remaining))
+                with client.stream("GET", current, follow_redirects=False, timeout=timeout) as response:
+                    if clock() >= deadline:
+                        return outcome("TIMEOUT", "HTTP_TIMEOUT")
                     if response.status_code in (301, 302, 303, 307, 308):
                         location = response.headers.get("location", "")
                         try:
-                            current = normalize_1688_url(urljoin(current, location))
+                            target = urljoin(current, location)
+                            if _login_destination(target):
+                                return outcome("AUTH_REQUIRED", "LOGIN_REQUIRED")
+                            destination = normalize_1688_url(target)
                         except ValueError:
-                            return {"source_url": source_url, "extraction_status": "BLOCKED", "reason": "UNSAFE_REDIRECT"}
-                        if current != source_url:
-                            return {"source_url": source_url, "extraction_status": "BLOCKED", "reason": "OFFER_MISMATCH"}
+                            return outcome("BLOCKED", "UNSAFE_REDIRECT")
+                        if destination != source_url:
+                            return outcome("BLOCKED", "OFFER_MISMATCH")
+                        if destination in seen_redirects:
+                            return outcome("BLOCKED", "REDIRECT_LOOP")
+                        if redirects >= MAX_REDIRECTS:
+                            return outcome("BLOCKED", "REDIRECT_LIMIT")
+                        redirects += 1
+                        seen_redirects.add(destination)
+                        current = destination
                         continue
                     if response.status_code == 401:
-                        return {"source_url": source_url, "extraction_status": "AUTH_REQUIRED", "reason": "LOGIN_REQUIRED"}
+                        return outcome("AUTH_REQUIRED", "LOGIN_REQUIRED")
                     if response.status_code in (403, 429):
-                        return {"source_url": source_url, "extraction_status": "BLOCKED", "reason": "ACCESS_CHALLENGE"}
-                    if response.status_code != 200:
+                        return outcome("BLOCKED", "ACCESS_CHALLENGE")
+                    is_transient = response.status_code in TRANSIENT_HTTP_STATUSES
+                    if response.status_code != 200 and not is_transient:
                         status = "UNSUPPORTED_PAGE" if response.status_code in (404, 410) else "PARSE_FAILED"
-                        return {"source_url": source_url, "extraction_status": status, "reason": "HTTP_ERROR"}
-                    if "text/html" not in response.headers.get("content-type", "").lower():
-                        return {"source_url": source_url, "extraction_status": "PARSE_FAILED", "reason": "NON_HTML"}
-                    content = bytearray()
-                    for chunk in response.iter_bytes():
+                        return outcome(status, "HTTP_ERROR")
+                    is_html = response.headers.get("content-type", "").split(";", 1)[0].strip().lower() == "text/html"
+                    if not is_html:
+                        if not is_transient:
+                            return outcome("PARSE_FAILED", "NON_HTML")
+                        transient = ("PARSE_FAILED", "UPSTREAM_UNAVAILABLE")
+                    else:
+                        content = bytearray()
+                        chunks = iter(response.iter_bytes())
+                        while True:
+                            if clock() >= deadline:
+                                return outcome("TIMEOUT", "HTTP_TIMEOUT")
+                            try:
+                                chunk = next(chunks)
+                            except StopIteration:
+                                break
+                            if clock() >= deadline:
+                                return outcome("TIMEOUT", "HTTP_TIMEOUT")
+                            if len(chunk) > MAX_HTML_BYTES - len(content):
+                                return outcome("PARSE_FAILED", "PAGE_TOO_LARGE")
+                            content.extend(chunk)
                         if clock() >= deadline:
-                            return {"source_url": source_url, "extraction_status": "TIMEOUT", "reason": "HTTP_TIMEOUT"}
-                        content.extend(chunk)
-                        if len(content) > MAX_HTML_BYTES:
-                            return {"source_url": source_url, "extraction_status": "PARSE_FAILED", "reason": "PAGE_TOO_LARGE"}
-                    return parse_1688_page(content.decode(response.encoding or "utf-8", errors="replace"),
-                                           source_url, analysis_mode=analysis_mode)
+                            return outcome("TIMEOUT", "HTTP_TIMEOUT")
+                        html = content.decode(response.encoding or "utf-8", errors="replace")
+                        if is_transient:
+                            tree = HTMLParser(html)
+                            if _blocked_page(tree):
+                                return outcome("BLOCKED", "ACCESS_CHALLENGE")
+                            if _login_page(tree):
+                                return outcome("AUTH_REQUIRED", "LOGIN_REQUIRED")
+                            transient = ("PARSE_FAILED", "UPSTREAM_UNAVAILABLE")
+                        else:
+                            result = parse_1688_page(html, source_url, analysis_mode=analysis_mode)
+                            return outcome("TIMEOUT", "HTTP_TIMEOUT") if clock() >= deadline else result
             except UnsafeDestination:
-                return {"source_url": source_url, "extraction_status": "BLOCKED", "reason": "UNSAFE_DESTINATION"}
+                return outcome("BLOCKED", "UNSAFE_DESTINATION")
+            except DNSResolutionFailed:
+                return outcome("PARSE_FAILED", "DNS_ERROR")
             except httpx.TimeoutException:
-                return {"source_url": source_url, "extraction_status": "TIMEOUT", "reason": "HTTP_TIMEOUT"}
-            except (httpx.HTTPError, UnicodeError):
-                return {"source_url": source_url, "extraction_status": "PARSE_FAILED", "reason": "HTTP_ERROR"}
-        return {"source_url": source_url, "extraction_status": "BLOCKED", "reason": "REDIRECT_LIMIT"}
+                transient = ("TIMEOUT", "HTTP_TIMEOUT")
+            except TemporaryDNSFailure:
+                transient = ("PARSE_FAILED", "DNS_ERROR")
+            except httpx.RemoteProtocolError as exc:
+                if str(exc).startswith("Invalid URL in location header:"):
+                    return outcome("BLOCKED", "UNSAFE_REDIRECT")
+                transient = ("PARSE_FAILED", "HTTP_ERROR")
+            except httpx.NetworkError as exc:
+                if _certificate_failure(exc):
+                    return outcome("PARSE_FAILED", "HTTP_ERROR")
+                transient = ("PARSE_FAILED", "HTTP_ERROR")
+            except (httpx.HTTPError, UnicodeError, LookupError):
+                return outcome("PARSE_FAILED", "HTTP_ERROR")
+            # The response context has closed before a retry or backoff. Each
+            # attempt starts with a fresh body; failed stream bytes are discarded.
+            remaining = deadline - clock()
+            if remaining <= 0:
+                return outcome("TIMEOUT", "HTTP_TIMEOUT")
+            if retries >= len(RETRY_DELAYS):
+                return outcome(*transient)
+            delay = RETRY_DELAYS[retries]
+            if remaining <= delay:
+                return outcome("TIMEOUT", "HTTP_TIMEOUT")
+            sleep(delay)
+            retries += 1
     finally:
         if owns_client:
             client.close()

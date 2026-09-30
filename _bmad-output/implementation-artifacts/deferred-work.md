@@ -61,3 +61,6 @@
 - source_plan: `_bmad-output/implementation-artifacts/plan-1688-browser-extension-capture.md`
   summary: Add browser automation for popup reopening, result recovery after a failed lookup, and automatic web-result navigation.
   evidence: The user verified the live sign-in/capture/result flow. Automated checks cover contracts and proxy behavior; browser lifecycle and the final auto-opening addition currently rely on reviewed Chrome API wiring and manual operation.
+- source_plan: `_bmad-output/initiative-vct-connect-year-one/epic-extraction/story-classify-extraction-failures-and-bounded-http-retries-plan.md`
+  summary: Bound decompression output before HTTPX allocates a decoded response chunk.
+  evidence: The baseline fetcher used iter_bytes, which automatically decompresses before the 2 MB cap check; a compressed response can allocate beyond that cap. Story 2.2 checks capacity before appending, but streaming decompression with bounded output needs separate transport hardening.

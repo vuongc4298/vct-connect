@@ -87,3 +87,53 @@ test("browser evidence identifies user-provided DOM fields without a risk score"
   assert.match(html, /39\.00/);
   assert.match(html, /Ch\u01b0a c\u00f3 \u0111i\u1ec3m r\u1ee7i ro/);
 });
+
+for (const [status, reason, guidance] of [
+  ["AUTH_REQUIRED", "LOGIN_REQUIRED", /đăng nhập.*tiện ích VCT Connect/],
+  ["BLOCKED", "ACCESS_CHALLENGE", /xác minh.*tiện ích VCT Connect/],
+  ["BLOCKED", "UNSAFE_DESTINATION", /URL HTTPS.*detail\.1688\.com/],
+  ["TIMEOUT", "HTTP_TIMEOUT", /lần trích xuất này đã kết thúc/],
+  ["UNSUPPORTED_PAGE", "HTTP_ERROR", /sản phẩm còn tồn tại/],
+  ["PARSE_FAILED", "MALFORMED_PAGE", /Nội dung trang/],
+] as const) {
+  test(`failed ${status} evidence renders safe recovery with no supplier claims`, () => {
+    const analysis = {
+      result: { source_url: sourceUrl, extraction_status: status, reason },
+      supplier_data: null, reviews: [], extraction_method: "PUBLIC_HTTP",
+    } as unknown as Analysis;
+    const html = renderToStaticMarkup(<ExtractionEvidence analysis={analysis} />);
+    assert.ok(html.includes(status) && html.includes(reason));
+    assert.match(html, guidance);
+    assert.match(html, /Mở trang nguồn 1688/);
+    assert.match(html, /Chưa có điểm rủi ro/);
+    assert.doesNotMatch(html, /Độ phủ:|Supplier|Hệ thống sẽ tự động thử lại/);
+  });
+}
+
+test("unsafe original source cannot become a source link", () => {
+  const analysis = {
+    result: { source_url: "https://127.0.0.1/private", extraction_status: "UNSUPPORTED_PAGE", reason: "INVALID_URL" },
+    supplier_data: null, reviews: [], extraction_method: "PUBLIC_HTTP",
+  } as unknown as Analysis;
+  const html = renderToStaticMarkup(<ExtractionEvidence analysis={analysis} />);
+  assert.match(html, /URL HTTPS/);
+  assert.doesNotMatch(html, /href=|127\.0\.0\.1/);
+});
+
+test("sparse evidence keeps absent fields visibly unknown", () => {
+  const analysis = {
+    result: { source_url: sourceUrl, extraction_status: "PARTIAL" },
+    supplier_data: {
+      platform: "1688", source_url: sourceUrl, supplier_name: null, products: [{ title: "Dress" }],
+      completeness: 1 / 12, completeness_denominator: Array(12).fill("field"),
+      missing_fields: Array(11).fill("unknown"), extraction_method: "PUBLIC_HTTP",
+      analysis_mode: "ACCOUNT_PUBLIC", extractor_version: "1688-http.v1",
+      extracted_at: "2026-09-30T00:00:00+00:00", transaction_signals: null,
+    }, reviews: [],
+  } as unknown as Analysis;
+  const html = renderToStaticMarkup(<ExtractionEvidence analysis={analysis} />);
+  assert.match(html, /Chưa có tên nhà cung cấp/);
+  assert.match(html, /8%.*1\/12/);
+  assert.match(html, /chưa có/);
+  assert.match(html, /Thiếu dữ liệu là chưa xác định/);
+});

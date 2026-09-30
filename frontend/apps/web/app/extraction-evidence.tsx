@@ -1,5 +1,6 @@
 import React from "react";
 import type { Analysis, FixtureResult } from "@vct/contracts";
+import { extractionRecovery } from "./analysis-status";
 
 export function isFixtureResult(result: Analysis["result"]): result is FixtureResult {
   return result !== null && "fixture" in result && result.fixture === true;
@@ -11,6 +12,9 @@ export function ExtractionEvidence({ analysis }: { analysis: Analysis }) {
   if (!result || isFixtureResult(result)) return null;
   const uploaded = (data?.extraction_method ?? analysis.extraction_method) === "USER_UPLOAD";
   const browser = (data?.extraction_method ?? analysis.extraction_method) === "EXTENSION_DOM";
+  const recovery = extractionRecovery(result.extraction_status, result.reason);
+  const sourceUrl = /^https:\/\/detail\.1688\.com\/offer\/[0-9]{6,20}\.html$/.test(result.source_url)
+    ? result.source_url : null;
   return <section className="progress-card" aria-label="Bằng chứng trích xuất 1688">
     <h2>Bằng chứng 1688</h2>
     <p>Trạng thái trích xuất: <strong>{result.extraction_status}</strong>{result.reason ? ` · ${result.reason}` : ""}</p>
@@ -24,6 +28,10 @@ export function ExtractionEvidence({ analysis }: { analysis: Analysis }) {
       {analysis.reviews.length > 0 && <ul>{analysis.reviews.map((review, index) => <li key={index}>{String(review.text ?? "")}</li>)}</ul>}
       <p>Thiếu dữ liệu là chưa xác định, không phải tín hiệu an toàn. Chưa có điểm rủi ro cho dữ liệu này.</p>
       <a href={data.source_url} target="_blank" rel="noreferrer">Mở trang nguồn 1688</a>
-    </> : <p>{browser ? "Trang đang mở không có tên nhà cung cấp hoặc tên sản phẩm trong các trường được chọn." : uploaded ? "Trang đã tải lên không cung cấp bằng chứng có thể xác minh." : "Không có bằng chứng có thể xác minh từ trang nguồn."} Chưa có điểm rủi ro.</p>}
+    </> : <>
+      <p>{browser ? "Trang đang mở không có tên nhà cung cấp hoặc tên sản phẩm trong các trường được chọn." : uploaded ? "Trang đã tải lên không cung cấp bằng chứng có thể xác minh." : "Không có bằng chứng có thể xác minh từ trang nguồn."} Chưa có điểm rủi ro.</p>
+      {recovery && <p>{recovery}</p>}
+      {sourceUrl && <a href={sourceUrl} target="_blank" rel="noreferrer">Mở trang nguồn 1688</a>}
+    </>}
   </section>;
 }

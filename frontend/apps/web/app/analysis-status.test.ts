@@ -1,7 +1,8 @@
 import assert from "node:assert/strict";
 import test from "node:test";
+import type { ExtractionStatus } from "@vct/contracts";
 
-import { analysisPresentation } from "./analysis-status";
+import { analysisPresentation, extractionRecovery } from "./analysis-status";
 
 
 test("retryable state keeps polling and presents the durable attempt", () => {
@@ -51,3 +52,46 @@ test("partial extraction is presented as evidence without a risk report", () => 
   assert.equal(view.pillLabel, "TRÍCH XUẤT MỘT PHẦN");
   assert.match(view.headline, /Bằng chứng/);
 });
+
+for (const [status, reason, guidance] of [
+  ["AUTH_REQUIRED", "LOGIN_REQUIRED", /đăng nhập.*tiện ích VCT Connect/],
+  ["BLOCKED", "ACCESS_CHALLENGE", /xác minh.*tiện ích VCT Connect/],
+  ["BLOCKED", "UNSAFE_DESTINATION", /URL HTTPS.*detail\.1688\.com/],
+  ["BLOCKED", "UNSAFE_REDIRECT", /chuyển hướng.*an toàn/],
+  ["PARSE_FAILED", "OFFER_MISMATCH", /sản phẩm này/],
+  ["UNSUPPORTED_PAGE", "HTTP_ERROR", /sản phẩm còn tồn tại/],
+  ["TIMEOUT", "HTTP_TIMEOUT", /lần trích xuất này đã kết thúc/],
+  ["PARSE_FAILED", "UPSTREAM_UNAVAILABLE", /lần trích xuất này đã kết thúc/],
+  ["PARSE_FAILED", "DNS_ERROR", /lần trích xuất này đã kết thúc/],
+  ["PARSE_FAILED", "MALFORMED_PAGE", /Nội dung trang.*tiện ích VCT Connect/],
+] as const) {
+  test(`terminal ${status}/${reason} stops polling and gives recovery guidance`, () => {
+    const view = analysisPresentation({
+      status: "COMPLETED", attempt_count: 1, failure_code: null,
+      extraction_method: "PUBLIC_HTTP", result: {
+        source_url: "https://detail.1688.com/offer/996518024136.html", extraction_status: status, reason,
+      },
+    });
+    assert.equal(view.terminal, true);
+    assert.equal(view.shouldPoll, false);
+    assert.equal(view.complete, false);
+    assert.equal(view.retrying, false);
+    assert.match(view.detail, guidance);
+    assert.ok(view.detail.includes(reason));
+    assert.doesNotMatch(view.detail, /Hệ thống sẽ tự động thử lại/);
+    assert.equal(extractionRecovery(status, reason), view.detail.split("URL này. ")[1]);
+  });
+}
+
+for (const status of ["SUCCESS", "PARTIAL"] satisfies ExtractionStatus[]) {
+  test(`shared ${status} evidence outcome is accepted as terminal without a risk report`, () => {
+    const view = analysisPresentation({
+      status: "COMPLETED", attempt_count: 1, failure_code: null,
+      result: { source_url: "https://detail.1688.com/offer/996518024136.html", extraction_status: status },
+    });
+    assert.equal(view.complete, true);
+    assert.equal(view.shouldPoll, false);
+    assert.match(view.detail, /chưa có điểm rủi ro/);
+    assert.equal(extractionRecovery(status), null);
+  });
+}
