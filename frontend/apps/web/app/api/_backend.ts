@@ -1,7 +1,19 @@
 const API_ORIGIN = process.env.API_INTERNAL_ORIGIN ?? "http://127.0.0.1:8000";
 const MAX_HTML_BYTES = 2_000_000;
+const MAX_CAPTURE_BYTES = 16_384;
+const EXTENSION_ORIGIN = "chrome-extension://klggcepemjjbphjclpiabgpfgdbgiljj";
 
-async function boundedUpload(request: Request): Promise<Uint8Array<ArrayBuffer> | null> {
+function withExtensionCors(request: Request, response: Response): Response {
+  if (request.headers.get("origin") !== EXTENSION_ORIGIN) return response;
+  const headers = new Headers(response.headers);
+  headers.set("access-control-allow-origin", EXTENSION_ORIGIN);
+  headers.set("access-control-allow-methods", "GET, POST, OPTIONS");
+  headers.set("access-control-allow-headers", "authorization, content-type");
+  headers.set("vary", "Origin");
+  return new Response(response.body, { status: response.status, headers });
+}
+
+async function boundedUpload(request: Request, maximum = MAX_HTML_BYTES): Promise<Uint8Array<ArrayBuffer> | null> {
   const reader = request.body?.getReader();
   if (!reader) return new Uint8Array();
   const chunks: Uint8Array[] = [];
@@ -11,7 +23,7 @@ async function boundedUpload(request: Request): Promise<Uint8Array<ArrayBuffer> 
       const { done, value } = await reader.read();
       if (done) break;
       total += value.byteLength;
-      if (total > MAX_HTML_BYTES) {
+      if (total > maximum) {
         await reader.cancel();
         return null;
       }
@@ -38,33 +50,35 @@ export async function proxyBackend(
 
   try {
     const upload = path === "/api/v1/analyses/import" || path.startsWith("/api/v1/analyses/import?");
-    if (upload && Number(request.headers.get("content-length")) > MAX_HTML_BYTES) {
-      return Response.json({ detail: "HTML page exceeds 2 MB" }, { status: 413 });
+    const capture = path === "/api/v1/analyses/capture";
+    const maximum = capture ? MAX_CAPTURE_BYTES : MAX_HTML_BYTES;
+    if ((upload || capture) && Number(request.headers.get("content-length")) > maximum) {
+      return withExtensionCors(request, Response.json({ detail: capture ? "Capture exceeds 16 KB" : "HTML page exceeds 2 MB" }, { status: 413 }));
     }
-    const uploadBody = upload ? await boundedUpload(request) : undefined;
-    if (upload && uploadBody === null) {
-      return Response.json({ detail: "HTML page exceeds 2 MB" }, { status: 413 });
+    const uploadBody = upload || capture ? await boundedUpload(request, maximum) : undefined;
+    if ((upload || capture) && uploadBody === null) {
+      return withExtensionCors(request, Response.json({ detail: capture ? "Capture exceeds 16 KB" : "HTML page exceeds 2 MB" }, { status: 413 }));
     }
     const upstream = await fetch(`${API_ORIGIN}${path}`, {
       method: request.method,
       headers,
       body: request.method === "GET" || request.method === "HEAD" ? undefined
-        : upload ? new Blob([uploadBody!]) : await request.text(),
+        : upload || capture ? new Blob([uploadBody!]) : await request.text(),
       cache: "no-store",
     });
     const responseHeaders = new Headers();
     const upstreamContentType = upstream.headers.get("content-type");
     if (upstreamContentType) responseHeaders.set("content-type", upstreamContentType);
-    return new Response(await upstream.arrayBuffer(), {
+    return withExtensionCors(request, new Response(await upstream.arrayBuffer(), {
       status: upstream.status,
       headers: responseHeaders,
-    });
+    }));
   } catch (cause) {
-    return Response.json(
+    return withExtensionCors(request, Response.json(
       {
         detail: "Backend unavailable. Check the FastAPI process and API_INTERNAL_ORIGIN.",
       },
       { status: 503 },
-    );
+    ));
   }
 }

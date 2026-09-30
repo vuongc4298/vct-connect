@@ -6,6 +6,7 @@ frontend/apps/web/.env.local
 .uv-cache/
 __pycache__/
 .pytest_cache/
-frontend/node_modules/
+**/node_modules/
 frontend/apps/web/.next/
+frontend/apps/extension/build/
 *.tsbuildinfo

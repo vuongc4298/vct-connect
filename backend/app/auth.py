@@ -1,4 +1,5 @@
 from dataclasses import dataclass
+import logging
 from typing import Protocol
 from uuid import UUID
 
@@ -14,6 +15,7 @@ CUSTOMER = "CUSTOMER"
 INTERNAL_REVIEWER = "INTERNAL_REVIEWER"
 ADMIN = "ADMIN"
 ALL_ROLES = frozenset({CUSTOMER, INTERNAL_REVIEWER, ADMIN})
+logger = logging.getLogger(__name__)
 
 
 class InvalidIdentity(Exception):
@@ -80,6 +82,9 @@ class ClerkTokenVerifier:
             raise AuthenticationUnavailable
         payload = state.payload if state.is_signed_in else None
         if not payload or payload.get("iss") != self.issuer:
+            # Only a fixed reason code is logged; never log bearer tokens or claims.
+            reason = state.reason.value[0] if state.reason else "issuer-mismatch"
+            logger.warning("Clerk session rejected: %s", reason)
             raise InvalidIdentity
 
         subject = payload.get("sub")

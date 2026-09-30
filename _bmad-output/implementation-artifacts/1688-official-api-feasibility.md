@@ -4,6 +4,17 @@
 
 Keep the saved-page import as the working fallback. Do not replace it with an official API call yet: 1688's public portal confirms a product API category and developer application flow, but the accessible public documentation does not establish that this project can request arbitrary offer, supplier, or review data with the required permissions.
 
+The user reports that the 1688 partner registration route requires enterprise documents they do not have. Defer this route under that constraint and continue the user-invoked browser capture implementation. No official API credentials are needed for browser capture.
+
+## Follow-up: user-supplied Alibaba.com token API
+
+On 2026-09-30, the public [GenerateAccessToken reference](https://openapi.alibaba.com/doc/api.htm#/api?cid=4&path=/auth/token/create&methodType=GET/POST) and its documentation JSON were reachable. The documentation request returned HTTP 200 with `success: true`; this verifies access to documentation, not a successful token exchange.
+
+- `/auth/token/create` requires `app_key`, `timestamp`, `sign_method`, `sign`, and `code`. Its SDK examples construct the client with an app key and app secret. The optional `access_token` parameter does not remove these requirements.
+- The [Getting Started guide](https://openapi.alibaba.com/doc/doc.htm) describes Alibaba.com GGS developer registration, approved application categories, application credentials, and requested API permissions. It does not establish permission to read arbitrary 1688 offers or reviews.
+- The reference supplies a placeholder `url` in its request examples, rather than a token gateway URL. Its public tool metadata points to a Lazada test console; that link is not evidence of 1688 API coverage.
+- No token exchange was attempted with fabricated credentials or example authorization codes. Without an approved application's key, secret, and authorization code, a meaningful authenticated probe is unavailable. Keep the official adapter deferred; reconsider only if approved 1688 credentials and relevant API permissions become available.
+
 ## Verified from official sources
 
 - The [1688 Open Platform](https://aop.alibaba.com/) lists API areas for products, members, and shops, plus a developer control center and business solutions for cross-border procurement and distribution. These are separate from the [Alibaba.com Global Open Platform](https://openapi.alibaba.com/doc/doc.htm), whose seller authorization and GGS APIs must not be assumed to cover 1688.

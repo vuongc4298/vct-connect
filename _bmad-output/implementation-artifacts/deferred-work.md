@@ -52,3 +52,12 @@
 - source_plan: `_bmad-output/implementation-artifacts/plan-1688-saved-page-import.md`
   summary: Assess 1688 Open Platform API eligibility and field coverage before choosing an official integration.
   evidence: API access and available product, supplier, and review fields require verification from the developer portal and do not block the saved-page import.
+- source_plan: `_bmad-output/implementation-artifacts/plan-1688-browser-extension-capture.md`
+  summary: Check whether a still-loading 1688 offer page can produce a sparse capture that consumes quota.
+  evidence: The signed-in live page state is unavailable here; a real Chrome click-through will show whether loading versus challenge states need separate handling.
+- source_plan: `_bmad-output/implementation-artifacts/plan-1688-browser-extension-capture.md`
+  summary: Expand reliable browser evidence coverage using representative 1688 pages and field-specific source checks.
+  evidence: The user's live capture verified supplier name, product title, and price text at 25% coverage; company details, activity, ratings, reviews, delivery, and transaction signals remain unknown. The user flagged quantity and quality as limited.
+- source_plan: `_bmad-output/implementation-artifacts/plan-1688-browser-extension-capture.md`
+  summary: Add browser automation for popup reopening, result recovery after a failed lookup, and automatic web-result navigation.
+  evidence: The user verified the live sign-in/capture/result flow. Automated checks cover contracts and proxy behavior; browser lifecycle and the final auto-opening addition currently rely on reviewed Chrome API wiring and manual operation.

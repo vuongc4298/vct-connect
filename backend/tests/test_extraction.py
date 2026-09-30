@@ -8,10 +8,35 @@ import pytest
 
 from backend.app.extraction import extract_1688, normalize_1688_url, parse_1688_page
 from backend.app.extraction.offer1688 import PublicOnlyBackend, UnsafeDestination
+from backend.app.extraction.extension1688 import DomCapture, normalize_capture
 
 
 URL = "https://detail.1688.com/offer/996518024136.html"
 AT = datetime(2026, 9, 29, tzinfo=timezone.utc)
+
+
+def test_selected_dom_capture_has_explicit_coverage_and_no_page_state():
+    capture = DomCapture.model_validate({
+        "source_url": URL,
+        "canonical_url": URL,
+        "offer_id": "996518024136",
+        "fields": {"supplier_name": "  Visible supplier  ", "product_title": " Dress ",
+                   "review_count": 12},
+    })
+    result = normalize_capture(capture)
+    data = result["supplier_data"]
+    assert result["extraction_status"] == "PARTIAL"
+    assert data["extraction_method"] == "EXTENSION_DOM"
+    assert data["analysis_mode"] == "EXTENSION_ENHANCED"
+    assert data["supplier_name"] == "Visible supplier"
+    assert data["products"][0]["title"] == "Dress"
+    assert data["transaction_signals"] == {"review_count": 12}
+    assert data["reviews"] is None and "reviews" in data["missing_fields"]
+    assert result["reviews"] == []
+    assert result["raw_payload"]["selected_fields"] == {
+        "supplier_name": "Visible supplier", "product_title": "Dress", "review_count": 12,
+    }
+    assert set(result["raw_payload"]) == {"source_url", "captured_at", "provenance", "selected_fields"}
 
 
 def test_supplied_1688_capture_yields_auditable_supplier_data():

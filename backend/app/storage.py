@@ -476,6 +476,35 @@ class Store:
                 self._complete_processing(conn, analysis_id, token, payload)
         return analysis_id
 
+    def capture_customer_page(
+        self, source_url: str, user_id: UUID, payload: dict, *,
+        customer_limit: int, window_seconds: int,
+    ) -> UUID:
+        """Admit and persist selected browser evidence atomically without a queue."""
+        supplier_data = payload.get("supplier_data")
+        if payload.get("source_url") != source_url or (
+            payload.get("extraction_status") in {"SUCCESS", "PARTIAL"}
+            and (not isinstance(supplier_data, dict)
+                 or supplier_data.get("extraction_method") != "EXTENSION_DOM"
+                 or supplier_data.get("analysis_mode") != "EXTENSION_ENHANCED")
+        ):
+            raise ValueError("Capture has mismatched provenance")
+        analysis_id = uuid4()
+        token = uuid4()
+        with self.connect() as conn:
+            with conn.transaction():
+                self._admit(conn, "CUSTOMER", str(user_id), customer_limit, window_seconds)
+                self._insert_analysis(conn, analysis_id, source_url, user_id, actor_type="CUSTOMER")
+                conn.execute(
+                    """UPDATE analyses SET status = 'PROCESSING', attempt_count = 1,
+                              mode = 'EXTENSION_ENHANCED', extraction_method = 'EXTENSION_DOM',
+                              processing_claim_token = %s WHERE id = %s""",
+                    (token, analysis_id),
+                )
+                self._event(conn, analysis_id, "PROCESSING", 1)
+                self._complete_processing(conn, analysis_id, token, payload)
+        return analysis_id
+
     def _complete_processing(self, conn, analysis_id: UUID, token: UUID, payload: dict) -> str:
         public_payload = {key: value for key, value in payload.items()
                           if key not in {"raw_payload", "reviews", "supplier_data"}}
@@ -537,7 +566,7 @@ class Store:
             supplier_id = uuid4()
             external_id = supplier_data.get("platform_supplier_id")
             if external_id:
-                if supplier_data["extraction_method"] == "USER_UPLOAD":
+                if supplier_data["extraction_method"] in {"USER_UPLOAD", "EXTENSION_DOM"}:
                     supplier = conn.execute(
                         """INSERT INTO suppliers (id, platform, platform_supplier_id, name, source_url)
                            VALUES (%s, '1688', %s, %s, %s)

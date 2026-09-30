@@ -1,0 +1,9 @@
+body { width: 360px; min-height: 300px; margin: 0; font: 14px system-ui, sans-serif; color: #173348; background: #f6f9fb; }
+main { padding: 18px; }
+h1 { font-size: 18px; margin: 0 0 6px; }
+p { line-height: 1.4; }
+button { padding: 10px 13px; border: 0; border-radius: 7px; background: #087d83; color: white; cursor: pointer; margin: 4px 6px 4px 0; }
+button:disabled { opacity: .55; cursor: wait; }
+.status { background: white; border: 1px solid #d6e2e8; border-radius: 8px; padding: 12px; margin: 12px 0; }
+.error { color: #a52828; }
+small { color: #526976; }

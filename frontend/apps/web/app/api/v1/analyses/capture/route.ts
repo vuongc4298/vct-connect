@@ -2,12 +2,8 @@ import { proxyBackend } from "../../../_backend";
 
 export const dynamic = "force-dynamic";
 
-export async function GET(
-  request: Request,
-  context: { params: Promise<{ analysisId: string }> },
-): Promise<Response> {
-  const { analysisId } = await context.params;
-  return proxyBackend(request, `/api/v1/analyses/${encodeURIComponent(analysisId)}`);
+export async function POST(request: Request): Promise<Response> {
+  return proxyBackend(request, "/api/v1/analyses/capture");
 }
 
 export async function OPTIONS(request: Request): Promise<Response> {
@@ -16,7 +12,7 @@ export async function OPTIONS(request: Request): Promise<Response> {
   }
   return new Response(null, { status: 204, headers: {
     "Access-Control-Allow-Origin": request.headers.get("origin")!,
-    "Access-Control-Allow-Methods": "GET, OPTIONS",
+    "Access-Control-Allow-Methods": "POST, OPTIONS",
     "Access-Control-Allow-Headers": "authorization, content-type",
     "Vary": "Origin",
   } });

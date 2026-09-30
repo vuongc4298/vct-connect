@@ -1,6 +1,7 @@
 import os
 import base64
 from hashlib import sha256
+from dataclasses import replace
 from datetime import datetime, timedelta, timezone
 from uuid import UUID, uuid4
 
@@ -100,6 +101,12 @@ class AuthStore:
             "reviews": payload.get("reviews", []),
         }
         return analysis_id
+
+    def capture_customer_page(self, source_url, user_id, payload, *, customer_limit, window_seconds):
+        return self.import_customer_page(
+            source_url, user_id, payload,
+            customer_limit=customer_limit, window_seconds=window_seconds,
+        )
 
     def submit_guest(self, source_url, guest_key, *, azure, browser_limit, global_limit, window_seconds):
         analysis_id = self.submit_azure(source_url) if azure else self.submit_local(source_url)
@@ -415,6 +422,75 @@ def test_parser_recursion_error_is_a_pollable_failure_without_snapshot(signing_k
     row = store.rows[UUID(response.json()["id"])]
     assert row["result"] == {"source_url": url, "extraction_status": "PARSE_FAILED", "reason": "PARSER_LIMIT"}
     assert row["supplier_data"] is None
+
+
+@pytest.mark.parametrize("party,expected_status", [
+    ("chrome-extension://klggcepemjjbphjclpiabgpfgdbgiljj", 201),
+    ("chrome-extension://aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa", 401),
+])
+def test_capture_verifies_exact_configured_extension_origin(signing_keys, party, expected_status):
+    private, public = signing_keys
+    extension = "chrome-extension://klggcepemjjbphjclpiabgpfgdbgiljj"
+    configured = replace(settings(public), clerk_authorized_parties=(PARTY, extension))
+    store = AuthStore()
+    client = TestClient(create_app(store=store, settings=configured, verifier=ClerkTokenVerifier(configured)))
+    response = client.post("/api/v1/analyses/capture", headers=auth_header(token(private, azp=party)), json={
+        "source_url": "https://detail.1688.com/offer/996518024136.html",
+        "offer_id": "996518024136",
+        "fields": {"product_title": "Visible product"},
+    })
+    assert response.status_code == expected_status
+    assert len(store.rows) == (1 if expected_status == 201 else 0)
+
+
+def test_extension_capture_requires_customer_and_preserves_owner_scope(signing_keys):
+    private, public = signing_keys
+    client, store = client_and_store(public)
+    url = "https://detail.1688.com/offer/996518024136.html"
+    capture = {
+        "source_url": url,
+        "canonical_url": url,
+        "offer_id": "996518024136",
+        "fields": {"product_title": "Visible dress", "supplier_name": "Visible supplier"},
+    }
+    route = "/api/v1/analyses/capture"
+    assert client.post(route, json=capture).status_code == 401
+    owner = auth_header(token(private, "extension_owner"))
+    response = client.post(route, json=capture, headers=owner)
+    assert response.status_code == 201
+    analysis_id = UUID(response.json()["id"])
+    row = store.rows[analysis_id]
+    assert row["supplier_data"]["extraction_method"] == "EXTENSION_DOM"
+    assert row["supplier_data"]["analysis_mode"] == "EXTENSION_ENHANCED"
+    assert row["supplier_data"]["products"] == [{"offer_id": "996518024136", "title": "Visible dress"}]
+    assert row["raw_evidence"]["selected_fields"] == capture["fields"]
+    assert client.get(f"/api/v1/analyses/{analysis_id}", headers=owner).status_code == 200
+    other = auth_header(token(private, "extension_other"))
+    assert client.get(f"/api/v1/analyses/{analysis_id}", headers=other).status_code == 404
+    store.users["extension_owner"]["role"] = "ADMIN"
+    assert client.post(route, json=capture, headers=owner).status_code == 403
+
+
+def test_extension_capture_rejects_extra_or_mismatched_evidence_and_sparse_page(signing_keys):
+    private, public = signing_keys
+    client, store = client_and_store(public)
+    url = "https://detail.1688.com/offer/996518024136.html"
+    headers = auth_header(token(private))
+    route = "/api/v1/analyses/capture"
+    base = {"source_url": url, "offer_id": "996518024136", "fields": {"product_title": "Dress"}}
+    assert client.post(route, json={**base, "cookie": "should never be accepted"}, headers=headers).status_code == 422
+    assert client.post(route, json={**base, "offer_id": "111111111111"}, headers=headers).status_code == 422
+    assert client.post(route, json={**base, "canonical_url": "https://detail.1688.com/offer/111111111111.html"}, headers=headers).status_code == 422
+    assert client.post(route, json={**base, "fields": {"product_title": "x" * 501}}, headers=headers).status_code == 422
+    assert client.post(route, content=b"x" * 16_385, headers={**headers, "content-type": "application/json"}).status_code == 413
+    assert not store.rows
+    sparse = client.post(route, json={**base, "fields": {}}, headers=headers)
+    assert sparse.status_code == 201
+    row = store.rows[UUID(sparse.json()["id"])]
+    assert row["result"]["reason"] == "NO_SELECTED_EVIDENCE"
+    assert row["supplier_data"] is None
+    store.deny_import = True
+    assert client.post(route, json=base, headers=headers).status_code == 429
 
 
 def test_jwks_outage_returns_service_unavailable(signing_keys, monkeypatch):

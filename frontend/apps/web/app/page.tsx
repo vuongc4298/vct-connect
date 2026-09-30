@@ -229,7 +229,7 @@ function Sidebar({ view, historyCount, onViewChange }: { view: WorkspaceView; hi
 function ProgressCard({ analysis, delayed, requestedMethod }: { analysis: Analysis | null; delayed: boolean; requestedMethod: string | null }) {
   const presentation = analysisPresentation(analysis);
   const method = analysis?.extraction_method ?? requestedMethod;
-  const liveExtraction = method === "PUBLIC_HTTP" || method === "USER_UPLOAD";
+  const liveExtraction = method === "PUBLIC_HTTP" || method === "USER_UPLOAD" || method === "EXTENSION_DOM";
   return <section className="progress-card" aria-live="polite">
     <div className="progress-top"><div><span className={`status-orb ${presentation.orbClass}`}>{presentation.orbSymbol}</span><div><strong>{presentation.headline}</strong><p>{presentation.detail}</p></div></div><Pill tone={presentation.pillTone}>{presentation.pillLabel}</Pill></div>
     <div className="steps">
@@ -439,6 +439,26 @@ export default function Page() {
   }, [userId]);
 
   useEffect(() => {
+    if (!userId) return;
+    const analysisId = new URLSearchParams(window.location.search).get("analysis");
+    if (!analysisId) return;
+    if (!/^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i.test(analysisId)) {
+      setError("Mã phân tích không hợp lệ");
+      return;
+    }
+    setRequestedMethod("EXTENSION_DOM");
+    setId(analysisId);
+    setView("analysis");
+  }, [userId]);
+
+  function clearAnalysisQuery() {
+    const next = new URL(window.location.href);
+    if (!next.searchParams.has("analysis")) return;
+    next.searchParams.delete("analysis");
+    window.history.replaceState(null, "", `${next.pathname}${next.search}${next.hash}`);
+  }
+
+  useEffect(() => {
     if (!userId || !historyReady || historyOwnerId !== userId) return;
     try {
       window.localStorage.setItem(`vct-connect-demo-history:${userId}`, JSON.stringify(history));
@@ -456,10 +476,15 @@ export default function Page() {
     async function poll() {
       try {
         const current = await getAnalysis(id!, { getToken });
-        if (active) { setAnalysis(current); setError(""); }
+        if (active) {
+          setAnalysis(current); setError("");
+          if (current.extraction_method === "EXTENSION_DOM") setUrl(current.source_url);
+        }
         if (!analysisPresentation(current).shouldPoll) return;
       } catch (cause) {
-        if (active) setError(cause instanceof Error ? cause.message : "Không thể tải phân tích");
+        if (active) setError(cause instanceof ApiError && cause.status === 404
+          ? "Không tìm thấy phân tích cho tài khoản này. Đăng nhập cùng tài khoản VCT Connect đã dùng trong tiện ích."
+          : cause instanceof Error ? cause.message : "Không thể tải phân tích");
         if (cause instanceof ApiError && [401, 403, 404].includes(cause.status)) {
           if (active) setId(null);
           return;
@@ -494,6 +519,7 @@ export default function Page() {
 
   async function submit(event: FormEvent) {
     event.preventDefault();
+    clearAnalysisQuery();
     setBusy(true); setError(""); setAnalysis(null); setId(null); setDelayed(false);
     setRequestedMethod(savedPage ? "USER_UPLOAD" : url === FIXTURE_URL ? "FIXTURE" : "PUBLIC_HTTP");
     try {
@@ -510,6 +536,7 @@ export default function Page() {
   }
 
   function showNewAnalysis() {
+    clearAnalysisQuery();
     setView("analysis");
     setId(null);
     setAnalysis(null);

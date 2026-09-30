@@ -7,7 +7,7 @@ from typing import Annotated
 from fastapi import Depends, FastAPI, HTTPException, Request
 from fastapi.responses import JSONResponse
 from starlette.concurrency import run_in_threadpool
-from pydantic import BaseModel, field_validator
+from pydantic import BaseModel, ValidationError, field_validator
 from .auth import (
     ADMIN,
     ALL_ROLES,
@@ -23,6 +23,7 @@ from .config import Settings
 from .fixture import validate_fixture_url
 from .extraction import normalize_1688_url
 from .extraction.offer1688 import MAX_HTML_BYTES, parse_1688_page
+from .extraction.extension1688 import DomCapture, MAX_CAPTURE_BYTES, normalize_capture
 from .storage import AdmissionDenied, Store
 
 
@@ -180,6 +181,39 @@ def create_app(
         except Exception as exc:
             raise HTTPException(status_code=503, detail="Database unavailable") from exc
         return {"id": analysis_id, "status": "COMPLETED"}
+
+    @app.post("/api/v1/analyses/capture", status_code=201)
+    async def capture_browser_evidence(
+        request: Request,
+        principal: Annotated[Principal, Depends(require_roles(CUSTOMER))],
+    ):
+        if request.headers.get("content-type", "").split(";", 1)[0].strip().lower() != "application/json":
+            raise HTTPException(status_code=415, detail="Submit selected JSON evidence")
+        content = bytearray()
+        async for chunk in request.stream():
+            content.extend(chunk)
+            if len(content) > MAX_CAPTURE_BYTES:
+                raise HTTPException(status_code=413, detail="Capture exceeds 16 KB")
+        try:
+            capture = DomCapture.model_validate_json(bytes(content))
+            payload = normalize_capture(capture)
+        except ValidationError as exc:
+            raise HTTPException(status_code=422, detail="Invalid selected evidence") from exc
+        except ValueError as exc:
+            raise HTTPException(status_code=422, detail=str(exc)) from exc
+        try:
+            analysis_id = await run_in_threadpool(
+                store.capture_customer_page,
+                payload["source_url"], principal.user_id, payload,
+                customer_limit=settings.customer_limit,
+                window_seconds=settings.admission_window_seconds,
+            )
+        except AdmissionDenied as exc:
+            raise HTTPException(status_code=429, detail="Submission limit reached") from exc
+        except Exception as exc:
+            raise HTTPException(status_code=503, detail="Database unavailable") from exc
+        return {"id": analysis_id, "status": "COMPLETED",
+                "extraction_status": payload["extraction_status"]}
 
     @app.post("/api/v1/guest-analyses", status_code=202)
     def submit_guest(body: Submission, request: Request):

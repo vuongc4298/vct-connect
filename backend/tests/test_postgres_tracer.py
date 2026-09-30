@@ -12,6 +12,7 @@ from backend.app.auth import InvalidIdentity, VerifiedIdentity
 from backend.app.config import Settings
 from backend.app.fixture import FIXTURE_URL, fixture_result
 from backend.app.extraction import parse_1688_page
+from backend.app.extraction.extension1688 import DomCapture, normalize_capture
 from backend.app.main import create_app
 from backend.app.queue import AzureQueue
 from backend.app.storage import AdmissionDenied, LeaseLost, ResultConflict, Store
@@ -221,6 +222,42 @@ def test_saved_page_import_is_atomic_owner_scoped_and_quota_limited(store):
             remove(store, analysis_id)
         with store.connect() as conn:
             conn.execute("DELETE FROM suppliers WHERE id = %s", (supplier_id,))
+            conn.execute("DELETE FROM admission_counters WHERE scope = 'CUSTOMER' AND subject = %s",
+                         (str(owner["id"]),))
+        remove_user(store, owner["clerk_user_id"])
+        remove_user(store, other["clerk_user_id"])
+
+
+def test_extension_capture_persists_owner_scoped_snapshot_without_queue(store):
+    owner = store.resolve_user(f"extension_owner_{uuid4().hex}")
+    other = store.resolve_user(f"extension_other_{uuid4().hex}")
+    url = "https://detail.1688.com/offer/996518024136.html"
+    payload = normalize_capture(DomCapture.model_validate({
+        "source_url": url, "offer_id": "996518024136",
+        "fields": {"supplier_name": "Visible supplier", "product_title": "Visible dress"},
+    }))
+    analysis_id = None
+    try:
+        analysis_id = store.capture_customer_page(
+            url, owner["id"], payload, customer_limit=1, window_seconds=86400,
+        )
+        row = store.get_for_user(analysis_id, owner["id"])
+        assert row["status"] == "COMPLETED"
+        assert row["mode"] == "EXTENSION_ENHANCED"
+        assert row["extraction_method"] == "EXTENSION_DOM"
+        assert row["supplier_data"]["products"][0]["title"] == "Visible dress"
+        assert row["raw_evidence"]["provenance"] == "USER_PROVIDED_BROWSER_EVIDENCE"
+        assert store.get_for_user(analysis_id, other["id"]) is None
+        with store.connect() as conn:
+            assert conn.execute("SELECT 1 FROM local_queue WHERE analysis_id = %s", (analysis_id,)).fetchone() is None
+            assert conn.execute("SELECT 1 FROM analysis_outbox WHERE analysis_id = %s", (analysis_id,)).fetchone() is None
+        with pytest.raises(AdmissionDenied):
+            store.capture_customer_page(url, owner["id"], payload,
+                                        customer_limit=1, window_seconds=86400)
+    finally:
+        if analysis_id:
+            remove(store, analysis_id)
+        with store.connect() as conn:
             conn.execute("DELETE FROM admission_counters WHERE scope = 'CUSTOMER' AND subject = %s",
                          (str(owner["id"]),))
         remove_user(store, owner["clerk_user_id"])
