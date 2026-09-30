@@ -25,6 +25,7 @@ from .contracts import CONTRACT_VERSION, EVIDENCE_FIELDS
 from .urls import normalize_1688_url, offer_id
 
 EXTRACTOR_VERSION = "1688-http.v1"
+UPLOAD_EXTRACTOR_VERSION = "1688-user-upload.v1"
 MAX_HTML_BYTES = 2_000_000
 MAX_REDIRECTS = 3
 
@@ -120,10 +121,15 @@ def _blocked_page(tree: HTMLParser) -> bool:
 
 
 def parse_1688_page(html: str, source_url: str, *, analysis_mode: str = "ACCOUNT_PUBLIC",
-                    extracted_at: datetime | None = None) -> dict:
+                    extracted_at: datetime | None = None,
+                    extraction_method: str = "PUBLIC_HTTP",
+                    uploaded_bytes: bytes | None = None) -> dict:
     """Parse one already fetched page; no network access or external assets."""
+    if extraction_method not in {"PUBLIC_HTTP", "USER_UPLOAD"}:
+        raise ValueError("Unsupported extraction method")
     source_url = normalize_1688_url(source_url)
     timestamp = (extracted_at or datetime.now(timezone.utc)).astimezone(timezone.utc).isoformat()
+    uploaded = extraction_method == "USER_UPLOAD"
     tree = HTMLParser(html)
     if _blocked_page(tree):
         return {"source_url": source_url, "extraction_status": "BLOCKED", "reason": "ACCESS_CHALLENGE"}
@@ -215,9 +221,10 @@ def parse_1688_page(html: str, source_url: str, *, analysis_mode: str = "ACCOUNT
         "offer_id": offer_id(source_url),
         "platform_supplier_id": str(supplier_id) if supplier_id else None,
         "extracted_at": timestamp,
-        "extraction_method": "PUBLIC_HTTP",
+        "extraction_method": extraction_method,
         "analysis_mode": analysis_mode,
-        "extractor_version": EXTRACTOR_VERSION,
+        "extractor_version": (UPLOAD_EXTRACTOR_VERSION if extraction_method == "USER_UPLOAD"
+                              else EXTRACTOR_VERSION),
         "completeness": round((len(EVIDENCE_FIELDS) - len(missing)) / len(EVIDENCE_FIELDS), 4),
         "completeness_denominator": list(EVIDENCE_FIELDS),
         "missing_fields": missing,
@@ -225,8 +232,9 @@ def parse_1688_page(html: str, source_url: str, *, analysis_mode: str = "ACCOUNT
     }
     raw_evidence = {
         "source_url": source_url,
-        "captured_at": timestamp,
-        "html_sha256": sha256(html.encode("utf-8")).hexdigest(),
+        "captured_at": None if uploaded else timestamp,
+        **({"imported_at": timestamp} if uploaded else {}),
+        "html_sha256": sha256(uploaded_bytes if uploaded_bytes is not None else html.encode("utf-8")).hexdigest(),
         "public_fields": {
             "title": offer_title,
             "shop_info": {key: shop.get(key) for key in

@@ -1,7 +1,8 @@
 import os
 import base64
+from hashlib import sha256
 from datetime import datetime, timedelta, timezone
-from uuid import uuid4
+from uuid import UUID, uuid4
 
 import jwt
 import pytest
@@ -85,6 +86,20 @@ class AuthStore:
 
     def submit_customer(self, source_url, user_id, *, azure, customer_limit, window_seconds):
         return self.submit_azure(source_url, user_id) if azure else self.submit_local(source_url, user_id)
+
+    def import_customer_page(self, source_url, user_id, payload, *, customer_limit, window_seconds):
+        if getattr(self, "deny_import", False):
+            raise AdmissionDenied("limit")
+        analysis_id = uuid4()
+        self.rows[analysis_id] = {
+            "id": analysis_id, "source_url": source_url, "status": "COMPLETED",
+            "user_id": user_id, "result": {key: value for key, value in payload.items()
+                                          if key not in {"supplier_data", "raw_payload", "reviews"}},
+            "supplier_data": payload.get("supplier_data"),
+            "raw_evidence": payload.get("raw_payload"),
+            "reviews": payload.get("reviews", []),
+        }
+        return analysis_id
 
     def submit_guest(self, source_url, guest_key, *, azure, browser_limit, global_limit, window_seconds):
         analysis_id = self.submit_azure(source_url) if azure else self.submit_local(source_url)
@@ -309,6 +324,97 @@ def test_publishable_key_issuer_fallback():
     assert _issuer_from_publishable_key(f"pk_test_{encoded}") == ISSUER
     assert _issuer_from_publishable_key("malformed") is None
     assert _issuer_from_publishable_key(None) is None
+
+
+def test_saved_page_import_requires_customer_and_owner(signing_keys):
+    private, public = signing_keys
+    client, store = client_and_store(public)
+    url = "https://detail.1688.com/offer/996518024136.html"
+    page = f'<link rel="canonical" href="{url}"><div class="title-content"><h1>Dress</h1></div>'
+    endpoint = f"/api/v1/analyses/import?source_url={url}"
+    assert client.post(endpoint, content=page, headers={"content-type": "text/html"}).status_code == 401
+    owner = auth_header(token(private, "saved_page_owner"))
+    submitted = client.post(endpoint, content=page, headers={**owner, "content-type": "text/html"})
+    assert submitted.status_code == 201
+    analysis_id = submitted.json()["id"]
+    row = client.get(f"/api/v1/analyses/{analysis_id}", headers=owner).json()
+    assert row["result"]["extraction_status"] == "PARTIAL"
+    assert row["supplier_data"]["extraction_method"] == "USER_UPLOAD"
+    assert row["supplier_data"]["missing_fields"]
+    assert page not in str(row["raw_evidence"])
+    other = auth_header(token(private, "saved_page_other"))
+    assert client.get(f"/api/v1/analyses/{analysis_id}", headers=other).status_code == 404
+    store.users["saved_page_owner"]["role"] = "ADMIN"
+    assert client.post(endpoint, content=page, headers={**owner, "content-type": "text/html"}).status_code == 403
+
+
+def test_saved_page_import_safe_outcomes_and_validation(signing_keys):
+    private, public = signing_keys
+    client, store = client_and_store(public)
+    url = "https://detail.1688.com/offer/996518024136.html"
+    endpoint = f"/api/v1/analyses/import?source_url={url}"
+    headers = {**auth_header(token(private)), "content-type": "text/html; charset=utf-8"}
+    challenge = client.post(endpoint, content="<title>Security verification</title>", headers=headers)
+    assert challenge.status_code == 201
+    blocked = store.rows[UUID(challenge.json()["id"])]
+    assert blocked["result"]["extraction_status"] == "BLOCKED"
+    assert blocked["supplier_data"] is None
+    wrong = client.post(
+        endpoint,
+        content='<link rel="canonical" href="https://detail.1688.com/offer/111111111111.html"><h1>Wrong</h1>',
+        headers=headers,
+    )
+    assert wrong.status_code == 201
+    mismatch = store.rows[UUID(wrong.json()["id"])]
+    assert mismatch["result"]["reason"] == "OFFER_MISMATCH"
+    assert mismatch["supplier_data"] is None
+    before = len(store.rows)
+    assert client.post(endpoint, content="x" * 2_000_001, headers=headers).status_code == 413
+    assert client.post(endpoint, content="<html></html>", headers={**headers, "content-type": "application/json"}).status_code == 415
+    assert client.post(endpoint, content=b"\xff", headers=headers).status_code == 415
+    assert len(store.rows) == before
+    store.deny_import = True
+    assert client.post(endpoint, content="<title>Captcha</title>", headers=headers).status_code == 429
+
+
+def test_saved_page_import_checks_quoted_charsets_and_hashes_original_bytes(signing_keys):
+    private, public = signing_keys
+    client, store = client_and_store(public)
+    url = "https://detail.1688.com/offer/996518024136.html"
+    endpoint = f"/api/v1/analyses/import?source_url={url}"
+    auth = auth_header(token(private))
+    page = (f'<link rel="canonical" href="{url}">'
+            '<div class="title-content"><h1>Dress</h1></div>').encode()
+    for charset in ('text/html; charset = "gbk"', 'text/html; charset= "utf-16"'):
+        assert client.post(endpoint, content=page, headers={**auth, "content-type": charset}).status_code == 415
+    assert store.rows == {}
+    uploaded = b"\xef\xbb\xbf" + page
+    response = client.post(endpoint, content=uploaded,
+                           headers={**auth, "content-type": 'text/html; charset = "utf-8"'})
+    assert response.status_code == 201
+    row = store.rows[UUID(response.json()["id"])]
+    assert row["raw_evidence"]["html_sha256"] == sha256(uploaded).hexdigest()
+    assert row["raw_evidence"]["captured_at"] is None
+    assert row["raw_evidence"]["imported_at"] == row["supplier_data"]["extracted_at"]
+
+
+def test_parser_recursion_error_is_a_pollable_failure_without_snapshot(signing_keys, monkeypatch):
+    private, public = signing_keys
+    client, store = client_and_store(public)
+    url = "https://detail.1688.com/offer/996518024136.html"
+    endpoint = f"/api/v1/analyses/import?source_url={url}"
+
+    def nested_page(*_args, **_kwargs):
+        raise RecursionError("deep page")
+
+    monkeypatch.setattr("backend.app.main.parse_1688_page", nested_page)
+    response = client.post(endpoint, content="<html></html>", headers={
+        **auth_header(token(private)), "content-type": "text/html",
+    })
+    assert response.status_code == 201
+    row = store.rows[UUID(response.json()["id"])]
+    assert row["result"] == {"source_url": url, "extraction_status": "PARSE_FAILED", "reason": "PARSER_LIMIT"}
+    assert row["supplier_data"] is None
 
 
 def test_jwks_outage_returns_service_unavailable(signing_keys, monkeypatch):

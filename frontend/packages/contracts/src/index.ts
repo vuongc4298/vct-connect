@@ -17,6 +17,7 @@ export type AnalysisStatusEvent = {
 };
 export type SubmitAnalysisRequest = { source_url: string };
 export type SubmitAnalysisResponse = { id: string; status: "QUEUED" };
+export type ImportSavedPageResponse = { id: string; status: "COMPLETED" };
 export type SubmitGuestAnalysisRequest = SubmitAnalysisRequest;
 export type SubmitGuestAnalysisResponse = SubmitAnalysisResponse;
 export type AnalysisMode = "GUEST_PUBLIC" | "ACCOUNT_PUBLIC" | "EXTENSION_ENHANCED";
@@ -76,6 +77,6 @@ export type Analysis = {
   result: FixtureResult | ExtractionResult | null;
   supplier_snapshot_id: string | null;
   supplier_data: SupplierData | null;
-  raw_evidence: { source_url: string; captured_at: string; html_sha256: string; public_fields: Record<string, unknown> } | null;
+  raw_evidence: { source_url: string; captured_at: string | null; imported_at?: string; html_sha256: string; public_fields: Record<string, unknown> } | null;
   reviews: Array<Record<string, unknown>>;
 };

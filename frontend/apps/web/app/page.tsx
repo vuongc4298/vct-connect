@@ -1,9 +1,10 @@
 "use client";
 
 import { SignInButton, SignUpButton, UserButton, useAuth } from "@clerk/nextjs";
-import { useEffect, useState, type FormEvent, type ReactNode } from "react";
+import { useEffect, useRef, useState, type FormEvent, type ReactNode } from "react";
 import { FIXTURE_URL, type Analysis } from "@vct/contracts";
-import { ApiError, getAnalysis, getGuestAnalysis, submitAnalysis, submitGuestAnalysis } from "@vct/api-client";
+import { ApiError, getAnalysis, getGuestAnalysis, submitGuestAnalysis } from "@vct/api-client";
+import { submitSelectedAnalysis } from "./analysis-request";
 import { analysisPresentation } from "./analysis-status";
 import { ExtractionEvidence, isFixtureResult } from "./extraction-evidence";
 
@@ -176,7 +177,7 @@ function Landing() {
           </button>
         </form>
         {guestError && <p role="alert" className="error-banner">{guestError}</p>}
-        {guestId && <ProgressCard analysis={guestAnalysis} delayed={false} />}
+        {guestId && <ProgressCard analysis={guestAnalysis} delayed={false} requestedMethod={null} />}
         {guestId && guestAnalysis?.status === "COMPLETED" &&
           <section className="progress-card" aria-label="Bản xem trước cho khách">
             <h2>Bản xem trước công khai</h2>
@@ -225,9 +226,10 @@ function Sidebar({ view, historyCount, onViewChange }: { view: WorkspaceView; hi
   </aside>;
 }
 
-function ProgressCard({ analysis, delayed }: { analysis: Analysis | null; delayed: boolean }) {
+function ProgressCard({ analysis, delayed, requestedMethod }: { analysis: Analysis | null; delayed: boolean; requestedMethod: string | null }) {
   const presentation = analysisPresentation(analysis);
-  const liveExtraction = analysis?.extraction_method === "PUBLIC_HTTP";
+  const method = analysis?.extraction_method ?? requestedMethod;
+  const liveExtraction = method === "PUBLIC_HTTP" || method === "USER_UPLOAD";
   return <section className="progress-card" aria-live="polite">
     <div className="progress-top"><div><span className={`status-orb ${presentation.orbClass}`}>{presentation.orbSymbol}</span><div><strong>{presentation.headline}</strong><p>{presentation.detail}</p></div></div><Pill tone={presentation.pillTone}>{presentation.pillLabel}</Pill></div>
     <div className="steps">
@@ -396,6 +398,9 @@ function DemoReport({ analysisId, sourceUrl }: { analysisId: string; sourceUrl: 
 export default function Page() {
   const { getToken, isLoaded, isSignedIn, userId } = useAuth();
   const [url, setUrl] = useState(FIXTURE_URL);
+  const savedPageInput = useRef<HTMLInputElement>(null);
+  const [savedPage, setSavedPage] = useState<File | null>(null);
+  const [requestedMethod, setRequestedMethod] = useState<string | null>(null);
   const [analysis, setAnalysis] = useState<Analysis | null>(null);
   const [id, setId] = useState<string | null>(null);
   const [error, setError] = useState("");
@@ -408,8 +413,14 @@ export default function Page() {
   const [historyStorageError, setHistoryStorageError] = useState(false);
   const [selectedHistoryId, setSelectedHistoryId] = useState<string | null>(null);
 
+  function clearSavedPage() {
+    setSavedPage(null);
+    if (savedPageInput.current) savedPageInput.current.value = "";
+  }
+
   useEffect(() => {
     setId(null); setAnalysis(null); setError(""); setDelayed(false); setView("analysis"); setHistoryReady(false); setHistoryOwnerId(null); setHistoryStorageError(false);
+    clearSavedPage(); setRequestedMethod(null);
     if (!userId) { setHistory([]); setSelectedHistoryId(null); return; }
     const storageKey = `vct-connect-demo-history:${userId}`;
     try {
@@ -484,9 +495,11 @@ export default function Page() {
   async function submit(event: FormEvent) {
     event.preventDefault();
     setBusy(true); setError(""); setAnalysis(null); setId(null); setDelayed(false);
+    setRequestedMethod(savedPage ? "USER_UPLOAD" : url === FIXTURE_URL ? "FIXTURE" : "PUBLIC_HTTP");
     try {
-      const submitted = await submitAnalysis({ source_url: url }, { getToken });
+      const submitted = await submitSelectedAnalysis(url, savedPage, { getToken });
       setId(submitted.id);
+      if (savedPage) clearSavedPage();
     } catch (cause) {
       setError(cause instanceof Error ? cause.message : "Không thể gửi phân tích");
     } finally { setBusy(false); }
@@ -501,6 +514,8 @@ export default function Page() {
     setId(null);
     setAnalysis(null);
     setError("");
+    setRequestedMethod(null);
+    clearSavedPage();
   }
 
   if (!isLoaded) return <div className="loading-screen"><Brand /><span>Đang khởi tạo bản demo…</span></div>;
@@ -511,16 +526,18 @@ export default function Page() {
     <div className="workspace">
       <header className="workspace-header"><div><span>Không gian Pilot</span><i>/</i><strong>{view === "analysis" ? "Phân tích mới" : "Lịch sử"}</strong></div><nav className="mobile-nav" aria-label="Điều hướng di động"><button type="button" className={view === "analysis" ? "active" : ""} aria-current={view === "analysis" ? "page" : undefined} onClick={() => setView("analysis")}>Phân tích</button><button type="button" className={view === "history" ? "active" : ""} aria-current={view === "history" ? "page" : undefined} onClick={() => setView("history")}>Lịch sử</button></nav><div className="header-tools"><button type="button" className="icon-button" aria-label="Thông báo">♢<i /></button><span className="language">VI</span><UserButton /></div></header>
       {view === "history" ? <HistoryWorkspace history={history} selectedId={selectedHistoryId} storageError={historyStorageError} onSelect={setSelectedHistoryId} onNoteChange={updateHistoryNote} onNewAnalysis={showNewAnalysis} /> : <main className="dashboard" id="analysis">
-        <section className="dashboard-intro"><div><Pill tone="good">BẢN DEMO TƯƠNG TÁC</Pill><h1>Phân tích nhà cung cấp</h1><p>Dán liên kết 1688 để xem bằng chứng công khai và độ phủ. URL mẫu hiển thị báo cáo rủi ro minh họa.</p></div>{(analysis?.status === "COMPLETED" || analysis?.status === "FAILED_FINAL") && <button type="button" className="button button-ghost" onClick={() => { setId(null); setAnalysis(null); }}>+ Phân tích mới</button>}</section>
+        <section className="dashboard-intro"><div><Pill tone="good">BẢN DEMO TƯƠNG TÁC</Pill><h1>Phân tích nhà cung cấp</h1><p>Dán liên kết 1688 để xem bằng chứng công khai và độ phủ. URL mẫu hiển thị báo cáo rủi ro minh họa.</p></div>{(analysis?.status === "COMPLETED" || analysis?.status === "FAILED_FINAL") && <button type="button" className="button button-ghost" onClick={showNewAnalysis}>+ Phân tích mới</button>}</section>
         <section className="analyze-card">
           <form onSubmit={submit}>
             <label htmlFor="source-url">LIÊN KẾT SẢN PHẨM 1688</label>
-            <div className="url-field"><span className="link-icon">↗</span><input id="source-url" type="url" required value={url} onChange={event => setUrl(event.target.value)} aria-describedby="url-help" /><button className="button button-primary" disabled={busy}>{busy ? <><i className="spinner" /> Đang gửi</> : <>Trích xuất <span>→</span></>}</button></div>
-            <div className="form-meta" id="url-help"><span><b>1688</b> Nhập URL HTTPS detail.1688.com/offer/…html. URL mẫu hiện tại chạy fixture demo.</span><Pill>{url === FIXTURE_URL ? "Dữ liệu fixture" : "Trích xuất công khai"}</Pill></div>
+            <div className="url-field"><span className="link-icon">↗</span><input id="source-url" type="url" required value={url} onChange={event => setUrl(event.target.value)} aria-describedby="url-help" /><button className="button button-primary" disabled={busy}>{busy ? <><i className="spinner" /> Đang gửi</> : <>{savedPage ? "Nhập trang đã lưu" : "Trích xuất"} <span>→</span></>}</button></div>
+            <label htmlFor="saved-page">Trang 1688 đã lưu (HTML, tùy chọn)</label>
+            <input id="saved-page" ref={savedPageInput} type="file" accept=".html,.htm,text/html" onChange={event => setSavedPage(event.target.files?.[0] ?? null)} />
+            <div className="form-meta" id="url-help"><span><b>1688</b> Nhập URL HTTPS detail.1688.com/offer/…html. URL mẫu hiện tại chạy fixture demo.</span><Pill>{savedPage ? "USER_UPLOAD" : url === FIXTURE_URL ? "Dữ liệu fixture" : "Trích xuất công khai"}</Pill></div>
           </form>
         </section>
         {error && <div role="alert" className="error-banner"><span>!</span><div><strong>Không thể tiếp tục</strong><p>{error === "Analysis not found" ? "Không tìm thấy phân tích. Vui lòng gửi lại dữ liệu demo." : error}</p></div></div>}
-        {id && <ProgressCard analysis={analysis} delayed={delayed} />}
+        {id && <ProgressCard analysis={analysis} delayed={delayed} requestedMethod={requestedMethod} />}
         {id && analysis?.status === "COMPLETED" && isFixtureResult(analysis.result) && <DemoReport analysisId={id} sourceUrl={analysis.result.source_url} />}
         {id && analysis?.status === "COMPLETED" && !isFixtureResult(analysis.result) && <ExtractionEvidence analysis={analysis} />}
         {!id && <section className="empty-guide"><div className="guide-icon">◎</div><h2>Một URL, bằng chứng rõ nguồn</h2><p>URL 1688 công khai được trích xuất khi truy cập được; URL mẫu chạy báo cáo fixture minh họa. Trang bị chặn sẽ hiển thị trạng thái rõ ràng.</p><div><span>1</span>Gửi URL<i /><span>2</span>Chờ xử lý<i /><span>3</span>Xem kết quả</div></section>}

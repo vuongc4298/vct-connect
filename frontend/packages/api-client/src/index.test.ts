@@ -1,7 +1,41 @@
 import assert from "node:assert/strict";
 import test from "node:test";
 
-import { ApiError, getAnalysis, getGuestAnalysis, submitAnalysis, submitGuestAnalysis } from "./index";
+import { ApiError, getAnalysis, getGuestAnalysis, importSavedPage, submitAnalysis, submitGuestAnalysis } from "./index";
+
+test("saved page import sends the file with bearer authorization and rejects oversized files", async () => {
+  const originalFetch = globalThis.fetch;
+  let sent: { url: string; headers: Headers; body: BodyInit | null | undefined } | undefined;
+  globalThis.fetch = async (input, init) => {
+    sent = { url: String(input), headers: new Headers(init?.headers), body: init?.body };
+    return Response.json({ id: "uploaded", status: "COMPLETED" }, { status: 201 });
+  };
+  try {
+    const file = new File(["<html></html>"], "offer.html", { type: "text/html" });
+    const result = await importSavedPage(
+      "https://detail.1688.com/offer/996518024136.html", file,
+      { getToken: async () => "upload-token" },
+    );
+    assert.equal(result.status, "COMPLETED");
+    assert.match(sent?.url ?? "", /^\/api\/v1\/analyses\/import\?source_url=/);
+    assert.equal(sent?.headers.get("Authorization"), "Bearer upload-token");
+    assert.equal(sent?.headers.get("Content-Type"), "text/html; charset=utf-8");
+    assert.equal(sent?.body, file);
+    await assert.rejects(
+      importSavedPage("https://detail.1688.com/offer/996518024136.html",
+        new File([new Uint8Array(2_000_001)], "large.html"), { getToken: async () => "upload-token" }),
+      (error: unknown) => error instanceof ApiError && error.status === 413,
+    );
+    await assert.rejects(
+      importSavedPage("https://detail.1688.com/offer/996518024136.html",
+        new File(["not an HTML page"], "image.jpg", { type: "image/jpeg" }),
+        { getToken: async () => "upload-token" }),
+      (error: unknown) => error instanceof ApiError && error.status === 415,
+    );
+  } finally {
+    globalThis.fetch = originalFetch;
+  }
+});
 
 
 test("adds a fresh bearer token to submission and polling requests", async () => {

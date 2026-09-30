@@ -40,6 +40,25 @@ def test_supplied_1688_capture_yields_auditable_supplier_data():
     assert result["raw_payload"]["public_fields"]["rate_info"]["goodsGrade"] == 4.9
 
 
+def test_saved_capture_has_upload_provenance_and_public_default_is_unchanged():
+    capture = Path(__file__).parent / "fixtures" / "1688_offer_996518024136.html"
+    html = capture.read_text(encoding="utf-8")
+    uploaded = parse_1688_page(html, URL, extracted_at=AT, extraction_method="USER_UPLOAD")
+    public = parse_1688_page(html, URL, extracted_at=AT)
+    assert uploaded["supplier_data"]["extraction_method"] == "USER_UPLOAD"
+    assert uploaded["supplier_data"]["extractor_version"] == "1688-user-upload.v1"
+    assert uploaded["raw_payload"]["captured_at"] is None
+    assert uploaded["raw_payload"]["imported_at"] == AT.isoformat()
+    assert public["raw_payload"]["captured_at"] == AT.isoformat()
+    assert "imported_at" not in public["raw_payload"]
+    assert public["supplier_data"]["extraction_method"] == "PUBLIC_HTTP"
+    assert uploaded["supplier_data"]["missing_fields"] == public["supplier_data"]["missing_fields"]
+    wrong = parse_1688_page(html, "https://detail.1688.com/offer/111111111111.html",
+                            extraction_method="USER_UPLOAD")
+    assert wrong["extraction_status"] == "PARSE_FAILED"
+    assert "supplier_data" not in wrong
+
+
 def test_sparse_offer_preserves_missing_fields_without_risk_claim():
     html = '<html><head><link rel="canonical" href="' + URL + '"></head><body>' \
            '<div class="title-content"><h1>Dress</h1></div></body></html>'

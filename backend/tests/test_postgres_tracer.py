@@ -14,7 +14,7 @@ from backend.app.fixture import FIXTURE_URL, fixture_result
 from backend.app.extraction import parse_1688_page
 from backend.app.main import create_app
 from backend.app.queue import AzureQueue
-from backend.app.storage import LeaseLost, ResultConflict, Store
+from backend.app.storage import AdmissionDenied, LeaseLost, ResultConflict, Store
 from backend.worker.main import dispatch_outbox_once, process_azure_once, process_local_once
 
 
@@ -161,6 +161,68 @@ def test_live_snapshot_transaction_linkage_owner_scope_and_replay(store):
         assert not process_local_once(store)
     finally:
         remove(store, analysis_id)
+        remove_user(store, owner["clerk_user_id"])
+        remove_user(store, other["clerk_user_id"])
+
+
+def test_saved_page_import_is_atomic_owner_scoped_and_quota_limited(store):
+    url = "https://detail.1688.com/offer/996518024136.html"
+    owner = store.resolve_user(f"import_owner_{uuid4().hex}")
+    other = store.resolve_user(f"import_other_{uuid4().hex}")
+    html = (f'<link rel="canonical" href="{url}">'
+            '<div class="title-content"><h1>Dress</h1></div>'
+            '<div class="review-item">Accessible review</div>')
+    payload = parse_1688_page(html, url, extraction_method="USER_UPLOAD")
+    seller_id = f"seller_{uuid4().hex}"
+    supplier_id = uuid4()
+    original_url = "https://detail.1688.com/offer/111111111111.html"
+    payload["supplier_data"]["platform_supplier_id"] = seller_id
+    payload["supplier_data"]["supplier_name"] = "Uploaded name"
+    with store.connect() as conn:
+        conn.execute(
+            """INSERT INTO suppliers (id, platform, platform_supplier_id, name, source_url)
+               VALUES (%s, '1688', %s, %s, %s)""",
+            (supplier_id, seller_id, "Existing name", original_url),
+        )
+    analysis_id = None
+    try:
+        invalid = {**payload, "supplier_data": {**payload["supplier_data"], "source_url": "wrong"}}
+        with pytest.raises(ValueError):
+            store.import_customer_page(url, owner["id"], invalid,
+                                       customer_limit=1, window_seconds=86400)
+        with store.connect() as conn:
+            assert conn.execute(
+                "SELECT used FROM admission_counters WHERE scope = 'CUSTOMER' AND subject = %s",
+                (str(owner["id"]),),
+            ).fetchone() is None
+        analysis_id = store.import_customer_page(url, owner["id"], payload,
+                                                 customer_limit=1, window_seconds=86400)
+        row = store.get_for_user(analysis_id, owner["id"])
+        assert row["status"] == "COMPLETED"
+        assert row["extraction_method"] == "USER_UPLOAD"
+        assert row["supplier_data"]["extraction_method"] == "USER_UPLOAD"
+        assert row["supplier_data"]["supplier_name"] == "Uploaded name"
+        assert row["reviews"] == [{"text": "Accessible review", "source_url": url}]
+        assert html not in str(row["raw_evidence"])
+        assert store.get_for_user(analysis_id, other["id"]) is None
+        assert [event["status"] for event in row["events"]] == ["QUEUED", "PROCESSING", "COMPLETED"]
+        with store.connect() as conn:
+            shared = conn.execute(
+                "SELECT name, source_url FROM suppliers WHERE id = %s", (supplier_id,),
+            ).fetchone()
+            assert shared == {"name": "Existing name", "source_url": original_url}
+            assert conn.execute("SELECT 1 FROM local_queue WHERE analysis_id = %s", (analysis_id,)).fetchone() is None
+            assert conn.execute("SELECT 1 FROM analysis_outbox WHERE analysis_id = %s", (analysis_id,)).fetchone() is None
+        with pytest.raises(AdmissionDenied):
+            store.import_customer_page(url, owner["id"], payload,
+                                       customer_limit=1, window_seconds=86400)
+    finally:
+        if analysis_id:
+            remove(store, analysis_id)
+        with store.connect() as conn:
+            conn.execute("DELETE FROM suppliers WHERE id = %s", (supplier_id,))
+            conn.execute("DELETE FROM admission_counters WHERE scope = 'CUSTOMER' AND subject = %s",
+                         (str(owner["id"]),))
         remove_user(store, owner["clerk_user_id"])
         remove_user(store, other["clerk_user_id"])
 

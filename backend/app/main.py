@@ -1,10 +1,12 @@
 from uuid import UUID
 from ipaddress import ip_address
+from email.message import Message
 import re
 from typing import Annotated
 
 from fastapi import Depends, FastAPI, HTTPException, Request
 from fastapi.responses import JSONResponse
+from starlette.concurrency import run_in_threadpool
 from pydantic import BaseModel, field_validator
 from .auth import (
     ADMIN,
@@ -20,6 +22,7 @@ from .auth import (
 from .config import Settings
 from .fixture import validate_fixture_url
 from .extraction import normalize_1688_url
+from .extraction.offer1688 import MAX_HTML_BYTES, parse_1688_page
 from .storage import AdmissionDenied, Store
 
 
@@ -115,6 +118,68 @@ def create_app(
         except Exception as exc:
             raise HTTPException(status_code=503, detail="Queue or database unavailable") from exc
         return {"id": analysis_id, "status": "QUEUED"}
+
+    @app.post("/api/v1/analyses/import", status_code=201)
+    async def import_saved_page(
+        request: Request,
+        source_url: str,
+        principal: Annotated[Principal, Depends(require_roles(CUSTOMER))],
+    ):
+        try:
+            source_url = normalize_1688_url(source_url)
+        except ValueError as exc:
+            raise HTTPException(status_code=422, detail="Unsupported 1688 offer URL") from exc
+        media = Message()
+        media["content-type"] = request.headers.get("content-type", "")
+        charsets = [value for name, value in (media.get_params(header="content-type") or [])[1:]
+                    if name.lower() == "charset"]
+        if media.get_content_type() != "text/html" or any(
+            not isinstance(value, str) or value.lower() not in {"utf-8", "utf8"}
+            for value in charsets
+        ):
+            raise HTTPException(status_code=415, detail="Upload a UTF-8 HTML page")
+        try:
+            declared_size = int(request.headers.get("content-length", "0"))
+        except ValueError:
+            declared_size = 0
+        if declared_size > MAX_HTML_BYTES:
+            raise HTTPException(status_code=413, detail="HTML page exceeds 2 MB")
+        content = bytearray()
+        async for chunk in request.stream():
+            content.extend(chunk)
+            if len(content) > MAX_HTML_BYTES:
+                raise HTTPException(status_code=413, detail="HTML page exceeds 2 MB")
+        if not content:
+            raise HTTPException(status_code=422, detail="HTML page is empty")
+        try:
+            html = content.decode("utf-8-sig")
+        except UnicodeError as exc:
+            raise HTTPException(status_code=415, detail="Upload a UTF-8 HTML page") from exc
+        declared_charset = re.search(
+            r'''<meta\b[^>]*\bcharset\s*=\s*["']?([a-z0-9_-]+)''', html[:8192], re.IGNORECASE,
+        )
+        if declared_charset and declared_charset.group(1).lower() not in {"utf-8", "utf8"}:
+            raise HTTPException(status_code=415, detail="Upload a UTF-8 HTML page")
+        try:
+            payload = await run_in_threadpool(
+                parse_1688_page, html, source_url, extraction_method="USER_UPLOAD",
+                uploaded_bytes=bytes(content),
+            )
+        except RecursionError:
+            payload = {"source_url": source_url, "extraction_status": "PARSE_FAILED",
+                       "reason": "PARSER_LIMIT"}
+        try:
+            analysis_id = await run_in_threadpool(
+                store.import_customer_page,
+                source_url, principal.user_id, payload,
+                customer_limit=settings.customer_limit,
+                window_seconds=settings.admission_window_seconds,
+            )
+        except AdmissionDenied as exc:
+            raise HTTPException(status_code=429, detail="Submission limit reached") from exc
+        except Exception as exc:
+            raise HTTPException(status_code=503, detail="Database unavailable") from exc
+        return {"id": analysis_id, "status": "COMPLETED"}
 
     @app.post("/api/v1/guest-analyses", status_code=202)
     def submit_guest(body: Submission, request: Request):

@@ -45,3 +45,33 @@ test("trusted guest key replaces browser supplied identity headers", async () =>
     globalThis.fetch = originalFetch;
   }
 });
+
+test("HTML import proxy preserves bytes, authorization, and enforces its size cap", async () => {
+  const originalFetch = globalThis.fetch;
+  let sent: { headers: Headers; body: string } | undefined;
+  globalThis.fetch = async (_input, init) => {
+    sent = { headers: new Headers(init?.headers), body: await new Response(init?.body).text() };
+    return Response.json({ id: "uploaded", status: "COMPLETED" }, { status: 201 });
+  };
+  try {
+    const path = "/api/v1/analyses/import?source_url=https%3A%2F%2Fdetail.1688.com%2Foffer%2F996518024136.html";
+    const imported = await proxyBackend(new Request(`http://localhost${path}`, {
+      method: "POST", headers: { authorization: "Bearer upload-token", "content-type": "text/html" },
+      body: "<html>Dress</html>",
+    }), path);
+    assert.equal(imported.status, 201);
+    assert.equal(sent?.headers.get("authorization"), "Bearer upload-token");
+    assert.equal(sent?.body, "<html>Dress</html>");
+    const oversized = await proxyBackend(new Request(`http://localhost${path}`, {
+      method: "POST", headers: { "content-type": "text/html" }, body: "x".repeat(2_000_001),
+    }), path);
+    assert.equal(oversized.status, 413);
+    const barePath = "/api/v1/analyses/import";
+    const bareOversized = await proxyBackend(new Request(`http://localhost${barePath}`, {
+      method: "POST", headers: { "content-type": "text/html" }, body: "x".repeat(2_000_001),
+    }), barePath);
+    assert.equal(bareOversized.status, 413);
+  } finally {
+    globalThis.fetch = originalFetch;
+  }
+});

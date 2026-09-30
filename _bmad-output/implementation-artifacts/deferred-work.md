@@ -46,3 +46,9 @@
 - source_plan: `_bmad-output/initiative-vct-connect-year-one/epic-extraction/story-extract-a-1688-url-into-the-shared-supplierdata-contract-plan.md`
   summary: Run GitHub CI and an Azure dev smoke check of a queued live 1688 snapshot after a push.
   evidence: The supplied URL returns an anti-bot challenge, so the adapter correctly records BLOCKED without a snapshot; an accessible public URL is needed to verify the deployed success path.
+- source_plan: `_bmad-output/implementation-artifacts/plan-1688-saved-page-import.md`
+  summary: Build a user-invoked 1688 browser extension capture that sends only selected rendered evidence and merges it into owner-scoped snapshots.
+  evidence: The agreed delivery order starts with saved-page import; browser capture is independently shippable and reuses the import provenance contract.
+- source_plan: `_bmad-output/implementation-artifacts/plan-1688-saved-page-import.md`
+  summary: Assess 1688 Open Platform API eligibility and field coverage before choosing an official integration.
+  evidence: API access and available product, supplier, and review fields require verification from the developer portal and do not block the saved-page import.

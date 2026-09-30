@@ -1,5 +1,5 @@
 import type {
-  Analysis, SubmitAnalysisRequest, SubmitAnalysisResponse,
+  Analysis, ImportSavedPageResponse, SubmitAnalysisRequest, SubmitAnalysisResponse,
   SubmitGuestAnalysisRequest, SubmitGuestAnalysisResponse,
 } from "@vct/contracts";
 
@@ -15,6 +15,7 @@ export class ApiError extends Error {
 }
 
 export const REQUEST_TIMEOUT_MS = 10_000;
+const IMPORT_TIMEOUT_MS = 120_000;
 
 function abortable<T>(operation: Promise<T>, signal: AbortSignal): Promise<T> {
   if (signal.aborted) return Promise.reject(signal.reason);
@@ -31,9 +32,10 @@ function abortable<T>(operation: Promise<T>, signal: AbortSignal): Promise<T> {
 async function request<T>(
   input: string,
   createInit: () => Promise<RequestInit>,
+  timeoutMs = REQUEST_TIMEOUT_MS,
 ): Promise<T> {
   const controller = new AbortController();
-  const timer = setTimeout(() => controller.abort(), REQUEST_TIMEOUT_MS);
+  const timer = setTimeout(() => controller.abort(), timeoutMs);
   try {
     const init = await abortable(createInit(), controller.signal);
     const response = await abortable(
@@ -88,6 +90,24 @@ export async function getAnalysis(id: string, auth?: RequestAuth): Promise<Analy
     cache: "no-store",
     headers: await authorizationHeaders(auth),
   }));
+}
+
+export async function importSavedPage(
+  sourceUrl: string, file: File, auth: RequestAuth,
+): Promise<ImportSavedPageResponse> {
+  if (file.size > 2_000_000) throw new ApiError("HTML page exceeds 2 MB", 413);
+  if (!/\.html?$/i.test(file.name) || (file.type && file.type !== "text/html")) {
+    throw new ApiError("Upload a saved HTML page", 415);
+  }
+  return request<ImportSavedPageResponse>(
+    `/api/v1/analyses/import?source_url=${encodeURIComponent(sourceUrl)}`,
+    async () => ({
+      method: "POST",
+      headers: { "Content-Type": "text/html; charset=utf-8", ...await authorizationHeaders(auth) },
+      body: file,
+    }),
+    IMPORT_TIMEOUT_MS,
+  );
 }
 
 export async function submitGuestAnalysis(
