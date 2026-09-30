@@ -46,9 +46,19 @@ export type SupplierData = {
   years_active: number | null;
   categories: string[] | null;
   certifications: string[] | null;
-  products: Array<{ offer_id: string | null; title: string | null }> | null;
-  price_information: { minimum?: string; maximum?: string; minimum_order_quantity?: number; display_text?: string } | null;
-  transaction_signals: { review_count?: number; positive_review_rate?: number; repeat_purchase_rate?: string } | null;
+  products: Array<{ offer_id: string | null; title: string | null; source_url?: string }> | null;
+  price_information: {
+    minimum?: string; maximum?: string; minimum_order_quantity?: number; display_text?: string;
+    price?: { priceText: string | null; priceTitle: string | null; priceUnit: string | null; priceDesc: string | null };
+    extraPrice?: { priceText: string | null; priceTitle: string | null; priceUnit: string | null; priceDesc: string | null };
+    starting_price_text?: string;
+  } | null;
+  transaction_signals: {
+    review_count?: number; positive_review_rate?: number; repeat_purchase_rate?: string;
+    sales_display_text?: string; review_count_display_text?: string; positive_review_rate_display_text?: string;
+    shop_metrics_display_text?: string[];
+    shop_evaluations?: Array<{ type: string | null; title: string | null; score: string | null; levelText: string | null }>;
+  } | null;
   rating: number | null;
   reviews: Array<Record<string, unknown>> | null;
   delivery_information: Record<string, unknown> | null;

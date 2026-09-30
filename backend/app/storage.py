@@ -7,6 +7,7 @@ from uuid import UUID, uuid4
 
 import psycopg
 from psycopg.rows import dict_row
+from .extraction.urls import source_platform, normalize_source_url
 
 
 class LeaseLost(RuntimeError):
@@ -519,13 +520,17 @@ class Store:
             raise LookupError(f"Unknown analysis {analysis_id}")
         extracted = payload.get("extraction_status") in {"SUCCESS", "PARTIAL"}
         supplier_data = payload.get("supplier_data")
+        platform = source_platform(row["source_url"]) if extracted else None
         if extracted and (
             not isinstance(supplier_data, dict)
             or not isinstance(payload.get("raw_payload"), dict)
             or not isinstance(payload.get("reviews"), list)
             or supplier_data.get("source_url") != row["source_url"]
             or supplier_data.get("analysis_mode") != row["mode"]
-            or supplier_data.get("platform") != "1688"
+            or normalize_source_url(row["source_url"]) != row["source_url"]
+            or payload.get("source_url") != row["source_url"]
+            or supplier_data.get("platform") != platform
+            or platform != "1688" and supplier_data.get("extraction_method") != "PUBLIC_HTTP"
         ):
             raise ValueError("Extracted result is missing matching supplier evidence")
         if row["status"] == "COMPLETED":
@@ -569,33 +574,33 @@ class Store:
                 if supplier_data["extraction_method"] in {"USER_UPLOAD", "EXTENSION_DOM"}:
                     supplier = conn.execute(
                         """INSERT INTO suppliers (id, platform, platform_supplier_id, name, source_url)
-                           VALUES (%s, '1688', %s, %s, %s)
+                           VALUES (%s, %s, %s, %s, %s)
                            ON CONFLICT (platform, platform_supplier_id) DO NOTHING
                            RETURNING id""",
-                        (supplier_id, external_id, supplier_data.get("supplier_name"), supplier_data["source_url"]),
+                        (supplier_id, platform, external_id, supplier_data.get("supplier_name"), supplier_data["source_url"]),
                     ).fetchone()
                     if supplier is None:
                         supplier = conn.execute(
-                            "SELECT id FROM suppliers WHERE platform = '1688' AND platform_supplier_id = %s",
-                            (external_id,),
+                            "SELECT id FROM suppliers WHERE platform = %s AND platform_supplier_id = %s",
+                            (platform, external_id),
                         ).fetchone()
                 else:
                     supplier = conn.execute(
                         """INSERT INTO suppliers (id, platform, platform_supplier_id, name, source_url)
-                           VALUES (%s, '1688', %s, %s, %s)
+                           VALUES (%s, %s, %s, %s, %s)
                            ON CONFLICT (platform, platform_supplier_id)
                            DO UPDATE SET name = COALESCE(EXCLUDED.name, suppliers.name),
                                          source_url = EXCLUDED.source_url,
                                          updated_at = now()
                            RETURNING id""",
-                        (supplier_id, external_id, supplier_data.get("supplier_name"), supplier_data["source_url"]),
+                        (supplier_id, platform, external_id, supplier_data.get("supplier_name"), supplier_data["source_url"]),
                     ).fetchone()
                 supplier_id = supplier["id"]
             else:
                 conn.execute(
                     """INSERT INTO suppliers (id, platform, name, source_url)
-                       VALUES (%s, '1688', %s, %s)""",
-                    (supplier_id, supplier_data.get("supplier_name"), supplier_data["source_url"]),
+                       VALUES (%s, %s, %s, %s)""",
+                    (supplier_id, platform, supplier_data.get("supplier_name"), supplier_data["source_url"]),
                 )
             snapshot_id = uuid4()
             conn.execute(

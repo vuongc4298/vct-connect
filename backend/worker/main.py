@@ -7,7 +7,7 @@ from uuid import UUID
 
 from backend.app.config import Settings
 from backend.app.fixture import FIXTURE_URL, fixture_result
-from backend.app.extraction import extract_1688
+from backend.app.extraction import extract_1688, extract_taobao, source_platform
 from backend.app.queue import AzureQueue
 from backend.app.storage import LeaseLost, ResultConflict, Store
 
@@ -35,7 +35,8 @@ def _compute_claim(claim: dict, compute) -> dict:
         return compute(claim["source_url"])
     if claim["source_url"] == FIXTURE_URL:
         return fixture_result(claim["source_url"])
-    return extract_1688(claim["source_url"], analysis_mode=claim.get("mode") or "ACCOUNT_PUBLIC")
+    adapter = extract_taobao if source_platform(claim["source_url"]) == "TAOBAO" else extract_1688
+    return adapter(claim["source_url"], analysis_mode=claim.get("mode") or "ACCOUNT_PUBLIC")
 
 
 def dispatch_outbox_once(store: Store, queue: AzureQueue, settings: Settings) -> bool:

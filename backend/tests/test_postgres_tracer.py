@@ -1,5 +1,7 @@
 import os
+import json
 from uuid import UUID, uuid4
+from pathlib import Path
 
 import pytest
 import httpx
@@ -13,11 +15,77 @@ from backend.app.auth import InvalidIdentity, VerifiedIdentity
 from backend.app.config import Settings
 from backend.app.fixture import FIXTURE_URL, fixture_result
 from backend.app.extraction import extract_1688, parse_1688_page
+from backend.app.extraction import parse_taobao_page
+from backend.app.extraction.contracts import EVIDENCE_FIELDS
 from backend.app.extraction.extension1688 import DomCapture, normalize_capture
 from backend.app.main import create_app
 from backend.app.queue import AzureQueue
 from backend.app.storage import AdmissionDenied, LeaseLost, ResultConflict, Store
 from backend.worker.main import dispatch_outbox_once, process_azure_once, process_local_once
+
+
+@pytest.mark.parametrize("guest", [False, True])
+@pytest.mark.parametrize("shop", [False, True])
+def test_taobao_queue_persistence_owner_modes_and_immutable_replay(store, monkeypatch, guest, shop):
+    url = "https://shop159450000.world.taobao.com/category.htm" if shop else "https://item.taobao.com/item.htm?id=1076425861755"
+    filename = "taobao_shop_159450000.html" if shop else "taobao_item_1076425861755.html"
+    html = (Path(__file__).parent / "fixtures" / filename).read_text(encoding="utf-8")
+    guest_key = uuid4().hex * 2
+    subject = f"taobao_{uuid4().hex}"
+    settings = Settings(store.database_url, "local", None, None, True)
+    client = TestClient(create_app(store=store, settings=settings, verifier=HeaderSubjectVerifier()))
+    headers = {"x-vct-guest-key": guest_key} if guest else {"Authorization": f"Bearer subject:{subject}"}
+    endpoint = "/api/v1/guest-analyses" if guest else "/api/v1/analyses"
+    submitted = client.post(endpoint, headers=headers, json={"source_url": url + ("?spm=track" if shop else "&spm=track")})
+    assert submitted.status_code == 202
+    analysis_id = UUID(submitted.json()["id"])
+    try:
+        assert client.get(f"{endpoint}/{analysis_id}", headers={"x-vct-guest-key": "b" * 64} if guest else {"Authorization": "Bearer subject:other"}).status_code == 404
+        monkeypatch.setattr("backend.worker.main.extract_taobao", lambda source_url, **kwargs: parse_taobao_page(html, source_url, **kwargs))
+        assert process_local_once(store)
+        row = client.get(f"{endpoint}/{analysis_id}", headers=headers).json()
+        assert row["status"] == "COMPLETED" and row["supplier_data"]["platform"] == "TAOBAO"
+        assert row["supplier_data"]["analysis_mode"] == ("GUEST_PUBLIC" if guest else "ACCOUNT_PUBLIC")
+        assert row["supplier_data"]["completeness_denominator"] == list(EVIDENCE_FIELDS)
+        payload = {**row["result"], "supplier_data": row["supplier_data"], "raw_payload": row["raw_evidence"], "reviews": row["reviews"]}
+        assert store.complete_processing(analysis_id, uuid4(), payload) == "replay"
+        changed = json.loads(json.dumps(payload))
+        changed["raw_payload"]["public_fields"]["changed"] = True
+        with pytest.raises(ResultConflict):
+            store.complete_processing(analysis_id, uuid4(), changed)
+        assert store.get(analysis_id)["supplier_snapshot_id"] == UUID(row["supplier_snapshot_id"])
+    finally:
+        remove(store, analysis_id)
+        remove_user(store, subject)
+        remove_user(store, "other")
+
+
+def test_taobao_supplier_ids_are_platform_scoped_and_platform_spoofing_rolls_back(store):
+    url = "https://item.taobao.com/item.htm?id=1076425861755"
+    html = (Path(__file__).parent / "fixtures" / "taobao_item_1076425861755.html").read_text(encoding="utf-8")
+    taobao = parse_taobao_page(html, url, analysis_mode="GUEST_PUBLIC")
+    offer_url = "https://detail.1688.com/offer/996518024136.html"
+    offer = parse_1688_page((Path(__file__).parent / "fixtures" / "1688_offer_996518024136.html").read_text(encoding="utf-8"), offer_url, analysis_mode="GUEST_PUBLIC")
+    shared_id = str(uuid4().int)[:15]
+    taobao["supplier_data"]["platform_supplier_id"] = shared_id
+    offer["supplier_data"]["platform_supplier_id"] = shared_id
+    ids = [store.submit_local(offer_url), store.submit_local(url)]
+    try:
+        for analysis_id, payload in zip(ids, (offer, taobao)):
+            claim = store.claim_processing(analysis_id, 60, 3)
+            if payload is taobao:
+                changed = json.loads(json.dumps(payload)); changed["supplier_data"]["platform"] = "1688"
+                with pytest.raises(ValueError):
+                    store.complete_processing(analysis_id, claim["token"], changed)
+                assert store.get(analysis_id)["supplier_snapshot_id"] is None
+            store.complete_processing(analysis_id, claim["token"], payload)
+        with store.connect() as conn:
+            suppliers = conn.execute("SELECT id, platform FROM suppliers WHERE platform_supplier_id = %s", (shared_id,)).fetchall()
+        assert {row["platform"] for row in suppliers} == {"1688", "TAOBAO"}
+        assert len({row["id"] for row in suppliers}) == 2
+    finally:
+        for analysis_id in ids:
+            remove(store, analysis_id)
 
 
 class StaticVerifier:

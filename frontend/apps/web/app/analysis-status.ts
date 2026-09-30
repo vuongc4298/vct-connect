@@ -1,6 +1,17 @@
 import type { Analysis, ExtractionStatus } from "@vct/contracts";
+import { sourceLabel } from "./source-url";
 
-export function extractionRecovery(status: ExtractionStatus | null, reason?: string) {
+export function extractionRecovery(status: ExtractionStatus | null, reason?: string, sourceUrl?: string) {
+  if (sourceLabel(sourceUrl) === "Taobao") {
+    if (status === "SUCCESS" || status === "PARTIAL" || status === null) return null;
+    if (reason && ["INVALID_URL", "UNSAFE_DESTINATION", "UNSAFE_REDIRECT", "SOURCE_MISMATCH", "REDIRECT_LOOP", "REDIRECT_LIMIT"].includes(reason)) {
+      return "Địa chỉ nguồn hoặc chuyển hướng không thể xác minh an toàn cho sản phẩm / cửa hàng Taobao này. Hãy kiểm tra URL HTTPS và đúng mã sản phẩm / cửa hàng để tạo phân tích mới. Tiện ích chụp dữ liệu và nhập HTML hiện chỉ hỗ trợ 1688.";
+    }
+    if (status === "AUTH_REQUIRED" || status === "BLOCKED") {
+      return "Taobao yêu cầu đăng nhập hoặc xác minh truy cập. Lần trích xuất này đã kết thúc. Bạn có thể mở trang nguồn để kiểm tra và thử tạo phân tích mới sau. Tiện ích chụp dữ liệu và nhập HTML hiện chỉ hỗ trợ 1688.";
+    }
+    return "Chưa thể lấy bằng chứng có thể xác minh từ Taobao. Hãy kiểm tra URL HTTPS của sản phẩm trên item.taobao.com hoặc cửa hàng shop<ID>.taobao.com / shop<ID>.world.taobao.com và thử tạo phân tích mới sau. Tiện ích chụp dữ liệu và nhập HTML hiện chỉ hỗ trợ 1688.";
+  }
   if (reason && ["INVALID_URL", "UNSAFE_DESTINATION", "UNSAFE_REDIRECT", "OFFER_MISMATCH", "REDIRECT_LOOP", "REDIRECT_LIMIT"].includes(reason)) {
     return "Địa chỉ nguồn hoặc chuyển hướng không thể xác minh an toàn cho sản phẩm này. Hãy kiểm tra URL HTTPS của trang sản phẩm trên detail.1688.com và tạo phân tích mới.";
   }
@@ -22,7 +33,7 @@ export function extractionRecovery(status: ExtractionStatus | null, reason?: str
 }
 
 type StatusInput = Pick<Analysis, "status" | "attempt_count" | "failure_code"> &
-  Partial<Pick<Analysis, "result" | "extraction_method">> | null;
+  Partial<Pick<Analysis, "result" | "extraction_method" | "source_url">> | null;
 
 export function analysisPresentation(analysis: StatusInput) {
   const status = analysis?.status ?? "QUEUED";
@@ -30,7 +41,9 @@ export function analysisPresentation(analysis: StatusInput) {
   const extractionStatus = analysis?.result && "extraction_status" in analysis.result
     ? analysis.result.extraction_status : null;
   const reason = analysis?.result && "reason" in analysis.result ? analysis.result.reason : undefined;
-  const recovery = extractionRecovery(extractionStatus, reason);
+  const sourceUrl = analysis?.result?.source_url ?? analysis?.source_url;
+  const source = sourceLabel(sourceUrl);
+  const recovery = extractionRecovery(extractionStatus, reason, sourceUrl);
   const live = analysis?.extraction_method === "PUBLIC_HTTP" || extractionStatus !== null;
   const blocked = completedProcessing && live && extractionStatus !== "SUCCESS" && extractionStatus !== "PARTIAL";
   const complete = completedProcessing && !blocked;
@@ -47,7 +60,7 @@ export function analysisPresentation(analysis: StatusInput) {
     orbSymbol: complete ? "✓" : final ? "!" : "",
     pillTone: blocked || extractionStatus === "PARTIAL" || final || retrying ? "warning" : complete ? "good" : "neutral",
     pillLabel: blocked ? "KHÔNG CÓ DỮ LIỆU" : complete && live ? extractionStatus === "PARTIAL" ? "TRÍCH XUẤT MỘT PHẦN" : "ĐÃ TRÍCH XUẤT" : complete ? "HOÀN TẤT" : final ? "DỪNG XỬ LÝ" : retrying ? "SẼ THỬ LẠI" : "ĐANG XỬ LÝ",
-    headline: blocked ? "Chưa thể trích xuất trang 1688" : complete && live ? "Bằng chứng đã được lưu" : complete ? "Báo cáo đã sẵn sàng" : final ? "Phân tích chưa thể hoàn tất" : retrying ? "Hệ thống sẽ thử lại" : processing ? live ? "Đang trích xuất bằng chứng" : "Đang xử lý dữ liệu demo" : "Đang chờ xử lý",
+    headline: blocked ? `Chưa thể trích xuất trang ${source}` : complete && live ? "Bằng chứng đã được lưu" : complete ? "Báo cáo đã sẵn sàng" : final ? "Phân tích chưa thể hoàn tất" : retrying ? "Hệ thống sẽ thử lại" : processing ? live ? "Đang trích xuất bằng chứng" : "Đang xử lý dữ liệu demo" : "Đang chờ xử lý",
     detail: blocked ? `Trạng thái nguồn: ${extractionStatus ?? "UNKNOWN"}${reason ? ` · ${reason}` : ""}. Không có ảnh chụp bằng chứng cho URL này. ${recovery ?? "Bạn có thể tạo phân tích mới."}` : complete && live ? "Nguồn và độ phủ đã được ghi nhận; chưa có điểm rủi ro." : complete ? "Dữ liệu minh hoạ đã được tổng hợp." : final ? `Mã lỗi an toàn: ${analysis?.failure_code ?? "PROCESSING_ERROR"}. Bạn có thể tạo một phân tích mới.` : retrying ? `Lần thử ${analysis?.attempt_count ?? 1} chưa thành công. Hệ thống sẽ tự động thử lại.` : "Bạn có thể giữ trang này mở trong khi hệ thống xử lý.",
   } as const;
 }

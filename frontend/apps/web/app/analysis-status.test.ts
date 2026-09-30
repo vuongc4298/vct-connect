@@ -4,6 +4,28 @@ import type { ExtractionStatus } from "@vct/contracts";
 
 import { analysisPresentation, extractionRecovery } from "./analysis-status";
 
+test("Taobao terminal guidance names the source and limits capture and import to 1688", () => {
+  const url = "https://item.taobao.com/item.htm?id=1076425861755";
+  const view = analysisPresentation({ status: "COMPLETED", attempt_count: 1, failure_code: null,
+    source_url: url, extraction_method: "PUBLIC_HTTP",
+    result: { source_url: url, extraction_status: "BLOCKED", reason: "ACCESS_CHALLENGE" } });
+  assert.equal(view.shouldPoll, false);
+  assert.match(view.headline, /Taobao/);
+  assert.match(view.detail, /hiện chỉ hỗ trợ 1688/);
+  for (const status of ["TIMEOUT", "PARSE_FAILED", "AUTH_REQUIRED", "UNSUPPORTED_PAGE"] as const) {
+    assert.match(extractionRecovery(status, "HTTP_ERROR", url)!, /hiện chỉ hỗ trợ 1688/);
+  }
+});
+
+for (const reason of ["UNSAFE_DESTINATION", "UNSAFE_REDIRECT", "SOURCE_MISMATCH", "REDIRECT_LOOP", "REDIRECT_LIMIT"]) {
+  test(`Taobao ${reason} selects safety guidance before access guidance`, () => {
+    const recovery = extractionRecovery("BLOCKED", reason, "https://shop159450000.taobao.com/")!;
+    assert.match(recovery, /không thể xác minh an toàn/);
+    assert.match(recovery, /đúng mã sản phẩm \/ cửa hàng/);
+    assert.doesNotMatch(recovery, /Taobao yêu cầu đăng nhập hoặc xác minh truy cập/);
+  });
+}
+
 
 test("retryable state keeps polling and presents the durable attempt", () => {
   const view = analysisPresentation({

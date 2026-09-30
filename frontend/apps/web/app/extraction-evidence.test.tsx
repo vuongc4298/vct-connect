@@ -5,6 +5,58 @@ import { renderToStaticMarkup } from "react-dom/server";
 import type { Analysis } from "@vct/contracts";
 
 import { ExtractionEvidence, isFixtureResult } from "./extraction-evidence";
+import { safeSourceUrl } from "./source-url";
+
+test("Taobao evidence preserves display context, reviews and safe source links", () => {
+  const url = "https://item.taobao.com/item.htm?id=1076425861755";
+  const analysis = { result: { source_url: url, extraction_status: "PARTIAL" },
+    supplier_data: { platform: "TAOBAO", source_url: url, supplier_name: "Shop", products: [{ title: "Paper" }],
+      completeness: 0.5, completeness_denominator: Array(12).fill("field"), missing_fields: Array(6).fill("unknown"),
+      extraction_method: "PUBLIC_HTTP", analysis_mode: "ACCOUNT_PUBLIC", extractor_version: "taobao-http.v1",
+      extracted_at: "2026-09-30T00:00:00+00:00", years_active: null,
+      price_information: { price: { priceText: "3.35", priceTitle: "优惠前", priceUnit: "￥", priceDesc: "起" } },
+      transaction_signals: { review_count_display_text: "2万+", sales_display_text: "3万+", positive_review_rate_display_text: "近3个月好评率高达100.0%" } },
+    reviews: [{ text: "Public body" }] } as unknown as Analysis;
+  const html = renderToStaticMarkup(<ExtractionEvidence analysis={analysis} />);
+  assert.match(html, /Bằng chứng Taobao/); assert.match(html, /3\.35/); assert.match(html, /2万\+/);
+  assert.match(html, /近3个月/); assert.match(html, /Public body/); assert.match(html, /Mở trang nguồn Taobao/);
+  const failed = { result: { source_url: url, extraction_status: "BLOCKED" }, supplier_data: null, reviews: [] } as unknown as Analysis;
+  assert.match(renderToStaticMarkup(<ExtractionEvidence analysis={failed} />), /hiện chỉ hỗ trợ 1688/);
+  for (const unsafe of [url + "&id=1", url + "#frag", "https://item.taobao.com:443/item.htm?id=1", "https://foo.taobao.com/", "javascript:alert(1)"]) assert.equal(safeSourceUrl(unsafe), null);
+  assert.equal(safeSourceUrl("https://shop159450000.world.taobao.com/category.htm"), "https://shop159450000.world.taobao.com/category.htm");
+});
+
+test("Taobao shop evidence renders bounded products, labeled metrics and qualified shop age", () => {
+  const source = "https://shop159450000.world.taobao.com/category.htm";
+  const analysis = { result: { source_url: source, extraction_status: "PARTIAL" }, supplier_data: {
+    platform: "TAOBAO", source_url: source, offer_id: null, supplier_name: "Shop", years_active: 10,
+    products: [
+      { offer_id: "1076425861755", title: "Observed paper title", source_url: "https://item.taobao.com/item.htm?id=1076425861755" },
+      { offer_id: "998122080593", title: null, source_url: "https://item.taobao.com/item.htm?id=998122080593" },
+      { offer_id: "123", title: "Unsafe item", source_url: "https://evil.example/item.htm?id=123" },
+      { offer_id: "456", title: "Mismatched item", source_url: "https://item.taobao.com/item.htm?id=789" },
+    ],
+    completeness: 0.3333, completeness_denominator: Array(12).fill("field"), missing_fields: Array(8).fill("unknown"),
+    extraction_method: "PUBLIC_HTTP", analysis_mode: "ACCOUNT_PUBLIC", extractor_version: "taobao-http.v1",
+    extracted_at: "2026-09-30T00:00:00+00:00", price_information: null,
+    transaction_signals: {
+      shop_metrics_display_text: ["4.9", "88VIP好评率97%", "平均23小时发货"],
+      shop_evaluations: [
+        { type: "desc", title: "描述相符", score: "4.8", levelText: "高于36.33%" },
+        { type: "serv", title: "服务态度", score: "4.9", levelText: "高于26.56%" },
+        { type: "post", title: "物流服务", score: "4.9", levelText: "高于22.96%" },
+      ],
+    },
+  }, reviews: [] } as unknown as Analysis;
+  const html = renderToStaticMarkup(<ExtractionEvidence analysis={analysis} />);
+  assert.match(html, /Sản phẩm hiển thị trong cửa hàng \(4\)/);
+  assert.match(html, /href="https:\/\/item\.taobao\.com\/item\.htm\?id=1076425861755"[^>]*>Observed paper title/);
+  assert.match(html, /Sản phẩm 998122080593/);
+  assert.match(html, /Unsafe item/); assert.match(html, /Mismatched item/);
+  assert.doesNotMatch(html, /href="https:\/\/evil\.example|href="https:\/\/item\.taobao\.com\/item\.htm\?id=789"/);
+  for (const label of ["描述相符: 4.8 (高于36.33%)", "服务态度: 4.9 (高于26.56%)", "物流服务: 4.9 (高于22.96%)", "88VIP好评率97%", "平均23小时发货"]) assert.ok(html.includes(label), label);
+  assert.match(html, /Tuổi cửa hàng hiển thị: 10 năm; chưa xác minh tuổi pháp nhân/);
+});
 
 const sourceUrl = "https://detail.1688.com/offer/996518024136.html";
 

@@ -21,7 +21,7 @@ from .auth import (
 )
 from .config import Settings
 from .fixture import validate_fixture_url
-from .extraction import normalize_1688_url
+from .extraction import normalize_1688_url, normalize_source_url
 from .extraction.offer1688 import MAX_HTML_BYTES, parse_1688_page
 from .extraction.extension1688 import DomCapture, MAX_CAPTURE_BYTES, normalize_capture
 from .storage import AdmissionDenied, Store
@@ -36,7 +36,7 @@ class Submission(BaseModel):
         try:
             return validate_fixture_url(value)
         except ValueError:
-            return normalize_1688_url(value)
+            return normalize_source_url(value)
 
 
 def create_app(
