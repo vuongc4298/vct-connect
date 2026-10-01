@@ -18,6 +18,7 @@ from backend.app.extraction import extract_1688, parse_1688_page
 from backend.app.extraction import parse_taobao_page
 from backend.app.extraction.contracts import EVIDENCE_FIELDS
 from backend.app.extraction.extension1688 import DomCapture, normalize_capture
+from backend.app.extraction.extensiontaobao import TaobaoCapture, normalize_taobao_capture
 from backend.app.main import create_app
 from backend.app.queue import AzureQueue
 from backend.app.storage import AdmissionDenied, LeaseLost, ResultConflict, Store
@@ -155,6 +156,80 @@ def test_azure_submission_atomically_creates_initial_event_and_outbox(store):
         assert outbox == {"message_id": analysis_id, "state": "PENDING", "attempts": 0}
     finally:
         remove(store, analysis_id)
+
+
+@pytest.mark.parametrize("shop", [False, True])
+@pytest.mark.parametrize("browser", [False, True])
+def test_taobao_user_evidence_atomic_ownership_replay_quota_and_shared_metadata(store, shop, browser):
+    url = "https://shop159450000.world.taobao.com/category.htm" if shop else "https://item.taobao.com/item.htm?id=1076425861755"
+    filename = "taobao_shop_159450000.html" if shop else "taobao_item_1076425861755.html"
+    html = (Path(__file__).parent / "fixtures" / filename).read_text(encoding="utf-8")
+    owner = store.resolve_user("recovery_owner_" + uuid4().hex)
+    other = store.resolve_user("recovery_other_" + uuid4().hex)
+    public_id = store.submit_local(url, owner["id"])
+    analysis_id = None
+    try:
+        public = parse_taobao_page(html.replace("心相印维达生活馆", "Shared supplier"), url)
+        claim = store.claim_processing(public_id, 60, 5)
+        store.complete_processing(public_id, claim["token"], public)
+        if browser:
+            fields = {"supplier_name": "User-selected supplier"}
+            if not shop:
+                fields["product_title"] = "User-selected product"
+                fields["reviews"] = [{"text": "  Original captured review  ", "original_length": 28}]
+            payload = normalize_taobao_capture(TaobaoCapture.model_validate({
+                "source_url": url, "source_kind": "shop" if shop else "item",
+                "source_id": "159450000" if shop else "1076425861755", "fields": fields,
+            }))
+            persist = store.capture_customer_page
+        else:
+            original = html.replace("心相印维达生活馆", "Uploaded supplier").encode()
+            payload = parse_taobao_page(original.decode(), url, extraction_method="USER_UPLOAD", uploaded_bytes=original)
+            persist = store.import_customer_page
+        analysis_id = persist(url, owner["id"], payload, customer_limit=1, window_seconds=86400)
+        row = store.get_for_user(analysis_id, owner["id"])
+        assert row["status"] == "COMPLETED" and row["supplier_data"]["platform"] == "TAOBAO"
+        if browser and not shop:
+            expected = [{"text": "Original captured review", "source_url": url}]
+            assert row["supplier_data"]["reviews"] == expected
+            assert row["reviews"] == expected
+            assert row["raw_evidence"]["selected_fields"]["reviews"] == [{"text": "  Original captured review  ", "original_length": 28}]
+        assert store.get_for_user(analysis_id, other["id"]) is None
+        assert store.complete_processing(analysis_id, uuid4(), payload) == "replay"
+        changed = json.loads(json.dumps(payload))
+        changed["raw_payload"]["different"] = True
+        with pytest.raises(ResultConflict):
+            store.complete_processing(analysis_id, uuid4(), changed)
+        with pytest.raises(AdmissionDenied):
+            persist(url, owner["id"], payload, customer_limit=1, window_seconds=86400)
+        with store.connect() as conn:
+            supplier = conn.execute("SELECT name FROM suppliers WHERE platform = 'TAOBAO' AND platform_supplier_id = '2895982467'").fetchone()
+            assert supplier["name"] == "Shared supplier"
+            assert conn.execute("SELECT count(*) AS total FROM analyses WHERE user_id = %s", (owner["id"],)).fetchone()["total"] == 2
+            assert not conn.execute("SELECT 1 FROM local_queue WHERE analysis_id = %s", (analysis_id,)).fetchone()
+            assert not conn.execute("SELECT 1 FROM analysis_outbox WHERE analysis_id = %s", (analysis_id,)).fetchone()
+    finally:
+        if analysis_id:
+            remove(store, analysis_id)
+        remove(store, public_id)
+        remove_user(store, owner["clerk_user_id"])
+        remove_user(store, other["clerk_user_id"])
+
+
+def test_queued_taobao_cannot_complete_with_upload_method(store):
+    url = "https://item.taobao.com/item.htm?id=1076425861755"
+    html = (Path(__file__).parent / "fixtures" / "taobao_item_1076425861755.html").read_text(encoding="utf-8")
+    owner = store.resolve_user("method_owner_" + uuid4().hex)
+    analysis_id = store.submit_local(url, owner["id"])
+    try:
+        claim = store.claim_processing(analysis_id, 60, 5)
+        payload = parse_taobao_page(html, url, extraction_method="USER_UPLOAD", uploaded_bytes=html.encode())
+        with pytest.raises(ValueError, match="missing matching"):
+            store.complete_processing(analysis_id, claim["token"], payload)
+        assert store.get(analysis_id)["supplier_snapshot_id"] is None
+    finally:
+        remove(store, analysis_id)
+        remove_user(store, owner["clerk_user_id"])
 
 
 def test_postgres_exact_replay_preserves_first_result(store):

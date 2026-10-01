@@ -183,3 +183,67 @@ All 22 findings are individually recorded above: 15 patched findings grouped int
 - Azure deployment and a browser-to-deployed-worker roundtrip remain unverified. Taobao extension capture/import is outside the approved intent.
 - Shared fetching retains the documented OS DNS cancellation limitation; this adapter does not add source cookies or challenge bypass.
 - Finalization preserves the user's pre-existing untracked skills/runtime, full samples, PDFs, image and temporary directories. Only the reviewed story files are committed; no remote push.
+
+
+## Code Review
+
+### 2026-10-01 — Follow-up of commit 968273095d2693fac4d71d9f09a2327385264816
+
+**Code review complete.** 0 decision-needed, 13 patch, 0 defer, 5 rejected.
+
+All four lenses completed. Runtime capacity allowed three concurrent reviewers; intent alignment started when a slot became available. All reports were collected before triage. This follow-up confirmed additional defects; the earlier built result remains an implementation status, not a release acceptance.
+
+- [x] [Review][Patch] Inactive script assignments [backend/app/extraction/taobao.py:38]
+- [x] [Review][Patch] Existing ICE context can overwrite identity [backend/app/extraction/taobao.py:52]
+- [x] [Review][Patch] Login title discards bound evidence [backend/app/extraction/taobao.py:82]
+- [x] [Review][Patch] Waiting text hides structured challenge [backend/app/extraction/taobao.py:78]
+- [x] [Review][Patch] Unrelated title fallback [backend/app/extraction/taobao.py:142]
+- [x] [Review][Patch] Inactive template reviews [backend/app/extraction/taobao.py:162]
+- [x] [Review][Patch] Raw review trim/truncation is undisclosed [backend/app/extraction/taobao.py:185]
+- [x] [Review][Patch] Raw DOM metrics lose whitespace [backend/app/extraction/taobao.py:185]
+- [x] [Review][Patch] Body text overrides charset [backend/app/extraction/taobao.py:245]
+- [x] [Review][Patch] Empty DOM metrics inflate coverage [backend/app/extraction/taobao.py:176]
+- [x] [Review][Patch] Tracked embedded shop URL is rejected [backend/app/extraction/taobao.py:100]
+- [x] [Review][Patch] Default Taobao transport wiring is untested [backend/app/extraction/fetch.py:147 / taobao.py:263]
+- [x] [Review][Patch] Transient HTML evidence guard is untested [backend/app/extraction/taobao.py:61 / fetch.py:219]
+
+### Individual verdicts and evidence
+
+20 findings: high 1, medium 13, low 1, false 5. Two duplicate roots yield 13 patch entries (high 1, medium 11, low 1).
+
+- F1 [medium] [patch] (blind-hunter) Inactive script assignments — A text/plain assignment still produces PARTIAL. Require an active inline audited script, excluding inert type/src/ancestors.
+- F2 [high] [patch] (blind-hunter) Existing ICE context can overwrite identity — Earlier context for another item is copied over b by the audited wrapper, yet the parser stores the requested item. Reject ambiguous/conflicting prior context without executing scripts.
+- F3 [medium] [patch] (blind-hunter) Login title discards bound evidence — A valid fixture with Please sign in title returns AUTH_REQUIRED. Apply the useful bound-evidence guard to title detection.
+- F4 [medium] [patch] (blind-hunter) Waiting text hides structured challenge — Observed TMD structure plus Please wait returns PARSE_FAILED. Recognize structure when useful bound evidence is absent.
+- F5 [medium] [patch] (blind-hunter) Unrelated title fallback — An unrelated MainTitle component supplies the requested item title. Scope to audited main-product ancestry and reject ambiguity.
+- F6 [medium] [patch] (blind-hunter) Inactive template reviews — Template review content increases the retained review count from 2 to 3. Exclude inactive ancestors and scope to the observed review region.
+- F7 [medium] [patch] (blind-hunter) Raw review trim/truncation is undisclosed — Raw review is stripped and truncated at 2000 without source extent. Keep bounded original selected text and explicit truncation/extent sufficient to reproduce normalization.
+- F8 [low] [patch] (blind-hunter) Raw DOM metrics lose whitespace — Original shipping metric whitespace disappears from raw public fields. Retain original selected DOM strings separately.
+- F9 [medium] [patch] (blind-hunter) Body text overrides charset — UTF-8 Chinese with ordinary charset=ascii body text is corrupted. Read encoding only from recognized metadata/header and define precedence.
+- F10 [medium] [patch] (blind-hunter) Empty DOM metrics inflate coverage — Removing real signals and retaining an empty star node yields shop_metrics_display_text:[null]. Filter empty values.
+- F11 [medium] [patch] (edge-case-hunter) Empty DOM metrics inflate coverage — Same reproduced root cause as blind finding 10.
+- F12 [medium] [patch] (edge-case-hunter) Tracked embedded shop URL is rejected — Appending / to a pathless URL with a query modifies the query, leaving no valid path. Set the parsed path before canonical normalization.
+- F13 [medium] [patch] (edge-case-hunter) Inactive script assignments — Same reproduced root cause as blind finding 1.
+- F14 [medium] [patch] (verification-gap) Default Taobao transport wiring is untested — Reviewer mutation dropping allowed_hosts passes 192 tests while default production Taobao requests become unsafe. Exercise constructed transport for product and shop with deterministic sockets.
+- F15 [medium] [patch] (verification-gap) Transient HTML evidence guard is untested — Discarding source_url passes 192 tests but changes a valid 503-to-200 sequence into terminal BLOCKED. Assert bound transient HTML retries.
+- F16 [false] [reject] (intent-alignment) Captured parsing versus live access — Approved conditional capability permits classified barriers; live challenge results and absence of anonymous success are explicitly documented.
+- F17 [false] [reject] (intent-alignment) Continuous queue path versus separate HTTP tests — Persistence/ownership/dispatch and HTTP behavior are exercised separately; no deployed live success is claimed. Deployment remains an explicit release check.
+- F18 [false] [reject] (intent-alignment) Taobao barriers versus queued polling tests — Shared completed-failure owner polling is platform independent; adapter barriers and dispatch are checked. No incorrect persisted outcome is demonstrated.
+- F19 [false] [reject] (intent-alignment) Rendered components versus browser journey — Component tests establish presentation only; the plan explicitly leaves deployed browser verification pending, without claiming it occurred.
+- F20 [false] [reject] (intent-alignment) Bounded layouts versus all Taobao families — Approved URL/layout decision is explicitly bounded to supplied captures; unverified mobile/short/Tmall families are excluded.
+
+### Rejected
+
+- false: Captured parsing versus live access — Approved conditional capability permits classified barriers; live challenge results and absence of anonymous success are explicitly documented.
+- false: Continuous queue path versus separate HTTP tests — Persistence/ownership/dispatch and HTTP behavior are exercised separately; no deployed live success is claimed. Deployment remains an explicit release check.
+- false: Taobao barriers versus queued polling tests — Shared completed-failure owner polling is platform independent; adapter barriers and dispatch are checked. No incorrect persisted outcome is demonstrated.
+- false: Rendered components versus browser journey — Component tests establish presentation only; the plan explicitly leaves deployed browser verification pending, without claiming it occurred.
+- false: Bounded layouts versus all Taobao families — Approved URL/layout decision is explicitly bounded to supplied captures; unverified mobile/short/Tmall families are excluded.
+
+### Action authorization
+
+The user approved review, correction of confirmed defects, Taobao capture/import recovery, and subsequent deployment verification. Apply every confirmed patch without another confirmation; preserve the original Story 2.3 intent contract. Recovery support is a separate follow-up plan because the original story excludes it.
+
+### Follow-up patch verification
+
+All 13 patch entries are implemented. The 2026-10-01 parent backend run passed 316 tests (51 database/opt-in tests skipped because the test database was unavailable). Added parser and production-transport regressions ran and passed. The separate recovery plan remains in progress; PostgreSQL, final review and deployment verification are pending.

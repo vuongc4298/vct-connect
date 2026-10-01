@@ -558,9 +558,9 @@ export default function Page() {
           <form onSubmit={submit}>
             <label htmlFor="source-url">LIÊN KẾT 1688 / TAOBAO</label>
             <div className="url-field"><span className="link-icon">↗</span><input id="source-url" type="url" required value={url} onChange={event => setUrl(event.target.value)} aria-describedby="url-help" /><button className="button button-primary" disabled={busy}>{busy ? <><i className="spinner" /> Đang gửi</> : <>{savedPage ? "Nhập trang đã lưu" : "Trích xuất"} <span>→</span></>}</button></div>
-            <label htmlFor="saved-page">Trang 1688 đã lưu (HTML, tùy chọn)</label>
+            <label htmlFor="saved-page">Trang 1688 / Taobao đã lưu (HTML, tùy chọn)</label>
             <input id="saved-page" ref={savedPageInput} type="file" accept=".html,.htm,text/html" onChange={event => setSavedPage(event.target.files?.[0] ?? null)} />
-            <div className="form-meta" id="url-help"><span><b>1688 / Taobao</b> URL HTTPS: detail.1688.com/offer/…html, item.taobao.com/item.htm?id=… hoặc shop&lt;ID&gt;.taobao.com / shop&lt;ID&gt;.world.taobao.com. Nhập HTML và tiện ích chụp dữ liệu chỉ hỗ trợ 1688. URL mẫu hiện tại chạy fixture demo.</span><Pill>{savedPage ? "USER_UPLOAD" : url === FIXTURE_URL ? "Dữ liệu fixture" : "Trích xuất công khai"}</Pill></div>
+            <div className="form-meta" id="url-help"><span><b>1688 / Taobao</b> URL HTTPS: detail.1688.com/offer/…html, item.taobao.com/item.htm?id=… hoặc shop&lt;ID&gt;.taobao.com / shop&lt;ID&gt;.world.taobao.com. Có thể nhập HTML đã lưu hoặc dùng tiện ích chụp bằng chứng đang hiển thị trên các trang nguồn được hỗ trợ. URL mẫu hiện tại chạy fixture demo.</span><Pill>{savedPage ? "USER_UPLOAD" : url === FIXTURE_URL ? "Dữ liệu fixture" : "Trích xuất công khai"}</Pill></div>
           </form>
         </section>
         {error && <div role="alert" className="error-banner"><span>!</span><div><strong>Không thể tiếp tục</strong><p>{error === "Analysis not found" ? "Không tìm thấy phân tích. Vui lòng gửi lại dữ liệu demo." : error}</p></div></div>}

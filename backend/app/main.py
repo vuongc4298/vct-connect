@@ -22,6 +22,9 @@ from .auth import (
 from .config import Settings
 from .fixture import validate_fixture_url
 from .extraction import normalize_1688_url, normalize_source_url
+from .extraction.urls import source_platform
+from .extraction.taobao import parse_taobao_page, decode_taobao_html
+from .extraction.extensiontaobao import TaobaoCapture, normalize_taobao_capture
 from .extraction.offer1688 import MAX_HTML_BYTES, parse_1688_page
 from .extraction.extension1688 import DomCapture, MAX_CAPTURE_BYTES, normalize_capture
 from .storage import AdmissionDenied, Store
@@ -127,14 +130,15 @@ def create_app(
         principal: Annotated[Principal, Depends(require_roles(CUSTOMER))],
     ):
         try:
-            source_url = normalize_1688_url(source_url)
+            source_url = normalize_source_url(source_url)
         except ValueError as exc:
-            raise HTTPException(status_code=422, detail="Unsupported 1688 offer URL") from exc
+            raise HTTPException(status_code=422, detail="Unsupported source URL") from exc
+        taobao = source_platform(source_url) == "TAOBAO"
         media = Message()
         media["content-type"] = request.headers.get("content-type", "")
         charsets = [value for name, value in (media.get_params(header="content-type") or [])[1:]
                     if name.lower() == "charset"]
-        if media.get_content_type() != "text/html" or any(
+        if media.get_content_type() != "text/html" or not taobao and any(
             not isinstance(value, str) or value.lower() not in {"utf-8", "utf8"}
             for value in charsets
         ):
@@ -153,17 +157,17 @@ def create_app(
         if not content:
             raise HTTPException(status_code=422, detail="HTML page is empty")
         try:
-            html = content.decode("utf-8-sig")
-        except UnicodeError as exc:
-            raise HTTPException(status_code=415, detail="Upload a UTF-8 HTML page") from exc
+            html = decode_taobao_html(bytes(content), charsets, strict=True) if taobao else content.decode("utf-8-sig")
+        except (UnicodeError, ValueError) as exc:
+            raise HTTPException(status_code=415, detail="Unsupported or conflicting HTML encoding") from exc
         declared_charset = re.search(
             r'''<meta\b[^>]*\bcharset\s*=\s*["']?([a-z0-9_-]+)''', html[:8192], re.IGNORECASE,
         )
-        if declared_charset and declared_charset.group(1).lower() not in {"utf-8", "utf8"}:
+        if not taobao and declared_charset and declared_charset.group(1).lower() not in {"utf-8", "utf8"}:
             raise HTTPException(status_code=415, detail="Upload a UTF-8 HTML page")
         try:
             payload = await run_in_threadpool(
-                parse_1688_page, html, source_url, extraction_method="USER_UPLOAD",
+                parse_taobao_page if taobao else parse_1688_page, html, source_url, extraction_method="USER_UPLOAD",
                 uploaded_bytes=bytes(content),
             )
         except RecursionError:
@@ -195,11 +199,19 @@ def create_app(
             if len(content) > MAX_CAPTURE_BYTES:
                 raise HTTPException(status_code=413, detail="Capture exceeds 16 KB")
         try:
-            capture = DomCapture.model_validate_json(bytes(content))
-            payload = normalize_capture(capture)
+            import json
+            selected = json.loads(bytes(content))
+            if not isinstance(selected, dict):
+                raise ValueError("Invalid selected evidence")
+            if source_platform(selected.get("source_url", "")) == "TAOBAO":
+                payload = normalize_taobao_capture(TaobaoCapture.model_validate_json(bytes(content)))
+            else:
+                payload = normalize_capture(DomCapture.model_validate_json(bytes(content)))
         except ValidationError as exc:
             raise HTTPException(status_code=422, detail="Invalid selected evidence") from exc
-        except ValueError as exc:
+        except RecursionError as exc:
+            raise HTTPException(status_code=422, detail="Selected evidence is too deeply nested") from exc
+        except (ValueError, TypeError) as exc:
             raise HTTPException(status_code=422, detail=str(exc)) from exc
         try:
             analysis_id = await run_in_threadpool(

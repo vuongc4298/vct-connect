@@ -19,7 +19,7 @@ test("saved page import sends the file with bearer authorization and rejects ove
     assert.equal(result.status, "COMPLETED");
     assert.match(sent?.url ?? "", /^\/api\/v1\/analyses\/import\?source_url=/);
     assert.equal(sent?.headers.get("Authorization"), "Bearer upload-token");
-    assert.equal(sent?.headers.get("Content-Type"), "text/html; charset=utf-8");
+    assert.equal(sent?.headers.get("Content-Type"), "text/html");
     assert.equal(sent?.body, file);
     await assert.rejects(
       importSavedPage("https://detail.1688.com/offer/996518024136.html",

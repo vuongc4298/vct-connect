@@ -188,7 +188,7 @@ resource api 'Microsoft.App/containerApps@2024-03-01' = {
           { name: 'DATABASE_URL', secretRef: 'database-url' }
           { name: 'CLERK_SECRET_KEY', secretRef: 'clerk-secret-key' }
           { name: 'CLERK_ISSUER', value: clerkIssuer }
-          { name: 'CLERK_AUTHORIZED_PARTIES', value: 'https://${webName}.${environment.properties.defaultDomain}' }
+          { name: 'CLERK_AUTHORIZED_PARTIES', value: 'https://${webName}.${environment.properties.defaultDomain},chrome-extension://klggcepemjjbphjclpiabgpfgdbgiljj' }
           { name: 'CLERK_AUDIENCE', value: 'vct-connect-api' }
           { name: 'DEVELOPER_MODE', value: 'false' }
           { name: 'API_RUNTIME', value: 'azure' }

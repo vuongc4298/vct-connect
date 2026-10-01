@@ -21,7 +21,7 @@ test("Taobao evidence preserves display context, reviews and safe source links",
   assert.match(html, /Bằng chứng Taobao/); assert.match(html, /3\.35/); assert.match(html, /2万\+/);
   assert.match(html, /近3个月/); assert.match(html, /Public body/); assert.match(html, /Mở trang nguồn Taobao/);
   const failed = { result: { source_url: url, extraction_status: "BLOCKED" }, supplier_data: null, reviews: [] } as unknown as Analysis;
-  assert.match(renderToStaticMarkup(<ExtractionEvidence analysis={failed} />), /hiện chỉ hỗ trợ 1688/);
+  assert.match(renderToStaticMarkup(<ExtractionEvidence analysis={failed} />), /tiện ích VCT Connect.*HTML/);
   for (const unsafe of [url + "&id=1", url + "#frag", "https://item.taobao.com:443/item.htm?id=1", "https://foo.taobao.com/", "javascript:alert(1)"]) assert.equal(safeSourceUrl(unsafe), null);
   assert.equal(safeSourceUrl("https://shop159450000.world.taobao.com/category.htm"), "https://shop159450000.world.taobao.com/category.htm");
 });

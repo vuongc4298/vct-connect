@@ -5,12 +5,12 @@ export function extractionRecovery(status: ExtractionStatus | null, reason?: str
   if (sourceLabel(sourceUrl) === "Taobao") {
     if (status === "SUCCESS" || status === "PARTIAL" || status === null) return null;
     if (reason && ["INVALID_URL", "UNSAFE_DESTINATION", "UNSAFE_REDIRECT", "SOURCE_MISMATCH", "REDIRECT_LOOP", "REDIRECT_LIMIT"].includes(reason)) {
-      return "Địa chỉ nguồn hoặc chuyển hướng không thể xác minh an toàn cho sản phẩm / cửa hàng Taobao này. Hãy kiểm tra URL HTTPS và đúng mã sản phẩm / cửa hàng để tạo phân tích mới. Tiện ích chụp dữ liệu và nhập HTML hiện chỉ hỗ trợ 1688.";
+      return "Địa chỉ nguồn hoặc chuyển hướng không thể xác minh an toàn cho sản phẩm / cửa hàng Taobao này. Hãy kiểm tra URL HTTPS và đúng mã sản phẩm / cửa hàng để tạo phân tích mới. Bạn có thể dùng tiện ích VCT Connect trên trang Taobao đang mở hoặc nhập trang HTML đã lưu với đúng URL nguồn.";
     }
     if (status === "AUTH_REQUIRED" || status === "BLOCKED") {
-      return "Taobao yêu cầu đăng nhập hoặc xác minh truy cập. Lần trích xuất này đã kết thúc. Bạn có thể mở trang nguồn để kiểm tra và thử tạo phân tích mới sau. Tiện ích chụp dữ liệu và nhập HTML hiện chỉ hỗ trợ 1688.";
+      return "Taobao yêu cầu đăng nhập hoặc xác minh truy cập. Lần trích xuất này đã kết thúc. Bạn có thể mở trang nguồn để kiểm tra và thử tạo phân tích mới sau. Bạn có thể dùng tiện ích VCT Connect trên trang Taobao đang mở hoặc nhập trang HTML đã lưu với đúng URL nguồn.";
     }
-    return "Chưa thể lấy bằng chứng có thể xác minh từ Taobao. Hãy kiểm tra URL HTTPS của sản phẩm trên item.taobao.com hoặc cửa hàng shop<ID>.taobao.com / shop<ID>.world.taobao.com và thử tạo phân tích mới sau. Tiện ích chụp dữ liệu và nhập HTML hiện chỉ hỗ trợ 1688.";
+    return "Chưa thể lấy bằng chứng có thể xác minh từ Taobao. Hãy kiểm tra URL HTTPS của sản phẩm trên item.taobao.com hoặc cửa hàng shop<ID>.taobao.com / shop<ID>.world.taobao.com và thử tạo phân tích mới sau. Bạn có thể dùng tiện ích VCT Connect trên trang Taobao đang mở hoặc nhập trang HTML đã lưu với đúng URL nguồn.";
   }
   if (reason && ["INVALID_URL", "UNSAFE_DESTINATION", "UNSAFE_REDIRECT", "OFFER_MISMATCH", "REDIRECT_LOOP", "REDIRECT_LIMIT"].includes(reason)) {
     return "Địa chỉ nguồn hoặc chuyển hướng không thể xác minh an toàn cho sản phẩm này. Hãy kiểm tra URL HTTPS của trang sản phẩm trên detail.1688.com và tạo phân tích mới.";

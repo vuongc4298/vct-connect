@@ -103,7 +103,7 @@ export async function importSavedPage(
     `/api/v1/analyses/import?source_url=${encodeURIComponent(sourceUrl)}`,
     async () => ({
       method: "POST",
-      headers: { "Content-Type": "text/html; charset=utf-8", ...await authorizationHeaders(auth) },
+      headers: { "Content-Type": "text/html", ...await authorizationHeaders(auth) },
       body: file,
     }),
     IMPORT_TIMEOUT_MS,

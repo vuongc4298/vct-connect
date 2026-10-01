@@ -458,7 +458,9 @@ class Store:
         if payload.get("source_url") != source_url or (
             payload.get("extraction_status") in {"SUCCESS", "PARTIAL"}
             and (not isinstance(supplier_data, dict)
-                 or supplier_data.get("extraction_method") != "USER_UPLOAD")
+                 or supplier_data.get("extraction_method") != "USER_UPLOAD"
+                 or supplier_data.get("analysis_mode") != "ACCOUNT_PUBLIC"
+                 or supplier_data.get("platform") != source_platform(source_url))
         ):
             raise ValueError("Upload result has mismatched provenance")
         analysis_id = uuid4()
@@ -487,7 +489,8 @@ class Store:
             payload.get("extraction_status") in {"SUCCESS", "PARTIAL"}
             and (not isinstance(supplier_data, dict)
                  or supplier_data.get("extraction_method") != "EXTENSION_DOM"
-                 or supplier_data.get("analysis_mode") != "EXTENSION_ENHANCED")
+                 or supplier_data.get("analysis_mode") != "EXTENSION_ENHANCED"
+                 or supplier_data.get("platform") != source_platform(source_url))
         ):
             raise ValueError("Capture has mismatched provenance")
         analysis_id = uuid4()
@@ -510,7 +513,7 @@ class Store:
         public_payload = {key: value for key, value in payload.items()
                           if key not in {"raw_payload", "reviews", "supplier_data"}}
         row = conn.execute(
-            """SELECT a.status, a.source_url, a.mode, a.supplier_snapshot_id,
+            """SELECT a.status, a.source_url, a.mode, a.extraction_method, a.supplier_snapshot_id,
                       a.processing_claim_token, a.attempt_count, r.payload
                FROM analyses a LEFT JOIN analysis_results r ON r.analysis_id = a.id
                WHERE a.id = %s FOR UPDATE OF a""",
@@ -530,7 +533,10 @@ class Store:
             or normalize_source_url(row["source_url"]) != row["source_url"]
             or payload.get("source_url") != row["source_url"]
             or supplier_data.get("platform") != platform
-            or platform != "1688" and supplier_data.get("extraction_method") != "PUBLIC_HTTP"
+            or supplier_data.get("extraction_method") != row["extraction_method"]
+            or (row["extraction_method"], row["mode"]) not in {
+                ("PUBLIC_HTTP", "GUEST_PUBLIC"), ("PUBLIC_HTTP", "ACCOUNT_PUBLIC"),
+                ("USER_UPLOAD", "ACCOUNT_PUBLIC"), ("EXTENSION_DOM", "EXTENSION_ENHANCED")}
         ):
             raise ValueError("Extracted result is missing matching supplier evidence")
         if row["status"] == "COMPLETED":

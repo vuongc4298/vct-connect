@@ -4,16 +4,16 @@ import type { ExtractionStatus } from "@vct/contracts";
 
 import { analysisPresentation, extractionRecovery } from "./analysis-status";
 
-test("Taobao terminal guidance names the source and limits capture and import to 1688", () => {
+test("Taobao terminal guidance names the source and offers capture and saved HTML recovery", () => {
   const url = "https://item.taobao.com/item.htm?id=1076425861755";
   const view = analysisPresentation({ status: "COMPLETED", attempt_count: 1, failure_code: null,
     source_url: url, extraction_method: "PUBLIC_HTTP",
     result: { source_url: url, extraction_status: "BLOCKED", reason: "ACCESS_CHALLENGE" } });
   assert.equal(view.shouldPoll, false);
   assert.match(view.headline, /Taobao/);
-  assert.match(view.detail, /hiện chỉ hỗ trợ 1688/);
+  assert.match(view.detail, /tiện ích VCT Connect.*HTML/);
   for (const status of ["TIMEOUT", "PARSE_FAILED", "AUTH_REQUIRED", "UNSUPPORTED_PAGE"] as const) {
-    assert.match(extractionRecovery(status, "HTTP_ERROR", url)!, /hiện chỉ hỗ trợ 1688/);
+    assert.match(extractionRecovery(status, "HTTP_ERROR", url)!, /tiện ích VCT Connect.*HTML/);
   }
 });
 

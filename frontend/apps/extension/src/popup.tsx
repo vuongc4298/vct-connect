@@ -2,6 +2,7 @@ import { ClerkProvider, UserButton, useAuth } from "@clerk/chrome-extension";
 import React, { useEffect, useState } from "react";
 import { createRoot } from "react-dom/client";
 import { captureSelectedDom, supportedOffer } from "./capture";
+import { restoreLastCapture, saveOpenAndLoadResult, type LastCapture } from "./capture-result";
 
 type Result = {
   id: string;
@@ -10,7 +11,6 @@ type Result = {
   result: { extraction_status: string; reason?: string } | null;
 };
 
-type LastCapture = { analysisId: string; sourceUrl: string; ownerId: string };
 const LAST_CAPTURE_KEY = "lastCapture";
 
 function openWebSignIn() {
@@ -53,9 +53,8 @@ function App() {
     if (!isLoaded || !userId) { setLastCapture(null); return; }
     let active = true;
     void chrome.storage.local.get(LAST_CAPTURE_KEY).then(stored => {
-      const last = stored[LAST_CAPTURE_KEY] as LastCapture | undefined;
-      if (active && last && typeof last.analysisId === "string" && typeof last.sourceUrl === "string"
-          && last.ownerId === userId && supportedOffer(last.sourceUrl)) setLastCapture(last);
+      const last = restoreLastCapture(stored[LAST_CAPTURE_KEY], userId);
+      if (active && last) setLastCapture(last);
     }).catch(() => { if (active) setError("Could not restore the last result link"); });
     return () => { active = false; };
   }, [isLoaded, userId]);
@@ -83,27 +82,32 @@ function App() {
     try {
       const [tab] = await chrome.tabs.query({ active: true, currentWindow: true });
       const offer = tab?.url ? supportedOffer(tab.url) : null;
-      if (!tab?.id || !offer) throw new Error("Open a supported 1688 offer first");
+      if (!tab?.id || !offer) throw new Error("Open a supported 1688 offer or Taobao item/shop first");
       const token = await getToken({ skipCache: true });
       if (!token) throw new Error("Sign in before capturing evidence");
       if (!userId) throw new Error("Sign in before capturing evidence");
       const [injected] = await chrome.scripting.executeScript({ target: { tabId: tab.id }, func: captureSelectedDom });
       const evidence = injected?.result;
-      if (!evidence || offer.offerId !== evidence.offer_id || offer.sourceUrl !== evidence.source_url) {
+      if (!evidence || offer.offerId !== ("offer_id" in evidence ? evidence.offer_id : evidence.source_id) || offer.sourceUrl !== evidence.source_url) {
         throw new Error("The active offer changed; try again");
       }
+      const body = JSON.stringify(evidence);
+      if (new TextEncoder().encode(body).length > 16_384) throw new Error("Selected evidence exceeds 16 KB");
       const response = await fetchWithTimeout(`${VCT_WEB_ORIGIN}/api/v1/analyses/capture`, {
         method: "POST", headers: { "Content-Type": "application/json", Authorization: `Bearer ${token}` },
-        body: JSON.stringify(evidence),
+        body,
       });
       const created = await response.json();
       if (!response.ok) throw new Error(typeof created.detail === "string" ? created.detail : `Capture failed (${response.status})`);
       if (typeof created.id !== "string") throw new Error("Capture returned no result ID");
       const last = { analysisId: created.id, sourceUrl: evidence.source_url, ownerId: userId };
       setLastCapture(last);
-      await chrome.storage.local.set({ [LAST_CAPTURE_KEY]: last });
-      await loadResult(created.id);
-      await chrome.tabs.create({ url: `${VCT_WEB_ORIGIN}/?analysis=${encodeURIComponent(created.id)}` });
+      await saveOpenAndLoadResult(last, {
+        save: record => chrome.storage.local.set({ [LAST_CAPTURE_KEY]: record }),
+        storageFailed: () => setError("Evidence was saved, but the last result link could not be kept. Keep the web result tab open."),
+        open: id => chrome.tabs.create({ url: `${VCT_WEB_ORIGIN}/?analysis=${encodeURIComponent(id)}` }),
+        load: loadResult,
+      });
     } catch (cause) {
       setError(cause instanceof Error ? cause.message : "Capture failed");
     } finally { setBusy(false); }
@@ -111,16 +115,16 @@ function App() {
 
   return <main>
     <h1>VCT Connect</h1>
-    <p>Capture selected visible evidence from the active 1688 offer.</p>
+    <p>Capture selected visible evidence from the active 1688 offer or Taobao item/shop.</p>
     {!isLoaded ? <>
       <p>{signInDelayed ? "Sign-in is taking longer than expected. Sign in on the web, then close and reopen this popup." : "Checking your VCT Connect session…"}</p>
       {signInDelayed && <button onClick={() => void openWebSignIn()}>Open VCT Connect</button>}
     </> : !isSignedIn ? <>
       <button onClick={() => void openWebSignIn()}>Sign in on VCT Connect</button>
-      <p>Finish sign-in in the web tab, then return to the 1688 offer and reopen this popup. Use the same Chrome profile.</p>
+      <p>Finish sign-in in the web tab, then return to the source page and reopen this popup. Use the same Chrome profile.</p>
     </> : <>
       <UserButton />
-      <p><button disabled={busy} onClick={() => void capture()}>{busy ? "Working…" : "Capture this offer"}</button></p>
+      <p><button disabled={busy} onClick={() => void capture()}>{busy ? "Working…" : "Capture this page"}</button></p>
     </>}
     {error && <p className="error" role="alert">{error}</p>}
     {isSignedIn && result && <div className="status">
@@ -130,7 +134,7 @@ function App() {
       <small>User-provided browser evidence. No risk score is available.</small>
     </div>}
     {isSignedIn && lastCapture && <div className="status">
-      <small>Last offer: {lastCapture.sourceUrl}</small>
+      <small>Last page: {lastCapture.sourceUrl}</small>
       {isSignedIn && <p><button disabled={busy} onClick={() => void retryResult()}>Reload last result</button></p>}
       <p><button onClick={() => void chrome.tabs.create({ url: `${VCT_WEB_ORIGIN}/?analysis=${encodeURIComponent(lastCapture.analysisId)}` })}>Open web result</button></p>
       <small>Sign into the same VCT Connect account on the web to view this result.</small>

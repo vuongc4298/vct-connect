@@ -215,7 +215,7 @@ def test_commented_or_quoted_shop_assignments_are_not_models(prefix, suffix):
 def test_challenge_words_inside_bound_useful_evidence_are_not_access_walls():
     model = _model(HTMLParser(capture()), "item")
     model["loaderData"]["home"]["data"]["res"]["item"]["title"] = "Captcha security verification accessory"
-    html = model_page(model) + '<body><div class="Comments--test"><div class="Comment--test"><div class="content--test">Access denied 请登录 滑动验证</div></div></div></body>'
+    html = model_page(model) + '<body><div class="Comments--test"><div class="Comment--test"><div class="contentWrapper--test"><div class="content--test">Access denied 请登录 滑动验证</div></div></div></div></body>'
     result = parse_taobao_page(html, ITEM)
     assert result["extraction_status"] == "PARTIAL"
     assert result["reviews"][0]["text"] == "Access denied 请登录 滑动验证"
@@ -309,7 +309,7 @@ def test_injected_private_model_and_reviewer_state_never_survives(shop):
         res["componentsVO"]["priceVO"]["price"].update(private)
         res["componentsVO"]["rateVO"].update(private)
         res["componentsVO"]["rateVO"]["favorableRate"].update(private)
-    html = model_page(model, shop) + '<div class="Comments--test"><div class="Comment--test"><div class="header--test"><span>PRIVATE_REVIEWER_SENTINEL</span></div><div class="content--test">Public review body</div></div></div>'
+    html = model_page(model, shop) + '<div class="Comments--test"><div class="Comment--test"><div class="header--test"><span>PRIVATE_REVIEWER_SENTINEL</span></div><div class="contentWrapper--test"><div class="content--test">Public review body</div></div></div></div>'
     result = parse_taobao_page(html, SHOP if shop else ITEM)
     assert result["extraction_status"] == "PARTIAL"
     serialized = json.dumps(result)
@@ -317,3 +317,200 @@ def test_injected_private_model_and_reviewer_state_never_survives(shop):
         assert sentinel not in serialized
     if not shop:
         assert result["reviews"] == [{"text": "Public review body", "source_url": ITEM}]
+
+
+@pytest.mark.parametrize("shop", [False, True])
+@pytest.mark.parametrize("opening,closing", [
+    ('<script type="text/plain">', '</script>'), ('<script src="external.js">', '</script>'),
+    ('<script src="">', '</script>'), ('<template><script>', '</script></template>'),
+    ('<noscript><script>', '</script></noscript>'),
+])
+def test_inactive_assignments_cannot_supply_evidence(shop, opening, closing):
+    model = _model(HTMLParser(capture(shop)), "shop" if shop else "item")
+    html = model_page(model, shop).replace("<script>", opening).replace("</script>", closing)
+    assert parse_taobao_page(html, SHOP if shop else ITEM)["extraction_status"] == "PARSE_FAILED"
+
+
+@pytest.mark.parametrize("assignment", [
+    'window.__ICE_APP_CONTEXT__ = {"loaderData": {"other": "item"}};',
+    'window["__ICE_APP_CONTEXT__"] = {"loaderData": {}};',
+    'window.__ICE_APP_CONTEXT__.loaderData = {};',
+    'window.__ICE_APP_CONTEXT__ ||= {"loaderData": {}};',
+    'Object.assign(window.__ICE_APP_CONTEXT__, {"loaderData": {}});',
+])
+def test_earlier_context_override_is_rejected(assignment):
+    result = parse_taobao_page("<script>" + assignment + "</script>" + capture(), ITEM)
+    assert result["extraction_status"] == "PARSE_FAILED" and "supplier_data" not in result
+
+
+def test_bound_evidence_survives_login_title_and_real_waiting_challenge_is_blocked():
+    assert parse_taobao_page(capture().replace("<head>", "<head><title>Please sign in</title>"), ITEM)["extraction_status"] == "PARTIAL"
+    html = '<body>Please wait<script>window._config_={};document.cookie="challenge";location="login_jump/_____tmd_____";</script></body>'
+    result = parse_taobao_page(html, ITEM)
+    assert result["extraction_status"] == "BLOCKED" and "supplier_data" not in result
+
+
+def test_title_fallback_is_scoped_and_ambiguous_titles_are_rejected():
+    model = _model(HTMLParser(capture()), "item")
+    del model["loaderData"]["home"]["data"]["res"]["item"]["title"]
+    main = '<div class="MainTitle--test"><span class="mainTitle--test">  Audited title  </span></div>'
+    assert parse_taobao_page(model_page(model) + main, ITEM)["supplier_data"]["products"] is None
+    scoped = '<div class="ItemTitle--test">' + main + '</div>'
+    assert parse_taobao_page(model_page(model) + scoped, ITEM)["supplier_data"]["products"][0]["title"] == "Audited title"
+    assert parse_taobao_page(model_page(model) + scoped + scoped, ITEM)["extraction_status"] == "PARSE_FAILED"
+
+
+@pytest.mark.parametrize("opening,closing", [('<template>', '</template>'), ('<noscript>', '</noscript>'),
+    ('<div hidden>', '</div>'), ('<div style="display: none">', '</div>'), ('<div aria-hidden="true">', '</div>')])
+def test_inactive_reviews_and_metrics_are_not_retained(opening, closing):
+    extra = '<div class="Comments--test"><div class="Comment--test"><div class="contentWrapper--test"><div class="content--test">INACTIVE_REVIEW</div></div></div></div>'
+    result = parse_taobao_page(capture().replace("<body>", "<body>" + opening + extra + closing), ITEM)
+    assert len(result["reviews"]) == 2 and "INACTIVE_REVIEW" not in json.dumps(result)
+
+
+def test_raw_review_extent_and_dom_metrics_preserve_original_selected_text():
+    original = "  " + "x" * 4500 + "  "
+    html = capture().replace("质量特别好，一直都用的这款抽纸", original).replace("平均23小时发货", "  平均23小时发货  ")
+    result = parse_taobao_page(html, ITEM)
+    raw = result["raw_payload"]["public_fields"]
+    review = raw["reviews"][0]
+    assert review["text"] == original[:4096] and review["original_length"] == len(original)
+    assert review["truncated"] and review["retained_length"] == 4096
+    assert result["reviews"][0]["text"] == review["text"].strip()[:2000]
+    assert "  平均23小时发货  " in raw["shop_metrics_display_text"]
+    assert "平均23小时发货" in result["supplier_data"]["transaction_signals"]["shop_metrics_display_text"]
+
+
+def test_hidden_and_script_descendants_are_excluded_from_selected_review_text():
+    html = capture().replace("质量特别好，一直都用的这款抽纸", 'Public body<span hidden>PRIVATE_HIDDEN_SENTINEL</span><script>var token="PRIVATE_SCRIPT_SENTINEL"</script>')
+    result = parse_taobao_page(html, ITEM)
+    assert result["reviews"][0]["text"] == "Public body"
+    assert "PRIVATE_" not in json.dumps(result)
+
+
+def test_empty_shop_dom_metrics_do_not_inflate_coverage():
+    model = _model(HTMLParser(capture()), "item")
+    res = model["loaderData"]["home"]["data"]["res"]
+    res["item"].pop("vagueSellCount")
+    res["componentsVO"].pop("rateVO")
+    html = model_page(model) + '<div><div><div><span class="shopName--test">心相印维达生活馆</span></div></div><span class="starNum--test"> </span></div>'
+    result = parse_taobao_page(html, ITEM)
+    assert result["supplier_data"]["transaction_signals"] is None
+
+
+@pytest.mark.parametrize("shop", [False, True])
+def test_embedded_pathless_tracked_shop_url_keeps_shop_binding(shop):
+    html = capture(shop).replace('//shop159450000.taobao.com', '//shop159450000.taobao.com?spm=track')
+    assert parse_taobao_page(html, SHOP if shop else ITEM)["extraction_status"] == "PARTIAL"
+
+
+@pytest.mark.parametrize("hint", [ITEM.replace("1076425861755", "1"), SHOP, "https://evil.example/", ITEM + "&id=1"])
+def test_imported_canonical_hint_cannot_reassign_identity(hint):
+    result = parse_taobao_page(capture().replace("<head>", '<head><link rel="canonical" href="' + hint + '">'), ITEM)
+    assert result["extraction_status"] == "PARSE_FAILED" and "supplier_data" not in result
+
+
+def test_body_charset_text_is_not_an_encoding_declaration():
+    from backend.app.extraction.taobao import _decode
+    body = capture().replace("<body>", "<body>ordinary charset=ascii")
+    assert _decode(body.encode(), httpx.Response(200)) == body
+
+
+@pytest.mark.parametrize("shop", [False, True])
+def test_bound_transient_html_retries_instead_of_becoming_access_failure(shop):
+    body = capture(shop).replace("<head>", "<head><title>Captcha Please sign in</title>")
+    calls = []
+    def respond(request):
+        calls.append(request)
+        return httpx.Response(503 if len(calls) == 1 else 200, headers={"content-type": "text/html"}, text=body)
+    with httpx.Client(transport=httpx.MockTransport(respond)) as client:
+        result = extract_taobao(SHOP if shop else ITEM, client=client, dns_check=lambda _: True, sleep=lambda _: None)
+    assert len(calls) == 2 and result["extraction_status"] == "PARTIAL"
+
+
+@pytest.mark.parametrize("shop", [False, True])
+def test_default_taobao_transport_pins_public_ip_and_preserves_tls_host(monkeypatch, shop):
+    import socket
+    import httpcore
+    body = capture(shop).encode()
+    calls = []
+    class Socket:
+        response = b"HTTP/1.1 200 OK\r\nContent-Type: text/html\r\nContent-Length: " + str(len(body)).encode() + b"\r\nConnection: close\r\n\r\n" + body
+        def read(self, maximum, timeout=None):
+            data, self.response = self.response[:maximum], self.response[maximum:]
+            return data
+        def write(self, data, timeout=None):
+            calls.append(("request", data))
+        def start_tls(self, context, server_hostname=None, timeout=None):
+            calls.append(("tls", server_hostname))
+            return self
+        def get_extra_info(self, info):
+            return None
+        def close(self):
+            pass
+    def connect(_self, host, port, *_args, **_kwargs):
+        calls.append(("connect", host, port))
+        return Socket()
+    monkeypatch.setattr(socket, "getaddrinfo", lambda *_args, **_kwargs: [(socket.AF_INET, socket.SOCK_STREAM, 6, "", ("93.184.216.34", 443))])
+    monkeypatch.setattr(httpcore.SyncBackend, "connect_tcp", connect)
+    source = SHOP if shop else ITEM
+    result = extract_taobao(source)
+    assert result["extraction_status"] == "PARTIAL"
+    assert ("connect", "93.184.216.34", 443) in calls
+    assert ("tls", "shop159450000.world.taobao.com" if shop else "item.taobao.com") in calls
+
+
+@pytest.mark.parametrize("example", [
+    'const example = "window.__ICE_APP_CONTEXT__ = {}";',
+    "const example = 'window[\"__ICE_APP_CONTEXT__\"] = {}';",
+    'const example = `Object.assign(window.__ICE_APP_CONTEXT__, {});`;',
+    '// window.__ICE_APP_CONTEXT__ = {};\nconst harmless = 1;',
+    '/* window["__ICE_APP_CONTEXT__"] = {}; Object.assign(window.__ICE_APP_CONTEXT__, {}); */',
+])
+def test_nonexecutable_context_write_examples_do_not_reject_bound_pages(example):
+    assert parse_taobao_page('<script>' + example + '</script>' + capture(), ITEM)["extraction_status"] == "PARTIAL"
+
+
+@pytest.mark.parametrize("write", [
+    'window.__ICE_APP_CONTEXT__ = {loaderData:{}};',
+    'window["__ICE_APP_CONTEXT__"] = {loaderData:{}};',
+    'Object.assign(window.__ICE_APP_CONTEXT__, {loaderData:{}});',
+    'const value = `${window.__ICE_APP_CONTEXT__ = {loaderData:{}}}`;',
+])
+def test_executable_context_writes_still_reject_bound_pages(write):
+    assert parse_taobao_page('<script>' + write + '</script>' + capture(), ITEM)["extraction_status"] == "PARSE_FAILED"
+
+
+@pytest.mark.parametrize("opening,closing", [
+    ('<script hidden>', '</script>'), ('<div hidden><script>', '</script></div>'),
+    ('<script style="display:none">', '</script>'), ('<script aria-hidden="true">', '</script>'),
+])
+def test_hidden_inline_context_writes_are_executable_and_rejected(opening, closing):
+    html = opening + 'window.__ICE_APP_CONTEXT__ = {loaderData:{}};' + closing + capture()
+    assert parse_taobao_page(html, ITEM)["extraction_status"] == "PARSE_FAILED"
+
+
+@pytest.mark.parametrize("style", ["opacity:0", "opacity: 0.0 !important", "visibility:collapse"])
+def test_invisible_descendants_do_not_survive_selected_raw_review_text(style):
+    html = capture().replace("质量特别好，一直都用的这款抽纸", 'Public review<span style="' + style + '">PRIVATE_INVISIBLE</span>')
+    result = parse_taobao_page(html, ITEM)
+    assert result["reviews"][0]["text"] == "Public review"
+    assert result["raw_payload"]["public_fields"]["reviews"][0]["text"] == "Public review"
+    assert "PRIVATE_INVISIBLE" not in json.dumps(result)
+
+
+@pytest.mark.parametrize("attribute", ['hidden', 'aria-hidden="true"', 'style="display:none"', 'style="visibility:collapse"', 'style="opacity:0"'])
+@pytest.mark.parametrize("marker", ["captcha", "Please sign in"])
+def test_sparse_pages_are_not_access_walls_due_to_hidden_text(attribute, marker):
+    result = parse_taobao_page('<body>Unavailable<span ' + attribute + '>' + marker + '</span></body>', ITEM)
+    assert result["extraction_status"] == "PARSE_FAILED"
+
+
+def test_hidden_executable_structured_challenge_is_still_classified():
+    html = '<body>Waiting<script hidden>window._config_={};document.cookie="challenge";location="login_jump/_____tmd_____";</script></body>'
+    assert parse_taobao_page(html, ITEM)["extraction_status"] == "BLOCKED"
+
+
+def test_hidden_canonical_metadata_still_binds_imported_identity():
+    html = capture().replace("<head>", '<head><link hidden rel="canonical" href="https://item.taobao.com/item.htm?id=1">')
+    assert parse_taobao_page(html, ITEM)["extraction_status"] == "PARSE_FAILED"

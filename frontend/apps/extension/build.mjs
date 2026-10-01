@@ -30,13 +30,13 @@ const syncHost = publishableKey.startsWith("pk_test_") ? webOrigin : `https://${
 await mkdir(output, { recursive: true });
 const manifest = {
   manifest_version: 3,
-  name: "VCT Connect 1688 Evidence",
+  name: "VCT Connect Source Evidence",
   version: "0.1.0",
-  description: "Capture selected visible 1688 offer evidence on request.",
+  description: "Capture selected visible 1688 and Taobao evidence on request.",
   key: publicKey,
   permissions: ["activeTab", "scripting", "cookies", "storage"],
   host_permissions: [`${webOrigin}/*`, `https://${clerkHost}/*`],
-  action: { default_popup: "popup.html", default_title: "Capture 1688 evidence" },
+  action: { default_popup: "popup.html", default_title: "Capture source evidence" },
 };
 await writeFile(resolve(output, "manifest.json"), JSON.stringify(manifest, null, 2));
 await Promise.all(["popup.html", "popup.css"].map(async name =>
