@@ -159,3 +159,7 @@ Final parent verification: **394 backend tests passed, one opt-in Azure test ski
 Implementation and review are complete. Production builds, credential scans, reviewed local commit and authorized dev deployment are recorded below as they complete. Live browser capture and signed-in acceptance require the user's session and remain explicit operational gates.
 
 - Production web and extension builds passed, web credential scan passed, Bicep compilation passed, and whitespace checks passed. Extension rebuilt for the Azure development web origin; stable extension ID retained. Remote main remains an ancestor of the reviewed local revision, so the authorized push can proceed normally.
+
+### Release gate correction
+
+Release commit `5b3e565` was pushed under existing approval. CI on Python 3.12 rejected an existing 1688 test that assumed 2,000 JSON nesting levels always exhaust the decoder; the Windows Python 3.11 run had passed. Both runtimes safely reject the array, but Python 3.12 reports MALFORMED_PAGE when decoding succeeds. The test now verifies safe rejection independently of runtime depth and separately injects an actual decoder RecursionError to verify the exact PARSER_LIMIT contract. Production parser behavior is unchanged. Deployment was skipped by the CI gate; no release success is claimed until the corrected run passes.

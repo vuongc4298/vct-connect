@@ -619,11 +619,24 @@ def test_malformed_embedded_structures_are_fixed_parser_failures(model):
     assert result == {"source_url": URL, "extraction_status": "PARSE_FAILED", "reason": "MALFORMED_PAGE"}
 
 
-def test_malformed_json_and_recursion_have_fixed_parser_failures():
+def test_malformed_json_and_deep_nesting_have_fixed_parser_failures():
     malformed = offer_html() + '<script>})(window.contextPath,{broken})</script>'
     assert parse_1688_page(malformed, URL)["reason"] == "MALFORMED_PAGE"
     deeply_nested = offer_html() + '<script>})(window.contextPath,' + '[' * 2000 + '0' + ']' * 2000 + ')</script>'
     result = parse_1688_page(deeply_nested, URL)
+    # Decoder recursion thresholds differ across Python versions. If decoding
+    # succeeds, the nested array is still an invalid source model.
+    assert result["source_url"] == URL
+    assert result["extraction_status"] == "PARSE_FAILED"
+    assert result["reason"] in {"PARSER_LIMIT", "MALFORMED_PAGE"}
+    assert "supplier_data" not in result
+
+
+def test_decoder_recursion_is_reported_as_parser_limit(monkeypatch):
+    def exhausted_decoder(*_args, **_kwargs):
+        raise RecursionError("decoder limit")
+    monkeypatch.setattr(json.JSONDecoder, "raw_decode", exhausted_decoder)
+    result = parse_1688_page(offer_html() + '<script>})(window.contextPath,{})</script>', URL)
     assert result == {"source_url": URL, "extraction_status": "PARSE_FAILED", "reason": "PARSER_LIMIT"}
 
 
