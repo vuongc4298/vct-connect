@@ -167,3 +167,13 @@ Release commit `5b3e565` was pushed under existing approval. CI on Python 3.12 r
 The corrected CI passed backend, frontend, typecheck, production build and credential gates, then exposed an existing Docker workspace mismatch: the web image invoked the root build (including the extension) after installing without its workspace manifest. The web Dockerfile now installs the complete declared workspace graph and builds its web artifact explicitly. Docker context also excludes all nested node_modules and generated extension bundles, avoiding host dependencies in Linux images. CI continues to verify the extension separately through the root build.
 
 Local verification of the Docker correction could not pull node:22-alpine because Docker Desktop cannot resolve registry-1.docker.io, even with elevated execution. The corrected image will be verified by the existing GitHub CI Docker gate, whose previous run successfully accessed Docker Hub. No local image-build pass is claimed.
+
+### Deployed release verification
+
+- Released revision: `ce914c3e99b23580d7b924c815372ea5fb319b1e` (implementation `5b3e565`, test portability `e7b7608`, Docker correction `ce914c3`).
+- CI run **36846986620** passed: **395 backend tests, one opt-in Azure skip; 67 frontend tests**, typecheck, production build, credential scan, backend/web Docker images and Azure template compilation.
+- Azure Deploy dev run **36847751380** succeeded, including target/Key Vault checks, digest image publishing, baseline convergence, successful private migration, processor activation, ingress/private API boundary and guest fixture completion.
+- API ready revision `vct-connect-dev-api--0000003` contains the exact cloud web and stable extension Clerk authorized parties.
+- Parent deployed checks passed: capture/import return 401 without authentication; exact extension CORS is preserved. Guest item **12AA8D20** and shop **7AFC5C82** completed with **BLOCKED / ACCESS_CHALLENGE**, no supplier snapshot, PUBLIC_HTTP/GUEST_PUBLIC provenance, and foreign guest access rejected.
+- Extension built and credential-scanned for `https://vct-connect-dev-web.blackdesert-0144dda1.southeastasia.azurecontainerapps.io`; reload the unpacked `frontend/apps/extension/build` to use it.
+- Remaining operational acceptance: user's current Chrome session must verify accessible Taobao item/shop capture, automatic result opening, and signed-in saved HTML import. Local automated ownership/import/persistence checks passed; real Chrome and signed-in cloud acceptance are not claimed. Pausing for that required user action under the standing instruction.
