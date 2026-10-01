@@ -12,7 +12,7 @@ lenses_ran: ['blind-hunter', 'edge-case-hunter', 'intent-alignment', 'verificati
 review_loop_iteration: 0
 followup_review_recommended: true
 warnings: [oversized]
-deferred: []
+deferred: ['Live Taobao shop extension capture acceptance; user deferred on 2026-10-01']
 baseline_revision: '499d255011ab0979b77e564feab0f5327d929251'
 context:
   - 'C:/Users/eidel/Desktop/VCT Connect/_bmad-output/initiative-vct-connect-year-one/epic-extraction/epic-extraction.md'

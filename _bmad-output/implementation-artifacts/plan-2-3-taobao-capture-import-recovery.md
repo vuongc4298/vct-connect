@@ -10,6 +10,7 @@ review: 'thorough'
 review_source: 'auto'
 lenses_ran: [blind-hunter, edge-case-hunter, verification-gap, intent-alignment]
 review_loop_iteration: 0
+deferred: ['Live Taobao shop extension capture acceptance; user deferred on 2026-10-01']
 baseline_revision: '968273095d2693fac4d71d9f09a2327385264816'
 context:
   - 'C:/Users/eidel/Desktop/VCT Connect/_bmad-output/initiative-vct-connect-year-one/epic-extraction/story-add-the-taobao-source-adapter-plan.md'
@@ -185,3 +186,11 @@ User reported completing the requested Chrome capture check, but could not locat
 ### User saved product HTML checkpoint
 
 User confirmed completing the saved product import in the cloud web app. The parent read-only query found matching customer USER_UPLOAD **5F0E7488** (`5f0e7488-f8a2-44fc-9479-d220e3c2f4c5`), item **1076425861755**, created/completed **2026-10-01 14:00:20 UTC**. It is COMPLETED / PARTIAL, ACCOUNT_PUBLIC / USER_UPLOAD, with USER_PROVIDED_SAVED_PAGE provenance, **6/12 fields**, **two reviews**, and **one product**. Its HTML SHA256 exactly matches the 472,468-byte original local sample: `9118786317b511b541f151195427640abfbdd809b3d34bdf4988b888b26ae12c`. The import time is populated and original capture time remains null. Product capture and product HTML import acceptance are verified; final operational checks are saved GBK shop HTML import and accessible live shop capture.
+
+### Shop HTML acceptance and closeout
+
+User confirmed completing the shop HTML import. A parent read-only query found customer USER_UPLOAD **C5FC5CE9** (`c5fc5ce9-0eb7-4e8f-8b68-53fb33a9ebcb`), shop **159450000**, created/completed **2026-10-01 14:08:35 UTC**. It is COMPLETED / PARTIAL, ACCOUNT_PUBLIC / USER_UPLOAD, USER_PROVIDED_SAVED_PAGE, with **4/12 fields** and **20 products**. The stored SHA256 exactly matches the 722,085-byte original GBK-family sample: `44b29cd69dec913520007d2b616f9adf3afa289ca4d915b9d09343d115296681`. Import time is populated and original capture time remains null.
+
+On **2026-10-01**, the user explicitly deferred **live Taobao shop extension capture acceptance** because they cannot perform it now. Record this as an unverified operational acceptance check, not a passed test or a deferred code-review finding. Resume it when the user can access a shop page: invoke Capture this page, confirm automatic opening, and verify the persisted shop snapshot. Automated shop collector/normalizer/persistence tests and original sample projection passed; these do not establish current live browser compatibility.
+
+**Story 2.3 closeout:** implementation, review corrections, CI, Azure deployment, live product capture, and product/shop saved-HTML imports are complete. Closeout is accepted with the one user-approved shop capture check deferred. No further user action is required for this closeout.
