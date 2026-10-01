@@ -2,6 +2,13 @@ import type { Analysis, ExtractionStatus } from "@vct/contracts";
 import { sourceLabel } from "./source-url";
 
 export function extractionRecovery(status: ExtractionStatus | null, reason?: string, sourceUrl?: string) {
+  if (sourceLabel(sourceUrl) === "Alibaba") {
+    if (status === "SUCCESS" || status === "PARTIAL" || status === null) return null;
+    if (status === "AUTH_REQUIRED" || status === "BLOCKED") {
+      return "Alibaba yêu cầu đăng nhập, xác minh truy cập hoặc địa chỉ nguồn không thể xác minh an toàn. Lần trích xuất này đã kết thúc. Hãy mở đúng trang nguồn để kiểm tra và tạo phân tích mới sau. Nhập HTML và tiện ích chụp trang Alibaba hiện chưa được hỗ trợ.";
+    }
+    return "Chưa thể lấy bằng chứng có thể xác minh từ Alibaba. Hãy kiểm tra URL HTTPS sản phẩm trên www.alibaba.com/product-detail/ hoặc hồ sơ công ty trên <store>.en.alibaba.com/company_profile.html và tạo phân tích mới sau. Nhập HTML và tiện ích chụp trang Alibaba hiện chưa được hỗ trợ.";
+  }
   if (sourceLabel(sourceUrl) === "Taobao") {
     if (status === "SUCCESS" || status === "PARTIAL" || status === null) return null;
     if (reason && ["INVALID_URL", "UNSAFE_DESTINATION", "UNSAFE_REDIRECT", "SOURCE_MISMATCH", "REDIRECT_LOOP", "REDIRECT_LIMIT"].includes(reason)) {

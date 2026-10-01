@@ -133,7 +133,10 @@ def create_app(
             source_url = normalize_source_url(source_url)
         except ValueError as exc:
             raise HTTPException(status_code=422, detail="Unsupported source URL") from exc
-        taobao = source_platform(source_url) == "TAOBAO"
+        platform = source_platform(source_url)
+        if platform == "ALIBABA":
+            raise HTTPException(status_code=422, detail="Alibaba saved-page import is not supported")
+        taobao = platform == "TAOBAO"
         media = Message()
         media["content-type"] = request.headers.get("content-type", "")
         charsets = [value for name, value in (media.get_params(header="content-type") or [])[1:]
@@ -203,7 +206,10 @@ def create_app(
             selected = json.loads(bytes(content))
             if not isinstance(selected, dict):
                 raise ValueError("Invalid selected evidence")
-            if source_platform(selected.get("source_url", "")) == "TAOBAO":
+            platform = source_platform(selected.get("source_url", ""))
+            if platform == "ALIBABA":
+                raise ValueError("Alibaba browser capture is not supported")
+            if platform == "TAOBAO":
                 payload = normalize_taobao_capture(TaobaoCapture.model_validate_json(bytes(content)))
             else:
                 payload = normalize_capture(DomCapture.model_validate_json(bytes(content)))

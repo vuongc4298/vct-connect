@@ -3,6 +3,11 @@ import type { Analysis, FixtureResult } from "@vct/contracts";
 import { extractionRecovery } from "./analysis-status";
 import { safeSourceUrl, sourceLabel } from "./source-url";
 
+const companyLabels: Record<string, string> = {
+  company_name: "Tên công ty", business_type: "Loại hình doanh nghiệp",
+  register_country: "Quốc gia đăng ký", markets_display_text: "Thị trường được nguồn công bố",
+};
+
 export function isFixtureResult(result: Analysis["result"]): result is FixtureResult {
   return result !== null && "fixture" in result && result.fixture === true;
 }
@@ -22,6 +27,25 @@ export function ExtractionEvidence({ analysis }: { analysis: Analysis }) {
     {data ? <>
       <p><strong>{data.supplier_name ?? "Chưa có tên nhà cung cấp"}</strong> · {data.products?.[0]?.title ?? "Chưa có tên sản phẩm"}</p>
       {data.price_information?.display_text && <p>Giá hiển thị trên trang: {data.price_information.display_text}</p>}
+      {source === "Alibaba" && <>
+        <p>Các thông tin dưới đây là tuyên bố trên trang nguồn; chưa được xác minh độc lập.</p>
+        {data.company_information && <ul>{Object.entries(data.company_information).map(([label, value]) => <li key={label}>{companyLabels[label] ?? label}: {value}</li>)}</ul>}
+        {data.years_active !== null && <p>Thời gian tham gia Alibaba: {data.years_active} năm; chưa xác minh tuổi pháp nhân.</p>}
+        {data.categories && <p>Danh mục: {data.categories.join(" · ")}</p>}
+        {data.certifications && <p>Chứng nhận / báo cáo kiểm tra được nguồn công bố: {data.certifications.join(" · ")}</p>}
+        {data.rating !== null && <p>Điểm đánh giá nhà cung cấp trên nguồn: {data.rating}/5</p>}
+        {data.price_information?.currency && <p>Giá chào sản phẩm: {data.price_information.minimum ?? "chưa có"}–{data.price_information.maximum ?? "chưa có"} {data.price_information.currency} / {data.price_information.unit ?? "chưa có đơn vị"} · MOQ: {data.price_information.minimum_order_quantity ?? "chưa có"}</p>}
+        {[...(data.transaction_signals?.source_metrics ?? []), ...(data.delivery_information?.source_metrics ?? [])].map((metric, index) => <p key={index}>{metric.label}: {metric.value} · Phạm vi: {metric.scope}{metric.description ? ` · ${metric.description}` : ""}</p>)}
+        {data.delivery_information?.lead_times?.map((lead, index) => <p key={index}>Thời gian chuẩn bị sản phẩm: {lead.minQuantity}–{lead.maxQuantity} đơn vị → {lead.processPeriod} ngày</p>)}
+        {data.products && <ul>{data.products.map((product, index) => {
+          const productUrl = safeSourceUrl(product.source_url);
+          const bound = productUrl?.match(/_([1-9][0-9]{0,19})\.html$/)?.[1] === product.offer_id && productUrl?.startsWith("https://www.alibaba.com/product-detail/");
+          return <li key={index}>{bound ? <a href={productUrl!} target="_blank" rel="noreferrer">{product.title ?? product.offer_id}</a> : product.title ?? product.offer_id}
+            {product.price_display_text && <span> · Giá: {product.price_display_text}</span>}{product.minimum_order_display_text && <span> · {product.minimum_order_display_text}</span>}
+            {product.attributes && <ul>{product.attributes.map((attribute, i) => <li key={i}>{attribute.name}: {attribute.value}</li>)}</ul>}
+          </li>;
+        })}</ul>}
+      </>}
       {source === "Taobao" && <>
         {[data.price_information?.price, data.price_information?.extraPrice].filter(Boolean).map((price, index) => <p key={index}>{price?.priceTitle ?? "Giá hiển thị"}: {price?.priceUnit}{price?.priceText} {price?.priceDesc}</p>)}
         {data.price_information?.starting_price_text && <p>Giá khởi điểm hiển thị: {data.price_information.starting_price_text}</p>}

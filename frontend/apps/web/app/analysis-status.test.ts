@@ -4,6 +4,18 @@ import type { ExtractionStatus } from "@vct/contracts";
 
 import { analysisPresentation, extractionRecovery } from "./analysis-status";
 
+test("Alibaba terminal outcomes name the source and disclose unsupported recovery", () => {
+  const source_url = "https://dgxuandele.en.alibaba.com/company_profile.html";
+  for (const extraction_status of ["AUTH_REQUIRED", "BLOCKED", "TIMEOUT", "UNSUPPORTED_PAGE", "PARSE_FAILED"] as const) {
+    const view = analysisPresentation({ status: "COMPLETED", attempt_count: 1, failure_code: null,
+      source_url, extraction_method: "PUBLIC_HTTP", result: { source_url, extraction_status } });
+    assert.equal(view.shouldPoll, false); assert.equal(view.final, true);
+    assert.match(view.headline, /Alibaba/); assert.match(view.detail, /hiện chưa được hỗ trợ/);
+    assert.doesNotMatch(view.detail, /1688|Taobao|dùng tiện ích VCT Connect/);
+  }
+  assert.equal(extractionRecovery("PARTIAL", undefined, source_url), null);
+});
+
 test("Taobao terminal guidance names the source and offers capture and saved HTML recovery", () => {
   const url = "https://item.taobao.com/item.htm?id=1076425861755";
   const view = analysisPresentation({ status: "COMPLETED", attempt_count: 1, failure_code: null,

@@ -26,6 +26,82 @@ from backend.worker.main import dispatch_outbox_once, process_azure_once, proces
 
 
 @pytest.mark.parametrize("guest", [False, True])
+@pytest.mark.parametrize("profile", [False, True])
+def test_alibaba_mocked_public_queue_owner_and_immutable_replay(store, monkeypatch, guest, profile):
+    from backend.app.extraction.alibaba import extract_alibaba
+    source = "https://dgxuandele.en.alibaba.com/company_profile.html" if profile else "https://www.alibaba.com/product-detail/100-Cotton-180gsm-T-shirts-Men_1600147809763.html"
+    filename = "alibaba_profile_dgxuandele.html" if profile else "alibaba_product_1600147809763.html"
+    content = (Path(__file__).parent / "fixtures" / filename).read_bytes()
+    subject = "alibaba_" + uuid4().hex
+    settings = Settings(store.database_url, "local", None, None, True)
+    client = TestClient(create_app(store=store, settings=settings, verifier=HeaderSubjectVerifier()))
+    headers = {"x-vct-guest-key": uuid4().hex * 2} if guest else {"Authorization": "Bearer subject:" + subject}
+    endpoint = "/api/v1/guest-analyses" if guest else "/api/v1/analyses"
+    submitted = client.post(endpoint, json={"source_url": source + "?spm=tracking"}, headers=headers)
+    assert submitted.status_code == 202
+    analysis_id = UUID(submitted.json()["id"])
+    def public_adapter(url, **kwargs):
+        with httpx.Client(transport=httpx.MockTransport(lambda request: httpx.Response(200, headers={"content-type": "text/html"}, content=content))) as transport:
+            return extract_alibaba(url, client=transport, dns_check=lambda host: True, **kwargs)
+    monkeypatch.setattr("backend.worker.main.extract_alibaba", public_adapter)
+    try:
+        assert process_local_once(store)
+        row = client.get(f"{endpoint}/{analysis_id}", headers=headers).json()
+        assert row["status"] == "COMPLETED" and row["supplier_data"]["platform"] == "ALIBABA"
+        assert row["supplier_data"]["analysis_mode"] == ("GUEST_PUBLIC" if guest else "ACCOUNT_PUBLIC")
+        assert row["supplier_data"]["platform_supplier_id"] == ("dgxuandele.en.alibaba.com" if profile else "beautiy.en.alibaba.com")
+        assert len(row["reviews"]) == (0 if profile else 1)
+        assert client.get(f"{endpoint}/{analysis_id}", headers={"x-vct-guest-key": "b"*64} if guest else {"Authorization": "Bearer subject:alibaba_other"}).status_code == 404
+        payload = {**row["result"], "supplier_data": row["supplier_data"], "raw_payload": row["raw_evidence"], "reviews": row["reviews"]}
+        assert store.complete_processing(analysis_id, uuid4(), payload) == "replay"
+        changed = json.loads(json.dumps(payload)); changed["raw_payload"]["public_fields"]["changed"] = True
+        with pytest.raises(ResultConflict): store.complete_processing(analysis_id, uuid4(), changed)
+        assert store.get(analysis_id)["supplier_snapshot_id"] == UUID(row["supplier_snapshot_id"])
+    finally:
+        remove(store, analysis_id); remove_user(store, subject); remove_user(store, "alibaba_other")
+
+
+def test_alibaba_access_wall_settles_without_snapshot(store, monkeypatch):
+    from backend.app.extraction.alibaba import parse_alibaba_page
+    source = "https://dgxuandele.en.alibaba.com/company_profile.html"
+    analysis_id = store.submit_local(source)
+    monkeypatch.setattr("backend.worker.main.extract_alibaba", lambda url, **kwargs: parse_alibaba_page('<punish-component></punish-component>', url, **kwargs))
+    try:
+        assert process_local_once(store)
+        row = store.get(analysis_id)
+        assert row["status"] == "COMPLETED" and row["result"]["extraction_status"] == "BLOCKED"
+        assert row["supplier_snapshot_id"] is None and row["supplier_data"] is None and row["reviews"] == []
+        assert store.complete_processing(analysis_id, uuid4(), row["result"]) == "replay"
+    finally:
+        remove(store, analysis_id)
+
+
+def test_alibaba_supplier_platform_isolation_and_spoof_rollback(store):
+    from backend.app.extraction.alibaba import parse_alibaba_page
+    source = "https://dgxuandele.en.alibaba.com/company_profile.html"
+    html = (Path(__file__).parent / "fixtures" / "alibaba_profile_dgxuandele.html").read_text(encoding="utf-8")
+    alibaba = parse_alibaba_page(html, source, analysis_mode="GUEST_PUBLIC")
+    taobao_source = "https://item.taobao.com/item.htm?id=1076425861755"
+    taobao = parse_taobao_page((Path(__file__).parent / "fixtures" / "taobao_item_1076425861755.html").read_text(encoding="utf-8"), taobao_source, analysis_mode="GUEST_PUBLIC")
+    key = "public_supplier_" + uuid4().hex
+    ids = [store.submit_local(source), store.submit_local(taobao_source)]
+    try:
+        for analysis_id, payload in zip(ids, [alibaba, taobao]):
+            claim = store.claim_processing(analysis_id, 60, 3)
+            payload["supplier_data"]["platform_supplier_id"] = key
+            if payload is alibaba:
+                spoof = json.loads(json.dumps(payload)); spoof["supplier_data"]["platform"] = "TAOBAO"
+                with pytest.raises(ValueError): store.complete_processing(analysis_id, claim["token"], spoof)
+                assert store.get(analysis_id)["supplier_snapshot_id"] is None
+            store.complete_processing(analysis_id, claim["token"], payload)
+        with store.connect() as conn:
+            rows = conn.execute("SELECT id, platform FROM suppliers WHERE platform_supplier_id = %s", (key,)).fetchall()
+        assert {row["platform"] for row in rows} == {"ALIBABA", "TAOBAO"} and len({row["id"] for row in rows}) == 2
+    finally:
+        for analysis_id in ids: remove(store, analysis_id)
+
+
+@pytest.mark.parametrize("guest", [False, True])
 @pytest.mark.parametrize("shop", [False, True])
 def test_taobao_queue_persistence_owner_modes_and_immutable_replay(store, monkeypatch, guest, shop):
     url = "https://shop159450000.world.taobao.com/category.htm" if shop else "https://item.taobao.com/item.htm?id=1076425861755"

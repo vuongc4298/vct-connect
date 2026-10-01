@@ -7,6 +7,45 @@ import type { Analysis } from "@vct/contracts";
 import { ExtractionEvidence, isFixtureResult } from "./extraction-evidence";
 import { safeSourceUrl } from "./source-url";
 
+test("Alibaba product quotation renders its USD range, unit and primary MOQ", () => {
+  const source_url = "https://www.alibaba.com/product-detail/Public-shirt_1600147809763.html";
+  const analysis = { result: { source_url, extraction_status: "PARTIAL" }, supplier_data: {
+    platform: "ALIBABA", source_url, offer_id: "1600147809763", supplier_name: "Public supplier", years_active: 6,
+    company_information: null, categories: null, certifications: null, rating: 4.7,
+    products: [{ offer_id: "1600147809763", title: "Public shirt", source_url, attributes: [{ name: "MOQ", value: "10 Piece" }] }],
+    price_information: { minimum: "3.26", maximum: "4.59", currency: "USD", unit: "piece", minimum_order_quantity: 2 },
+    transaction_signals: { review_count: 214 }, delivery_information: null,
+    completeness: 0.8333, completeness_denominator: Array(12).fill("field"), missing_fields: ["certifications", "activity_history"],
+    extraction_method: "PUBLIC_HTTP", analysis_mode: "ACCOUNT_PUBLIC", extractor_version: "alibaba-http.v1", extracted_at: "2026-10-01T00:00:00Z",
+  }, reviews: [] } as unknown as Analysis;
+  const html = renderToStaticMarkup(<ExtractionEvidence analysis={analysis} />);
+  assert.match(html, /Giá chào sản phẩm: 3\.26–4\.59 USD \/ piece · MOQ: 2/);
+  assert.match(html, /MOQ: 10 Piece/);
+});
+
+test("Alibaba claims retain price and metric scopes, certificate kinds and qualified tenure", () => {
+  const source_url = "https://dgxuandele.en.alibaba.com/company_profile.html";
+  const product_url = "https://www.alibaba.com/product-detail/Public-shirt_1600147809763.html";
+  const analysis = { result: { source_url, extraction_status: "PARTIAL" }, supplier_data: {
+    platform: "ALIBABA", source_url, offer_id: null, supplier_name: "Public supplier", years_active: 6,
+    company_information: { "Total employees": "43" }, categories: ["Shirts"],
+    certifications: ["RoHS (PRODUCT)", "AZO (INSPECTION_REPORT)"], rating: 4.7,
+    products: [{ offer_id: "1600147809763", title: "Public shirt", source_url: product_url, price_display_text: "$3.26", minimum_order_display_text: "MOQ:2 pieces" },
+      { offer_id: "1", title: "Wrong identity", source_url: product_url }],
+    price_information: null,
+    transaction_signals: { review_count: 39, source_metrics: [{ label: "Online revenue", value: "US $100K − $200K", scope: "supplier performance" }] },
+    delivery_information: { source_metrics: [{ label: "Average dispatch time", value: "25.6d", scope: "supplier performance" }] },
+    completeness: 0.75, completeness_denominator: Array(12).fill("field"), missing_fields: ["reviews", "price_information", "activity_history"],
+    extraction_method: "PUBLIC_HTTP", analysis_mode: "ACCOUNT_PUBLIC", extractor_version: "alibaba-http.v1", extracted_at: "2026-10-01T00:00:00Z",
+  }, reviews: [] } as unknown as Analysis;
+  const html = renderToStaticMarkup(<ExtractionEvidence analysis={analysis} />);
+  for (const expected of ["Bằng chứng Alibaba", "Total employees: 43", "6 năm; chưa xác minh tuổi pháp nhân", "RoHS (PRODUCT)", "AZO (INSPECTION_REPORT)", "4.7/5", "supplier performance", "25.6d", "MOQ:2 pieces", "chưa được xác minh độc lập"]) assert.ok(html.includes(expected), expected);
+  assert.match(html, /href="https:\/\/www\.alibaba\.com\/product-detail\/Public-shirt_1600147809763\.html"[^>]*>Public shirt/);
+  assert.doesNotMatch(html, /<a[^>]*>Wrong identity/);
+  assert.equal(safeSourceUrl(source_url), source_url); assert.equal(safeSourceUrl(product_url), product_url);
+  for (const unsafe of [product_url + "?tracking=1", source_url.replace(".en.", ".m.en."), product_url.replace("www.alibaba.com", "www.alibaba.com:443"), product_url.replace("1600147809763", "0")]) assert.equal(safeSourceUrl(unsafe), null);
+});
+
 test("Taobao evidence preserves display context, reviews and safe source links", () => {
   const url = "https://item.taobao.com/item.htm?id=1076425861755";
   const analysis = { result: { source_url: url, extraction_status: "PARTIAL" },

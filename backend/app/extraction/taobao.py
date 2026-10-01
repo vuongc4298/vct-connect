@@ -76,7 +76,7 @@ def _active(node):
     while node is not None:
         if node.tag in {"template", "noscript"} or "hidden" in node.attributes or node.attributes.get("aria-hidden") == "true":
             return False
-        style = re.sub(r"\s+", "", node.attributes.get("style", "").lower())
+        style = re.sub(r"\s+", "", (node.attributes.get("style") or "").lower())
         if "display:none" in style or "visibility:hidden" in style or "visibility:collapse" in style or re.search(
                 r"(?:^|;)opacity:(?:0+(?:\.0*)?|\.0+)(?:%|!important|%!important)?(?:;|$)", style):
             return False
@@ -92,7 +92,7 @@ def _scripts(tree):
             node = node.parent
         return True
     return [node for node in tree.css("script") if executable(node) and "src" not in node.attributes
-            and node.attributes.get("type", "").strip().lower() in {"", "text/javascript", "application/javascript", "text/ecmascript", "application/ecmascript", "module"}]
+            and (node.attributes.get("type") or "").strip().lower() in {"", "text/javascript", "application/javascript", "text/ecmascript", "application/ecmascript", "module"}]
 
 
 def _context_write(content):

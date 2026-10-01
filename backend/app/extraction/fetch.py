@@ -3,6 +3,7 @@ import ipaddress
 import socket
 import ssl
 import time
+from http.cookiejar import CookieJar, DefaultCookiePolicy
 from urllib.parse import urljoin, urlsplit
 import certifi
 import httpcore
@@ -25,6 +26,16 @@ class TemporaryDNSFailure(OSError):
 
 class DNSResolutionFailed(OSError):
     """A permanent resolver failure, without exposing resolver details."""
+
+
+class _RejectCookies(DefaultCookiePolicy):
+    """Anonymous adapters can decline source cookies, including redirect state."""
+
+    def set_ok(self, cookie, request):
+        return False
+
+    def return_ok(self, cookie, request):
+        return False
 
 
 def _public_addresses(host, port):
@@ -130,6 +141,7 @@ def _certificate_failure(exc: Exception) -> bool:
 
 def bounded_extract(source_url: str, *, normalize, identity, parse, classify_access, login_destination,
                     allowed_hosts, decode=None, mismatch_reason="OFFER_MISMATCH",
+                    accept_cookies=True,
                     analysis_mode: str = "ACCOUNT_PUBLIC",
                  client: httpx.Client | None = None, dns_check=_public_dns,
                  clock=time.monotonic, sleep=time.sleep) -> dict:
@@ -146,8 +158,13 @@ def bounded_extract(source_url: str, *, normalize, identity, parse, classify_acc
     if client is None:
         client = httpx.Client(transport=_public_transport(deadline=deadline, clock=clock, allowed_hosts=allowed_hosts),
                               follow_redirects=False, trust_env=False,
+                              cookies=None if accept_cookies else CookieJar(policy=_RejectCookies()),
                               timeout=httpx.Timeout(10.0, connect=5.0),
                               headers={"User-Agent": "VCTConnectPublicEvidence/1.0", "Accept": "text/html"})
+    if not accept_cookies:
+        client.cookies.clear()
+        client.cookies.jar.set_policy(_RejectCookies())
+        client.headers.pop('cookie', None)
     try:
         current = source_url
         redirects = retries = 0

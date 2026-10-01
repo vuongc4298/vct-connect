@@ -28,6 +28,7 @@ export type FixtureResult = {
   fixture: true;
 };
 export type ExtractionStatus = "SUCCESS" | "PARTIAL" | "AUTH_REQUIRED" | "BLOCKED" | "UNSUPPORTED_PAGE" | "TIMEOUT" | "PARSE_FAILED";
+export type SourceMetric = { label: string; value: string; scope: string; description?: string };
 export type SupplierData = {
   contract_version: "supplierdata.v1";
   platform: "1688" | "TAOBAO" | "ALIBABA";
@@ -46,22 +47,24 @@ export type SupplierData = {
   years_active: number | null;
   categories: string[] | null;
   certifications: string[] | null;
-  products: Array<{ offer_id: string | null; title: string | null; source_url?: string }> | null;
+  products: Array<{ offer_id: string | null; title: string | null; source_url?: string; attributes?: Array<{ name: string; value: string }>; price_display_text?: string | null; minimum_order_display_text?: string | null }> | null;
   price_information: {
     minimum?: string; maximum?: string; minimum_order_quantity?: number; display_text?: string;
     price?: { priceText: string | null; priceTitle: string | null; priceUnit: string | null; priceDesc: string | null };
     extraPrice?: { priceText: string | null; priceTitle: string | null; priceUnit: string | null; priceDesc: string | null };
     starting_price_text?: string;
+    currency?: string; unit?: string;
   } | null;
   transaction_signals: {
     review_count?: number; positive_review_rate?: number; repeat_purchase_rate?: string;
     sales_display_text?: string; review_count_display_text?: string; positive_review_rate_display_text?: string;
     shop_metrics_display_text?: string[];
     shop_evaluations?: Array<{ type: string | null; title: string | null; score: string | null; levelText: string | null }>;
+    source_metrics?: SourceMetric[];
   } | null;
   rating: number | null;
   reviews: Array<Record<string, unknown>> | null;
-  delivery_information: Record<string, unknown> | null;
+  delivery_information: { source_metrics?: SourceMetric[]; lead_times?: Array<{ minQuantity: number; maxQuantity: number; processPeriod: number }>; [key: string]: unknown } | null;
   activity_history: Array<Record<string, unknown>> | null;
 };
 export type ExtractionResult = {

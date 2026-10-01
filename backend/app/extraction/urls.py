@@ -63,12 +63,41 @@ def taobao_identity(value: str) -> tuple[str, str]:
 
 
 def normalize_source_url(value: str) -> str:
-    try:
-        return normalize_1688_url(value)
-    except ValueError:
-        return normalize_taobao_url(value)
+    for normalize in (normalize_1688_url, normalize_taobao_url, normalize_alibaba_url):
+        try:
+            return normalize(value)
+        except ValueError:
+            pass
+    raise ValueError("A supported HTTPS 1688, Taobao or Alibaba URL is required")
 
 
 def source_platform(value: str) -> str:
     canonical = normalize_source_url(value)
-    return "1688" if urlsplit(canonical).netloc == "detail.1688.com" else "TAOBAO"
+    host = urlsplit(canonical).netloc
+    return "1688" if host == "detail.1688.com" else "ALIBABA" if host.endswith(".alibaba.com") else "TAOBAO"
+
+
+_ALIBABA_PRODUCT = re.compile(r"/product-detail/[A-Za-z0-9][A-Za-z0-9-]{0,199}_([1-9][0-9]{0,19})\.html")
+_ALIBABA_STORE = re.compile(r"([a-z0-9](?:[a-z0-9-]{0,61}[a-z0-9])?)\.en\.alibaba\.com")
+
+
+def normalize_alibaba_url(value: str) -> str:
+    """Audited desktop product and independent company-profile forms only."""
+    if not isinstance(value, str) or len(value) > 2048 or value != value.strip() or '#' in value or any(ord(c) < 32 or ord(c) == 127 for c in value):
+        raise ValueError("A supported HTTPS Alibaba product or company profile URL is required")
+    try:
+        parsed = urlsplit(value)
+        if parsed.scheme == "https" and not parsed.fragment and parsed.username is None and parsed.password is None:
+            if (parsed.netloc == "www.alibaba.com" and _ALIBABA_PRODUCT.fullmatch(parsed.path)
+                    or _ALIBABA_STORE.fullmatch(parsed.netloc) and parsed.path == "/company_profile.html"):
+                return f"https://{parsed.netloc}{parsed.path}"
+    except ValueError:
+        pass
+    raise ValueError("A supported HTTPS Alibaba product or company profile URL is required")
+
+
+def alibaba_identity(value: str) -> tuple[str, str]:
+    parsed = urlsplit(normalize_alibaba_url(value))
+    if parsed.netloc == "www.alibaba.com":
+        return "product", _ALIBABA_PRODUCT.fullmatch(parsed.path).group(1)
+    return "profile", _ALIBABA_STORE.fullmatch(parsed.netloc).group(1)

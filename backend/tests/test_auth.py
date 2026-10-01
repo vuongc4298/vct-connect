@@ -29,6 +29,24 @@ AUDIENCE = "vct-connect-api"
 PARTY = "http://127.0.0.1:3000"
 
 
+def test_alibaba_url_submission_and_unsupported_recovery(signing_keys):
+    private, public = signing_keys
+    client, store = client_and_store(public)
+    headers = auth_header(token(private, "alibaba_owner"))
+    source = "https://dgxuandele.en.alibaba.com/company_profile.html"
+    submitted = client.post("/api/v1/analyses", json={"source_url": source + "?spm=tracking"}, headers=headers)
+    assert submitted.status_code == 202
+    row = client.get("/api/v1/analyses/" + submitted.json()["id"], headers=headers).json()
+    assert row["source_url"] == source
+    before = len(store.rows)
+    imported = client.post("/api/v1/analyses/import", params={"source_url": source}, content=b"public html", headers={**headers, "content-type": "text/html"})
+    assert imported.status_code == 422 and imported.json()["detail"] == "Alibaba saved-page import is not supported"
+    captured = client.post("/api/v1/analyses/capture", json={"source_url": source, "fields": {}}, headers=headers)
+    assert captured.status_code == 422 and captured.json()["detail"] == "Alibaba browser capture is not supported"
+    assert len(store.rows) == before
+    assert client.get("/api/v1/analyses/" + submitted.json()["id"], headers=auth_header(token(private, "alibaba_other"))).status_code == 404
+
+
 @pytest.mark.parametrize("shop", [False, True])
 def test_taobao_upload_original_bytes_owner_and_encoding(signing_keys, shop):
     private, public = signing_keys
