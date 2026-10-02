@@ -64,3 +64,6 @@
 - source_plan: `_bmad-output/initiative-vct-connect-year-one/epic-extraction/story-classify-extraction-failures-and-bounded-http-retries-plan.md`
   summary: Bound decompression output before HTTPX allocates a decoded response chunk.
   evidence: The baseline fetcher used iter_bytes, which automatically decompresses before the 2 MB cap check; a compressed response can allocate beyond that cap. Story 2.2 checks capacity before appending, but streaming decompression with bounded output needs separate transport hardening.
+- source_plan: `_bmad-output/initiative-vct-connect-year-one/epic-extraction/story-add-the-alibaba-source-adapter-plan.md`
+  summary: Resume manual deployed browser acceptance for supported HTML imports, extension extraction, and signed-in Alibaba URL presentation.
+  evidence: On 2026-10-02 the user explicitly deferred manual testing in favor of development progress. Automated CI, deployment, guest fixture and two Alibaba access-outcome queue checks passed; these do not establish manual browser compatibility. Alibaba upload/capture remains unsupported, and the existing Taobao shop capture deferral remains in place.
