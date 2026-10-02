@@ -539,7 +539,7 @@ def _login_destination(url):
     return parsed.scheme == 'https' and parsed.netloc == 'login.alibaba.com' and parsed.path == '/login.htm' and not parsed.fragment
 
 
-def extract_alibaba(source_url, *, analysis_mode='ACCOUNT_PUBLIC', client=None, dns_check=_public_dns, clock=time.monotonic, sleep=time.sleep):
+def extract_alibaba(source_url, *, analysis_mode='ACCOUNT_PUBLIC', client=None, dns_check=_public_dns, clock=time.monotonic, sleep=time.sleep, browser_fallback=False, browser_renderer=None):
     try:
         canonical = normalize_alibaba_url(source_url)
     except ValueError:
@@ -547,4 +547,5 @@ def extract_alibaba(source_url, *, analysis_mode='ACCOUNT_PUBLIC', client=None, 
     return bounded_extract(source_url, normalize=normalize_alibaba_url, identity=alibaba_identity, parse=parse_alibaba_page,
                            classify_access=_access, login_destination=_login_destination, allowed_hosts=(urlsplit(canonical).netloc,),
                            accept_cookies=False,
-                           mismatch_reason='SOURCE_MISMATCH', analysis_mode=analysis_mode, client=client, dns_check=dns_check, clock=clock, sleep=sleep)
+                           mismatch_reason='SOURCE_MISMATCH', analysis_mode=analysis_mode, client=client, dns_check=dns_check, clock=clock, sleep=sleep,
+                           browser_fallback=browser_fallback, browser_renderer=browser_renderer)

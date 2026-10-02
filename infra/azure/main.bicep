@@ -8,6 +8,8 @@ param backendImageDigest string
 param webImageDigest string
 @description('Enable queue processing only after the migration Job succeeds.')
 param enableProcessing bool = false
+@description('Opt-in cached public HTML rendering. Unavailable Chromium sandbox retains HTTP evidence.')
+param publicBrowserFallback bool = false
 param registryName string
 param vaultName string
 param clerkPublishableKey string
@@ -312,6 +314,7 @@ resource analysisJob 'Microsoft.App/jobs@2025-01-01' = if (enableProcessing) {
           { name: 'AZURE_SERVICE_BUS_NAMESPACE', value: serviceBusNamespace }
           { name: 'AZURE_SERVICE_BUS_QUEUE', value: serviceBusQueue }
           { name: 'WORKER_MODE', value: 'job' }
+          { name: 'PUBLIC_BROWSER_FALLBACK', value: string(publicBrowserFallback) }
           { name: 'API_RUNTIME', value: 'worker' }
           { name: 'PROCESSING_LEASE_SECONDS', value: '780' }
           { name: 'AZURE_LOCK_RENEWAL_SECONDS', value: '780' }

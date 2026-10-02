@@ -396,6 +396,44 @@ def test_failed_stream_discarded_and_shared_deadline_limits_retries():
     assert result['extraction_status']=='TIMEOUT' and 'supplier_data' not in result
 
 
+@pytest.mark.parametrize('platform', ['1688', 'TAOBAO', 'ALIBABA'])
+def test_all_anonymous_adapters_decline_retry_cookies(monkeypatch, platform):
+    from backend.tests.test_browser_fallback import fixture, ADAPTERS
+    source, html = fixture(platform)
+    adapter = ADAPTERS[platform][0]
+    calls=[]; clients=[]
+    def handler(request):
+        calls.append(request)
+        if len(calls)==1:
+            return httpx.Response(503,headers={'set-cookie':'source_session=PRIVATE_COOKIE; Path=/; Secure'})
+        return httpx.Response(200,headers={'content-type':'text/html','set-cookie':'source_session=PRIVATE_COOKIE; Path=/; Secure'},text=html)
+    monkeypatch.setattr('backend.app.extraction.fetch._public_transport',lambda **kwargs:httpx.MockTransport(handler))
+    constructor=httpx.Client
+    def client_factory(**kwargs):
+        instance=constructor(**kwargs); clients.append(instance); return instance
+    monkeypatch.setattr('backend.app.extraction.fetch.httpx.Client',client_factory)
+    assert adapter(source,dns_check=lambda host:True,sleep=lambda _:None)['extraction_status']=='PARTIAL'
+    assert len(calls)==2 and all('cookie' not in request.headers for request in calls)
+    assert list(clients[0].cookies.jar)==[]
+
+
+@pytest.mark.parametrize('platform', ['1688', 'TAOBAO', 'ALIBABA'])
+def test_all_injected_anonymous_clients_clear_cookies_and_decline_retry_state(platform):
+    from backend.tests.test_browser_fallback import fixture, ADAPTERS
+    source, html = fixture(platform)
+    adapter = ADAPTERS[platform][0]
+    calls=[]
+    def handler(request):
+        calls.append(request)
+        if len(calls)==1:
+            return httpx.Response(503,headers={'set-cookie':'source_session=PRIVATE_COOKIE; Path=/; Secure'})
+        return httpx.Response(200,headers={'content-type':'text/html','set-cookie':'source_session=PRIVATE_COOKIE; Path=/; Secure'},text=html)
+    with httpx.Client(transport=httpx.MockTransport(handler),cookies={'initial':'PRIVATE_COOKIE'},headers={'Cookie':'explicit=PRIVATE_COOKIE'}) as client:
+        assert adapter(source,client=client,dns_check=lambda host:True,sleep=lambda _:None)['extraction_status']=='PARTIAL'
+        assert len(calls)==2 and all('cookie' not in request.headers for request in calls)
+        assert list(client.cookies.jar)==[]
+
+
 def test_default_anonymous_adapter_declines_source_cookies(monkeypatch):
     calls=[]; clients=[]
     def handler(request):

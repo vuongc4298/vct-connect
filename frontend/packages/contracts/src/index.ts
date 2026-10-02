@@ -91,7 +91,9 @@ export type Analysis = {
   supplier_snapshot_id: string | null;
   supplier_data: SupplierData | null;
   raw_evidence: (
-    { source_url: string; captured_at: string | null; imported_at?: string; html_sha256: string; public_fields: Record<string, unknown> }
+    { source_url: string; captured_at: string | null; imported_at?: string; html_sha256: string;
+      rendered_html_sha256?: string; rendered_at?: string; extraction_method?: string; extractor_version?: string;
+      public_fields: Record<string, unknown> }
     | { source_url: string; captured_at: string; provenance: "USER_PROVIDED_BROWSER_EVIDENCE"; selected_fields: Record<string, unknown> }
   ) | null;
   reviews: Array<Record<string, unknown>>;

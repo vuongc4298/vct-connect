@@ -7,6 +7,19 @@ import type { Analysis } from "@vct/contracts";
 import { ExtractionEvidence, isFixtureResult } from "./extraction-evidence";
 import { safeSourceUrl } from "./source-url";
 
+test("PUBLIC_BROWSER identifies server rendering separately from extension evidence", () => {
+  const source_url = "https://detail.1688.com/offer/987654321012.html";
+  const analysis = {result: {source_url, extraction_status: "PARTIAL"}, extraction_method: "PUBLIC_BROWSER",
+    supplier_data: {platform: "1688", source_url, supplier_name: "Public supplier", products: null,
+      completeness: 0.1667, completeness_denominator: Array(12).fill("field"), missing_fields: Array(10).fill("unknown"),
+      extraction_method: "PUBLIC_BROWSER", analysis_mode: "GUEST_PUBLIC", extractor_version: "public-browser.v1",
+      extracted_at: "2026-10-02T00:00:00Z"}, reviews: []} as unknown as Analysis;
+  const html = renderToStaticMarkup(<ExtractionEvidence analysis={analysis}/>);
+  assert.match(html, /Trang công khai được hệ thống kết xuất bằng trình duyệt/);
+  assert.match(html, /PUBLIC_BROWSER/);
+  assert.doesNotMatch(html, /Bằng chứng trình duyệt do bạn cung cấp/);
+});
+
 test("Alibaba product quotation renders its USD range, unit and primary MOQ", () => {
   const source_url = "https://www.alibaba.com/product-detail/Public-shirt_1600147809763.html";
   const analysis = { result: { source_url, extraction_status: "PARTIAL" }, supplier_data: {

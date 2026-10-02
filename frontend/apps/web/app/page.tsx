@@ -229,7 +229,7 @@ function Sidebar({ view, historyCount, onViewChange }: { view: WorkspaceView; hi
 function ProgressCard({ analysis, delayed, requestedMethod }: { analysis: Analysis | null; delayed: boolean; requestedMethod: string | null }) {
   const presentation = analysisPresentation(analysis);
   const method = analysis?.extraction_method ?? requestedMethod;
-  const liveExtraction = method === "PUBLIC_HTTP" || method === "USER_UPLOAD" || method === "EXTENSION_DOM";
+  const liveExtraction = method === "PUBLIC_HTTP" || method === "PUBLIC_BROWSER" || method === "USER_UPLOAD" || method === "EXTENSION_DOM";
   return <section className="progress-card" aria-live="polite">
     <div className="progress-top"><div><span className={`status-orb ${presentation.orbClass}`}>{presentation.orbSymbol}</span><div><strong>{presentation.headline}</strong><p>{presentation.detail}</p></div></div><Pill tone={presentation.pillTone}>{presentation.pillLabel}</Pill></div>
     <div className="steps">

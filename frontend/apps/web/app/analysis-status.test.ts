@@ -4,6 +4,17 @@ import type { ExtractionStatus } from "@vct/contracts";
 
 import { analysisPresentation, extractionRecovery } from "./analysis-status";
 
+test("server public browser evidence preserves partial and terminal presentation", () => {
+  const source_url = "https://detail.1688.com/offer/987654321012.html";
+  for (const extraction_status of ["PARTIAL", "BLOCKED", "AUTH_REQUIRED"] as const) {
+    const view = analysisPresentation({status: "COMPLETED", attempt_count: 1, failure_code: null,
+      extraction_method: "PUBLIC_BROWSER", result: {source_url, extraction_status}});
+    assert.equal(view.shouldPoll, false);
+    assert.equal(view.complete, extraction_status === "PARTIAL");
+    assert.equal(view.final, extraction_status !== "PARTIAL");
+  }
+});
+
 test("Alibaba terminal outcomes name the source and disclose unsupported recovery", () => {
   const source_url = "https://dgxuandele.en.alibaba.com/company_profile.html";
   for (const extraction_status of ["AUTH_REQUIRED", "BLOCKED", "TIMEOUT", "UNSUPPORTED_PAGE", "PARSE_FAILED"] as const) {

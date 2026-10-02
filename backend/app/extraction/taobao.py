@@ -422,7 +422,7 @@ def _login_destination(url):
 
 
 def extract_taobao(source_url, *, analysis_mode="ACCOUNT_PUBLIC", client=None, dns_check=_public_dns,
-                   clock=time.monotonic, sleep=time.sleep):
+                   clock=time.monotonic, sleep=time.sleep, browser_fallback=False, browser_renderer=None):
     try:
         canonical = normalize_taobao_url(source_url)
         kind, identity = taobao_identity(canonical)
@@ -432,4 +432,5 @@ def extract_taobao(source_url, *, analysis_mode="ACCOUNT_PUBLIC", client=None, d
     return bounded_extract(source_url, normalize=normalize_taobao_url, identity=taobao_identity,
                            parse=parse_taobao_page, classify_access=lambda html: _access(html, source_url=canonical), login_destination=_login_destination,
                            allowed_hosts=hosts, decode=_decode, mismatch_reason="SOURCE_MISMATCH",
-                           analysis_mode=analysis_mode, client=client, dns_check=dns_check, clock=clock, sleep=sleep)
+                           analysis_mode=analysis_mode, client=client, dns_check=dns_check, clock=clock, sleep=sleep,
+                           accept_cookies=False, browser_fallback=browser_fallback, browser_renderer=browser_renderer)

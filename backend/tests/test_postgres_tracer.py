@@ -26,6 +26,67 @@ from backend.worker.main import dispatch_outbox_once, process_azure_once, proces
 
 
 @pytest.mark.parametrize("guest", [False, True])
+@pytest.mark.parametrize("platform", ["1688", "TAOBAO", "ALIBABA"])
+def test_public_browser_queue_owner_atomic_provenance_and_replay(store, monkeypatch, guest, platform):
+    from backend.tests.test_browser_fallback import fixture, ADAPTERS, gain
+    url, html = fixture(platform)
+    subject = "browser_" + uuid4().hex
+    settings = Settings(store.database_url, "local", None, None, True, public_browser_fallback=True)
+    api = TestClient(create_app(store=store, settings=settings, verifier=HeaderSubjectVerifier()))
+    headers = {"x-vct-guest-key": uuid4().hex * 2} if guest else {"Authorization": "Bearer subject:" + subject}
+    endpoint = "/api/v1/guest-analyses" if guest else "/api/v1/analyses"
+    submitted = api.post(endpoint, json={"source_url": url}, headers=headers)
+    assert submitted.status_code == 202
+    analysis_id = UUID(submitted.json()["id"])
+    adapter, parser = ADAPTERS[platform]
+    def extract(source, **kwargs):
+        assert kwargs["browser_fallback"] is True
+        with httpx.Client(transport=httpx.MockTransport(lambda _: httpx.Response(200, headers={"content-type": "text/html"}, text=html))) as transport:
+            return adapter(source, client=transport, dns_check=lambda _: True,
+                           browser_renderer=None if os.getenv("VCT_TEST_BROWSER") == "true" else lambda *_: gain(parser(html, source, analysis_mode=kwargs["analysis_mode"])), **kwargs)
+    monkeypatch.setattr("backend.worker.main." + {"1688": "extract_1688", "TAOBAO": "extract_taobao", "ALIBABA": "extract_alibaba"}[platform], extract)
+    try:
+        assert process_local_once(store, settings)
+        row = api.get(f"{endpoint}/{analysis_id}", headers=headers).json()
+        assert row["extraction_method"] == row["supplier_data"]["extraction_method"] == "PUBLIC_BROWSER"
+        assert row["supplier_data"]["analysis_mode"] == ("GUEST_PUBLIC" if guest else "ACCOUNT_PUBLIC")
+        assert len(row["raw_evidence"]["rendered_html_sha256"]) == 64
+        assert row["supplier_data"]["completeness"] > parser(html, url)["supplier_data"]["completeness"]
+        wrong = {"x-vct-guest-key": "f" * 64} if guest else {"Authorization": "Bearer subject:browser_other"}
+        assert api.get(f"{endpoint}/{analysis_id}", headers=wrong).status_code == 404
+        payload = {**row["result"], "supplier_data": row["supplier_data"], "raw_payload": row["raw_evidence"], "reviews": row["reviews"]}
+        assert store.complete_processing(analysis_id, uuid4(), payload) == "replay"
+        changed = json.loads(json.dumps(payload))
+        changed["raw_payload"]["rendered_html_sha256"] = "b" * 64
+        with pytest.raises(ResultConflict):
+            store.complete_processing(analysis_id, uuid4(), changed)
+        assert store.get(analysis_id)["supplier_snapshot_id"] == UUID(row["supplier_snapshot_id"])
+    finally:
+        remove(store, analysis_id)
+        remove_user(store, subject)
+        remove_user(store, "browser_other")
+
+
+def test_public_browser_transition_requires_current_claim(store):
+    from backend.tests.test_browser_fallback import fixture, extracted, gain
+    url, _ = fixture()
+    analysis_id = store.submit_local(url)
+    claim = store.claim_processing(analysis_id, 300, 5)
+    result, _ = extracted()
+    payload = gain(result)["outcome"]
+    payload["supplier_data"]["analysis_mode"] = "GUEST_PUBLIC"
+    payload["supplier_data"]["extraction_method"] = "PUBLIC_BROWSER"
+    try:
+        with pytest.raises((ValueError, LeaseLost)):
+            store.complete_processing(analysis_id, uuid4(), payload)
+        assert store.get(analysis_id)["extraction_method"] == "PUBLIC_HTTP"
+        assert store.get(analysis_id)["supplier_snapshot_id"] is None
+        assert store.complete_processing(analysis_id, claim["token"], payload) == "completed"
+    finally:
+        remove(store, analysis_id)
+
+
+@pytest.mark.parametrize("guest", [False, True])
 @pytest.mark.parametrize("profile", [False, True])
 def test_alibaba_mocked_public_queue_owner_and_immutable_replay(store, monkeypatch, guest, profile):
     from backend.app.extraction.alibaba import extract_alibaba

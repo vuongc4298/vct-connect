@@ -51,7 +51,7 @@ export function analysisPresentation(analysis: StatusInput) {
   const sourceUrl = analysis?.result?.source_url ?? analysis?.source_url;
   const source = sourceLabel(sourceUrl);
   const recovery = extractionRecovery(extractionStatus, reason, sourceUrl);
-  const live = analysis?.extraction_method === "PUBLIC_HTTP" || extractionStatus !== null;
+  const live = analysis?.extraction_method === "PUBLIC_HTTP" || analysis?.extraction_method === "PUBLIC_BROWSER" || extractionStatus !== null;
   const blocked = completedProcessing && live && extractionStatus !== "SUCCESS" && extractionStatus !== "PARTIAL";
   const complete = completedProcessing && !blocked;
   const final = status === "FAILED_FINAL" || blocked;

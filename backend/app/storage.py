@@ -524,6 +524,11 @@ class Store:
         extracted = payload.get("extraction_status") in {"SUCCESS", "PARTIAL"}
         supplier_data = payload.get("supplier_data")
         platform = source_platform(row["source_url"]) if extracted else None
+        browser_transition = (extracted and isinstance(supplier_data, dict)
+                              and row["status"] == "PROCESSING" and row["processing_claim_token"] == token
+                              and row["extraction_method"] == "PUBLIC_HTTP"
+                              and supplier_data.get("extraction_method") == "PUBLIC_BROWSER"
+                              and row["mode"] in {"GUEST_PUBLIC", "ACCOUNT_PUBLIC"})
         if extracted and (
             not isinstance(supplier_data, dict)
             or not isinstance(payload.get("raw_payload"), dict)
@@ -533,9 +538,10 @@ class Store:
             or normalize_source_url(row["source_url"]) != row["source_url"]
             or payload.get("source_url") != row["source_url"]
             or supplier_data.get("platform") != platform
-            or supplier_data.get("extraction_method") != row["extraction_method"]
-            or (row["extraction_method"], row["mode"]) not in {
+            or (supplier_data.get("extraction_method") != row["extraction_method"] and not browser_transition)
+            or (supplier_data.get("extraction_method"), row["mode"]) not in {
                 ("PUBLIC_HTTP", "GUEST_PUBLIC"), ("PUBLIC_HTTP", "ACCOUNT_PUBLIC"),
+                ("PUBLIC_BROWSER", "GUEST_PUBLIC"), ("PUBLIC_BROWSER", "ACCOUNT_PUBLIC"),
                 ("USER_UPLOAD", "ACCOUNT_PUBLIC"), ("EXTENSION_DOM", "EXTENSION_ENHANCED")}
         ):
             raise ValueError("Extracted result is missing matching supplier evidence")

@@ -67,3 +67,15 @@
 - source_plan: `_bmad-output/initiative-vct-connect-year-one/epic-extraction/story-add-the-alibaba-source-adapter-plan.md`
   summary: Resume manual deployed browser acceptance for supported HTML imports, extension extraction, and signed-in Alibaba URL presentation.
   evidence: On 2026-10-02 the user explicitly deferred manual testing in favor of development progress. Automated CI, deployment, guest fixture and two Alibaba access-outcome queue checks passed; these do not establish manual browser compatibility. Alibaba upload/capture remains unsupported, and the existing Taobao shop capture deferral remains in place.
+
+- source_plan: `_bmad-output/initiative-vct-connect-year-one/epic-extraction/story-use-playwright-only-when-public-http-evidence-is-insufficien-plan.md`
+  summary: An abruptly exited runner can reparent children before discovery.
+  evidence: An abruptly exited runner can reparent children before discovery. Whether Playwright pipe closure or Chromium parent-death cleanup prevents surviving children is unverified; settle with forced runner termination and descendant observation (medium if confirmed).
+
+- source_plan: `_bmad-output/initiative-vct-connect-year-one/epic-extraction/story-use-playwright-only-when-public-http-evidence-is-insufficien-plan.md`
+  summary: Cleanup reserves 0.5 seconds but proc enumeration/profile deletion has no independent wall timer.
+  evidence: Cleanup reserves 0.5 seconds but proc enumeration/profile deletion has no independent wall timer. Actual tested cleanup remains bounded; a reachable slow-profile/proc state exceeding the total budget needs measurement (medium if confirmed).
+
+- source_plan: `_bmad-output/initiative-vct-connect-year-one/epic-extraction/story-use-playwright-only-when-public-http-evidence-is-insufficien-plan.md`
+  summary: DOM allocation precedes size rejection.
+  evidence: DOM allocation precedes size rejection. Container memory is capped at 1 GiB; it is unverified whether adversarial allocation kills only Chromium or the worker and loses HTTP evidence. Settle with bounded allocation/OOM observation (high if worker loss confirmed).

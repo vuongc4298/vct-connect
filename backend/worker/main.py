@@ -30,13 +30,16 @@ def _failure_code(error: Exception) -> str:
     return "PROCESSING_ERROR"
 
 
-def _compute_claim(claim: dict, compute) -> dict:
+def _compute_claim(claim: dict, compute, settings: Settings | None = None) -> dict:
     if compute is not None:
         return compute(claim["source_url"])
     if claim["source_url"] == FIXTURE_URL:
         return fixture_result(claim["source_url"])
     adapter = {"1688": extract_1688, "TAOBAO": extract_taobao, "ALIBABA": extract_alibaba}[source_platform(claim["source_url"])]
-    return adapter(claim["source_url"], analysis_mode=claim.get("mode") or "ACCOUNT_PUBLIC")
+    options = {"analysis_mode": claim.get("mode") or "ACCOUNT_PUBLIC"}
+    if settings and settings.public_browser_fallback:
+        options["browser_fallback"] = True
+    return adapter(claim["source_url"], **options)
 
 
 def dispatch_outbox_once(store: Store, queue: AzureQueue, settings: Settings) -> bool:
@@ -85,7 +88,7 @@ def process_local_once(
         store.finish_local(analysis_id, local_claim["claim_token"])
         return True
     try:
-        payload = _compute_claim(claim, compute)
+        payload = _compute_claim(claim, compute, settings)
         store.complete_processing(analysis_id, claim["token"], payload)
         store.finish_local(analysis_id, local_claim["claim_token"])
     except ResultConflict:
@@ -239,7 +242,7 @@ def process_azure_once(
                     continue
 
                 try:
-                    payload = _compute_claim(claim, compute)
+                    payload = _compute_claim(claim, compute, settings)
                     store.complete_processing(analysis_id, claim["token"], payload)
                 except ResultConflict:
                     store.record_result_conflict(analysis_id)

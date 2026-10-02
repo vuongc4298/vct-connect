@@ -141,7 +141,7 @@ def _certificate_failure(exc: Exception) -> bool:
 
 def bounded_extract(source_url: str, *, normalize, identity, parse, classify_access, login_destination,
                     allowed_hosts, decode=None, mismatch_reason="OFFER_MISMATCH",
-                    accept_cookies=True,
+                    accept_cookies=True, browser_fallback=False, browser_renderer=None,
                     analysis_mode: str = "ACCOUNT_PUBLIC",
                  client: httpx.Client | None = None, dns_check=_public_dns,
                  clock=time.monotonic, sleep=time.sleep) -> dict:
@@ -240,7 +240,12 @@ def bounded_extract(source_url: str, *, normalize, identity, parse, classify_acc
                             transient = ("PARSE_FAILED", "UPSTREAM_UNAVAILABLE")
                         else:
                             result = parse(html, source_url, analysis_mode=analysis_mode, page_bytes=bytes(content))
-                            return outcome("TIMEOUT", "HTTP_TIMEOUT") if clock() >= deadline else result
+                            if clock() >= deadline:
+                                return outcome("TIMEOUT", "HTTP_TIMEOUT")
+                            from .browser import maybe_render
+                            return maybe_render(result, html, bytes(content), enabled=browser_fallback,
+                                                csp=response.headers.get_list("content-security-policy"),
+                                                renderer=browser_renderer)
             except UnsafeDestination:
                 return outcome("BLOCKED", "UNSAFE_DESTINATION")
             except DNSResolutionFailed:

@@ -322,7 +322,7 @@ def _login_destination(value: str) -> bool:
 
 def extract_1688(source_url: str, *, analysis_mode: str = "ACCOUNT_PUBLIC",
                  client: httpx.Client | None = None, dns_check=_public_dns,
-                 clock=time.monotonic, sleep=time.sleep) -> dict:
+                 clock=time.monotonic, sleep=time.sleep, browser_fallback=False, browser_renderer=None) -> dict:
     def access(html):
         tree = HTMLParser(html)
         if _blocked_page(tree):
@@ -333,8 +333,9 @@ def extract_1688(source_url: str, *, analysis_mode: str = "ACCOUNT_PUBLIC",
 
     return bounded_extract(
         source_url, normalize=normalize_1688_url, identity=offer_id,
-        parse=lambda html, url, page_bytes, **kwargs: parse_1688_page(html, url, **kwargs),
+        parse=lambda html, url, page_bytes, **kwargs: parse_1688_page(html, url, uploaded_bytes=page_bytes, **kwargs),
         classify_access=access, login_destination=_login_destination,
         allowed_hosts=("detail.1688.com",), analysis_mode=analysis_mode,
         client=client, dns_check=dns_check, clock=clock, sleep=sleep,
+        accept_cookies=False, browser_fallback=browser_fallback, browser_renderer=browser_renderer,
     )
