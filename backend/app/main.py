@@ -27,6 +27,7 @@ from .extraction.taobao import parse_taobao_page, decode_taobao_html
 from .extraction.extensiontaobao import TaobaoCapture, normalize_taobao_capture
 from .extraction.offer1688 import MAX_HTML_BYTES, parse_1688_page
 from .extraction.extension1688 import DomCapture, MAX_CAPTURE_BYTES, normalize_capture
+from .extraction.extension_merge import reject_sensitive_page_state
 from .storage import AdmissionDenied, Store
 
 
@@ -206,6 +207,7 @@ def create_app(
             selected = json.loads(bytes(content))
             if not isinstance(selected, dict):
                 raise ValueError("Invalid selected evidence")
+            reject_sensitive_page_state(selected)
             platform = source_platform(selected.get("source_url", ""))
             if platform == "ALIBABA":
                 raise ValueError("Alibaba browser capture is not supported")

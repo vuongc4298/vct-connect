@@ -545,6 +545,91 @@ def test_extension_capture_persists_owner_scoped_snapshot_without_queue(store):
         remove_user(store, other["clerk_user_id"])
 
 
+def test_extension_capture_merges_only_same_owner_page_and_rejects_secrets(store):
+    owner = store.resolve_user(f"extension_merge_{uuid4().hex}")
+    other = store.resolve_user(f"extension_merge_other_{uuid4().hex}")
+    url = "https://detail.1688.com/offer/996518024136.html"
+    original = normalize_capture(DomCapture.model_validate({
+        "source_url": url, "offer_id": "996518024136",
+        "fields": {"supplier_name": "Public supplier", "product_title": "Dress"},
+    }))
+    original["supplier_data"]["extraction_method"] = "PUBLIC_HTTP"
+    original["supplier_data"]["analysis_mode"] = "ACCOUNT_PUBLIC"
+    original["supplier_data"]["company_information"] = {"location": "Guangzhou"}
+    original["supplier_data"]["reviews"] = [{"text": "Good quality", "source_url": url, "rating": 5}]
+    original["reviews"] = original["supplier_data"]["reviews"]
+    ids = []
+    subject = str(owner["id"])
+    client = TestClient(create_app(
+        store=store, settings=Settings(store.database_url, "local", None, None, True),
+        verifier=HeaderSubjectVerifier(),
+    ))
+    headers = {"authorization": f"Bearer subject:{owner['clerk_user_id']}"}
+    try:
+        public_id = store.submit_customer(url, owner["id"], azure=False,
+                                          customer_limit=10, window_seconds=86400)
+        ids.append(public_id)
+        claim = store.claim_processing(public_id, 60, 3)
+        store.complete_processing(public_id, claim["token"], original)
+        prior = store.get(public_id)
+        other_id = store.submit_customer(url, other["id"], azure=False,
+                                         customer_limit=10, window_seconds=86400)
+        ids.append(other_id)
+        other_claim = store.claim_processing(other_id, 60, 3)
+        other_payload = json.loads(json.dumps(original))
+        other_payload["supplier_data"]["supplier_name"] = "Other owner's supplier"
+        other_payload["supplier_data"]["years_active"] = 99
+        store.complete_processing(other_id, other_claim["token"], other_payload)
+        capture = {"source_url": url, "offer_id": "996518024136",
+                   "fields": {"supplier_name": "Current supplier", "price_text": "¥20"}}
+        for title in ["password=secret", "Bearer abcdefghijklmnop"]:
+            rejected = client.post("/api/v1/analyses/capture", headers=headers,
+                                   json={**capture, "fields": {"product_title": title}})
+            assert rejected.status_code == 422
+        rejected = client.post("/api/v1/analyses/capture", headers=headers,
+                               json={**capture, "cookie": "session=secret"})
+        assert rejected.status_code == 422
+        unsafe_payload = normalize_capture(DomCapture.model_validate({
+            **capture, "fields": {"product_title": "session_token=secret"},
+        }))
+        with pytest.raises(ValueError, match="sensitive page state"):
+            store.capture_customer_page(url, owner["id"], unsafe_payload,
+                                        customer_limit=10, window_seconds=86400)
+        response = client.post("/api/v1/analyses/capture", headers=headers, json=capture)
+        assert response.status_code == 201
+        merged_id = UUID(response.json()["id"])
+        ids.append(merged_id)
+        merged = client.get(f"/api/v1/analyses/{merged_id}", headers=headers).json()
+        assert merged["supplier_data"]["supplier_name"] == "Current supplier"
+        assert merged["supplier_data"]["company_information"] == {"location": "Guangzhou"}
+        assert merged["supplier_data"]["years_active"] is None
+        assert merged["supplier_data"]["price_information"] == {"display_text": "¥20"}
+        assert len(merged["reviews"]) == 1
+        assert merged["raw_evidence"]["merged_from_snapshot_id"] == str(prior["supplier_snapshot_id"])
+        assert store.get(public_id)["supplier_data"] == prior["supplier_data"]
+        assert store.get_for_user(merged_id, other["id"]) is None
+        repeated = client.post("/api/v1/analyses/capture", headers=headers, json=capture)
+        assert repeated.status_code == 201
+        repeated_id = UUID(repeated.json()["id"])
+        ids.append(repeated_id)
+        repeated_row = client.get(f"/api/v1/analyses/{repeated_id}", headers=headers).json()
+        assert len(repeated_row["reviews"]) == 1
+        assert len(repeated_row["supplier_data"]["products"]) == 1
+        assert repeated_row["raw_evidence"]["merged_from_snapshot_id"] == merged["supplier_snapshot_id"]
+        with store.connect() as conn:
+            used = conn.execute("SELECT used FROM admission_counters WHERE scope = 'CUSTOMER' AND subject = %s",
+                                (subject,)).fetchone()["used"]
+            assert used == 3  # public submission and two accepted captures only
+    finally:
+        for analysis_id in reversed(ids):
+            remove(store, analysis_id)
+        with store.connect() as conn:
+            conn.execute("DELETE FROM admission_counters WHERE scope = 'CUSTOMER' AND subject IN (%s, %s)",
+                         (str(owner["id"]), str(other["id"])))
+        remove_user(store, owner["clerk_user_id"])
+        remove_user(store, other["clerk_user_id"])
+
+
 def test_blocked_offer_completes_without_a_snapshot(store):
     url = "https://detail.1688.com/offer/996518024136.html"
     analysis_id = store.submit_local(url)
