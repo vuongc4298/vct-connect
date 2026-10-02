@@ -79,3 +79,7 @@
 - source_plan: `_bmad-output/initiative-vct-connect-year-one/epic-extraction/story-use-playwright-only-when-public-http-evidence-is-insufficien-plan.md`
   summary: DOM allocation precedes size rejection.
   evidence: DOM allocation precedes size rejection. Container memory is capped at 1 GiB; it is unverified whether adversarial allocation kills only Chromium or the worker and loses HTTP evidence. Settle with bounded allocation/OOM observation (high if worker loss confirmed).
+
+- source_plan: `_bmad-output/initiative-vct-connect-year-one/epic-extraction/story-use-playwright-only-when-public-http-evidence-is-insufficien-plan.md`
+  summary: Provide a compatible supervised Chromium sandbox runtime before enabling public browser fallback in Azure.
+  evidence: The deployed worker probe vct-connect-dev-analysis-b5fc458 succeeded but returned RUNTIME_UNAVAILABLE for 1688, Taobao and Alibaba, preserving the original HTTP evidence at 1, 1 and 3 populated fields. PUBLIC_BROWSER_FALLBACK remains False; no sandbox bypass was applied.

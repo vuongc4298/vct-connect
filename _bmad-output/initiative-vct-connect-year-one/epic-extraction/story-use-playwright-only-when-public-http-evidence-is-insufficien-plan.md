@@ -70,11 +70,11 @@ context:
 
 ## Implementation Notes
 
-- Implemented opt-in cached HTML rendering, strict evidence selection, sanitized diagnostics, sandboxed runtime, queue provenance, frontend labels and CI/container gates. `PUBLIC_BROWSER_FALLBACK` defaults to false. No remote Story 2.5 release performed.
+- Implemented opt-in cached HTML rendering, strict evidence selection, sanitized diagnostics, sandboxed runtime, queue provenance, frontend labels and CI/container gates. `PUBLIC_BROWSER_FALLBACK` defaults to false. Initial implementation ended at the local commit; the approved release is recorded below.
 - Initial implementation verification: backend isolated PostgreSQL: 586 passed, 13 skipped (12 actual Chromium cases executed separately; one opt-in Azure check). Frontend: 72 passed; typecheck, build, secret scan, Azure compile and whitespace checks passed.
 - Actual baked image `vct-backend:browser-story25`, digest `sha256:c2628d95fb7934050621216f883f165fcbf450ec550c5799e8d011fb651f2020`: 55 passed with sandbox, nonroot, network none, 0.5 CPU/1 GiB; seven actual browser queue checks passed against isolated PostgreSQL. Coverage 1688 1→2, Taobao 1→2, Alibaba 3→4 in approximately six seconds each.
 - Matrix audit: render gain → actual three-platform and six guest/account queue cases; enough/irrelevant → eligibility/terminal/inert tests; access → static and actual rendered wall cases; unsafe/invalid → transport and existing adapter guards; resource → actual network/state/popups/global-canary case; no gain/conflict → strict preservation and actual CSP/hidden/conflict cases; limits → actual missing runtime, infinite script and oversized DOM with cleanup; ownership/replay → seven queue tests. All covering tests executed and passed in their applicable gates.
-- Manual HTML, extension and signed-in browser acceptance remains deferred. ACA sandbox availability is unverified; unavailable runtime retains HTTP evidence with a finite diagnostic code.
+- Manual HTML, extension and signed-in browser acceptance remains deferred. The initial ACA runtime assumption was unverified; the deployed probe below now confirms runtime unavailability with preserved HTTP evidence.
 
 ## Plan Change Log
 
@@ -117,9 +117,19 @@ Initial engineering defaults: opt-in flag; fewer than six present fields plus a 
 
 Final root verification after patches: 596 backend tests passed against disposable local PostgreSQL; 32 skipped here (31 actual Chromium cases separately executed, one live Azure check not enabled). Seven actual browser guest/account queue/provenance/replay checks passed in the rebuilt image. All 72 frontend tests, typecheck, web/extension builds, fresh build secret scan and Azure template compile passed.
 
-Final baked image: `sha256:1f2834f112e23dd4eaa496480d1b197a693baa0388aee8cac6c97f155a9b809f`. The first concurrent browser gate passed 77/78: the oversized-DOM case retained HTTP and cleaned up within 9.524 seconds, but returned DEADLINE rather than the expected DOM_LIMIT. Its isolated rerun passed. Final serial container gate passed all 78 tests, including all 31 actual Chromium cases, in 207.19 seconds. No deadline or expectation relaxed. Whitespace check passed. No Story 2.5 push/deployment performed; opt-in remains disabled by default pending release approval and ACA sandbox validation.
+Final baked image: `sha256:1f2834f112e23dd4eaa496480d1b197a693baa0388aee8cac6c97f155a9b809f`. The first concurrent browser gate passed 77/78: the oversized-DOM case retained HTTP and cleaned up within 9.524 seconds, but returned DEADLINE rather than the expected DOM_LIMIT. Its isolated rerun passed. Final serial container gate passed all 78 tests, including all 31 actual Chromium cases, in 207.19 seconds. No deadline or expectation relaxed. Whitespace check passed. Initial verification ended before release; the subsequent approved deployment and runtime decision are recorded below.
 
 - Full `backend/tests` against isolated local PostgreSQL; targeted actual Chromium tests must execute, not count as skipped coverage.
 - `npm test --prefix frontend`, `npm run typecheck --prefix frontend`, `npm run build --prefix frontend`, `scripts/scan_frontend_secrets.py`, `git diff --check`.
 - Build/run image: nonroot sandbox, network denied, measured time/coverage; infinite script and descendant cleanup tests.
 - After release approval: CI/Azure and automated smoke.
+
+## Release Closeout — 2026-10-02
+
+- User approved pushing and deploying Story 2.5. Released source: `4ddbf13996960388b990181070f863455032b60c`.
+- [CI 36959533906](https://github.com/vuongc4298/vct-connect/actions/runs/36959533906) succeeded: 596 backend tests, 78 browser tests (31 actual Chromium cases), seven actual browser queue tests and 72 frontend tests. Builds, credential scan and template compilation passed.
+- [Deploy dev 36960334850](https://github.com/vuongc4298/vct-connect/actions/runs/36960334850) succeeded, including private-network migrations, processor activation, ingress/response checks and guest fixture queue completion. The signed-in fixture/manual browser gate remains deferred.
+- Deployed backend image: `sha256:5daa2a37bba732dd041fd1e5d6a81b3d6812b57d415165c1a66c2b996bd90bd7`; web image: `sha256:9a6b40d9b1799aa7f9e80e7c506cb8836d8c76c87113a2e90fd906dd5763ff87`.
+- One-off worker execution `vct-connect-dev-analysis-b5fc458` succeeded with synthetic cached HTML, 0.5 CPU/1 GiB and no backend credential environment entries. Sanitized Log Analytics results returned `RUNTIME_UNAVAILABLE` / `PUBLIC_HTTP` for all three platforms. Coverage remained 1688 1→1, Taobao 1→1 and Alibaba 3→3, with approximately 1.1–1.3 seconds per attempt. No source fetches or snapshot writes were performed by the probe.
+- Current Azure job configuration remains Event-triggered with `PUBLIC_BROWSER_FALLBACK=False`. Browser enrichment is inactive in this runtime; HTTP extraction and upload/extension behavior remain available. A compatible supervised Chromium sandbox runtime is required before activation; no sandbox relaxation applied.
+- Manual acceptance and the three previously recorded unverified runtime concerns remain deferred.
