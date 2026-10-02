@@ -19,6 +19,13 @@ export function ExtractionEvidence({ analysis }: { analysis: Analysis }) {
   const uploaded = (data?.extraction_method ?? analysis.extraction_method) === "USER_UPLOAD";
   const browser = (data?.extraction_method ?? analysis.extraction_method) === "EXTENSION_DOM";
   const publicBrowser = (data?.extraction_method ?? analysis.extraction_method) === "PUBLIC_BROWSER";
+  const merged = analysis.raw_evidence && "merged_from_snapshot_id" in analysis.raw_evidence;
+  const previousCapturedAt = analysis.raw_evidence && "merged_from_extracted_at" in analysis.raw_evidence
+    ? analysis.raw_evidence.merged_from_extracted_at : null;
+  const omittedReviews = analysis.raw_evidence && "omitted_review_count" in analysis.raw_evidence
+    ? analysis.raw_evidence.omitted_review_count : 0;
+  const omittedProducts = analysis.raw_evidence && "omitted_product_count" in analysis.raw_evidence
+    ? analysis.raw_evidence.omitted_product_count : 0;
   const recovery = extractionRecovery(result.extraction_status, result.reason, result.source_url);
   const sourceUrl = safeSourceUrl(data?.source_url ?? result.source_url);
   const source = sourceLabel(result.source_url);
@@ -67,7 +74,9 @@ export function ExtractionEvidence({ analysis }: { analysis: Analysis }) {
         </>}
       </>}
       <p>Độ phủ: {Math.round(data.completeness * 100)}% ({data.completeness_denominator.length - data.missing_fields.length}/{data.completeness_denominator.length} trường) · Thiếu: {data.missing_fields.length ? data.missing_fields.join(", ") : "không"}</p>
-      <p>Nguồn: {data.platform} · {publicBrowser ? "Trang công khai được hệ thống kết xuất bằng trình duyệt" : browser ? "Bằng chứng trình duyệt do bạn cung cấp" : uploaded ? "Trang HTML do bạn tải lên" : "Trang công khai"} · {data.extraction_method} · {data.analysis_mode} · {data.extractor_version} · {uploaded ? "Nhập lúc" : "Trích xuất lúc"} {new Date(data.extracted_at).toLocaleString("vi-VN")}</p>
+      <p>Nguồn: {data.platform} · {publicBrowser ? "Trang công khai được hệ thống kết xuất bằng trình duyệt" : browser ? merged ? "Bằng chứng trình duyệt do bạn cung cấp, kết hợp với ảnh chụp trước đó của bạn" : "Bằng chứng trình duyệt do bạn cung cấp" : uploaded ? "Trang HTML do bạn tải lên" : "Trang công khai"} · {data.extraction_method} · {data.analysis_mode} · {data.extractor_version} · {uploaded ? "Nhập lúc" : "Trích xuất lúc"} {new Date(data.extracted_at).toLocaleString("vi-VN")}</p>
+      {previousCapturedAt && <p>Một phần dữ liệu được lấy từ ảnh chụp trước đó lúc {new Date(previousCapturedAt).toLocaleString("vi-VN")}.</p>}
+      {(omittedReviews || omittedProducts) ? <p>Giới hạn dữ liệu kết hợp: bỏ qua {omittedReviews} đánh giá và {omittedProducts} sản phẩm cũ; ảnh chụp gốc vẫn được lưu.</p> : null}
       {uploaded && <p>Thời điểm lưu trang gốc: chưa xác định.</p>}
       <p>Đánh giá hiển thị: {data.transaction_signals?.review_count_display_text ?? data.transaction_signals?.review_count ?? "chưa có"} · Nội dung đánh giá truy cập được: {analysis.reviews.length}</p>
       {analysis.reviews.length > 0 && <ul>{analysis.reviews.map((review, index) => <li key={index}>{String(review.text ?? "")}</li>)}</ul>}

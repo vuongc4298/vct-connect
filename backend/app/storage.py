@@ -8,6 +8,7 @@ from uuid import UUID, uuid4
 import psycopg
 from psycopg.rows import dict_row
 from .extraction.urls import source_platform, normalize_source_url
+from .extraction.extension_merge import merge_extension_evidence, reject_sensitive_page_state
 
 
 class LeaseLost(RuntimeError):
@@ -484,6 +485,7 @@ class Store:
         customer_limit: int, window_seconds: int,
     ) -> UUID:
         """Admit and persist selected browser evidence atomically without a queue."""
+        reject_sensitive_page_state(payload.get("raw_payload", {}))
         supplier_data = payload.get("supplier_data")
         if payload.get("source_url") != source_url or (
             payload.get("extraction_status") in {"SUCCESS", "PARTIAL"}
@@ -498,6 +500,17 @@ class Store:
         with self.connect() as conn:
             with conn.transaction():
                 self._admit(conn, "CUSTOMER", str(user_id), customer_limit, window_seconds)
+                previous = conn.execute(
+                    """SELECT s.id AS supplier_snapshot_id, s.normalized_data AS supplier_data,
+                              s.raw_payload AS raw_payload
+                       FROM analyses a JOIN supplier_snapshots s ON s.id = a.supplier_snapshot_id
+                       WHERE a.user_id = %s AND a.actor_type = 'CUSTOMER'
+                         AND a.status = 'COMPLETED' AND a.source_url = %s
+                       ORDER BY a.completed_at DESC, a.id DESC LIMIT 1""",
+                    (user_id, source_url),
+                ).fetchone()
+                if previous is not None and supplier_data is not None:
+                    payload = merge_extension_evidence(payload, previous)
                 self._insert_analysis(conn, analysis_id, source_url, user_id, actor_type="CUSTOMER")
                 conn.execute(
                     """UPDATE analyses SET status = 'PROCESSING', attempt_count = 1,
