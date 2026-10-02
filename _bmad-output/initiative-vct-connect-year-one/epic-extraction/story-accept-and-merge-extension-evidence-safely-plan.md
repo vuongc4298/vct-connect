@@ -67,7 +67,8 @@ context:
 - The existing extension capture schemas remain the permitted page-state contract. Both 1688 and Taobao paths use the same merge module; Alibaba extension capture remains unsupported.
 - The newest completed snapshot for the authenticated customer and exact canonical source is used as the baseline. The new snapshot holds selected browser fields, a baseline snapshot ID, field source labels, and the baseline extraction time/method; previous snapshots stay immutable.
 - No media collection was added. Production collection still requires the source-platform terms review named in the epic.
-- Independent review agents could not run because the account hit its usage limit. A local staged-diff audit found and fixed inaccurate provenance for overwritten scalar fields and missing baseline freshness metadata.
+- Build-stage independent review agents could not run because the account hit its usage limit. A local staged-diff audit fixed inaccurate scalar provenance and missing baseline freshness metadata. A later independent reviewer completed a follow-up review; all three verified findings were patched. The bmad-code-review renderer itself could not run because its uncached Jinja2 download was denied by the environment.
+- Combined lists retain at most 20 reviews and 20 products, favoring the active capture; omission counts are shown in the web evidence view. Source snapshot metadata and per-key/per-item provenance survive repeated merges.
 
 ## Plan Change Log
 
@@ -78,10 +79,16 @@ context:
 | Overwritten scalar fields were attributed to both snapshots | medium | Patched field_sources to name only the contributing extension field. |
 | Historical field freshness was not surfaced | medium | Added baseline extraction time and method to raw provenance and the web evidence view. |
 | Taobao's selected review shape was not exercised by merge tests | medium | Added a Taobao duplicate-review test. |
+| Session-cookie fragments such as `sid=...; auth=...`, `csrftoken=...`, and `ASP.NET_SessionId=...` passed the secret guard | high | Expanded the assignment pattern; API and unit tests reject the fragments before quota or persistence. |
+| Repeated captures could grow review and product lists without bound | medium | Capped merged lists at the adapters' 20-item limit, prioritized current evidence, and disclosed omitted older items. |
+| A second merge attributed inherited fields to a newer snapshot and dictionary keys to overwritten sources | medium | Preserved source snapshot metadata and granular dictionary-key/item sources through merge chains; tests verify original public provenance and freshness. |
+| A duplicate-only capture returned its original undeduplicated review list when no older field contributed | medium | Return deduplicated current reviews and products on the standalone path; added a regression test. |
+| A snapshot created by the unpublished first 2.6 commit could carry `field_sources` without `source_snapshots` | not applicable to deployed data | The first 2.6 commit has not been pushed or deployed. Deployed legacy snapshots have no `field_sources` and use the baseline fallback. |
 
 ## Verification
 
 **Commands:**
-- `.venv/Scripts/python.exe -m pytest backend/tests/test_extension_merge.py backend/tests/test_postgres_tracer.py -q` with a temporary local PostgreSQL database — 50 passed, 1 opt-in skipped; the final added Taobao unit test passed separately (7 passed).
+- `.venv/Scripts/python.exe -m pytest backend/tests/test_extension_merge.py backend/tests/test_postgres_tracer.py -q` with a temporary local PostgreSQL database — 54 passed, 1 opt-in skipped.
+- After the final secret guard and duplicate-only fixes, `.venv/Scripts/python.exe -m pytest backend/tests/test_extension_merge.py backend/tests/test_postgres_tracer.py -q -k extension` with a temporary local PostgreSQL database — 16 passed, 43 deselected.
 - `npm test --prefix frontend` and `npm run typecheck --prefix frontend` — 72 tests passed and typecheck passed.
 - `git diff --check` — clean diff.

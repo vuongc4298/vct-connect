@@ -96,7 +96,11 @@ export type Analysis = {
       public_fields: Record<string, unknown> }
     | { source_url: string; captured_at: string; provenance: "USER_PROVIDED_BROWSER_EVIDENCE"; selected_fields: Record<string, unknown>;
         merged_from_snapshot_id?: string; merged_from_extracted_at?: string;
-        merged_from_extraction_method?: string; field_sources?: Record<string, string[]> }
+        merged_from_extraction_method?: string; field_sources?: Record<string, string[]>;
+        source_snapshots?: Record<string, { extracted_at: string; extraction_method: string }>;
+        dict_key_sources?: Record<string, Record<string, string[]>>;
+        item_sources?: Record<string, Record<string, string[]>>;
+        omitted_review_count?: number; omitted_product_count?: number }
   ) | null;
   reviews: Array<Record<string, unknown>>;
 };

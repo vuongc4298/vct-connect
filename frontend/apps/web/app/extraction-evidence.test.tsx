@@ -193,10 +193,12 @@ test("browser evidence identifies user-provided DOM fields without a risk score"
   const mergedHtml = renderToStaticMarkup(<ExtractionEvidence analysis={{ ...analysis,
     raw_evidence: { source_url: sourceUrl, captured_at: "2026-09-30T00:00:00+00:00",
       provenance: "USER_PROVIDED_BROWSER_EVIDENCE", selected_fields: {},
-      merged_from_snapshot_id: "prior-snapshot", merged_from_extracted_at: "2026-09-29T00:00:00+00:00" },
+      merged_from_snapshot_id: "prior-snapshot", merged_from_extracted_at: "2026-09-29T00:00:00+00:00",
+      omitted_review_count: 2, omitted_product_count: 1 },
   } as Analysis} />);
   assert.match(mergedHtml, /kết hợp với ảnh chụp trước đó của bạn/);
   assert.match(mergedHtml, /Một phần dữ liệu được lấy từ ảnh chụp trước đó lúc/);
+  assert.match(mergedHtml, /bỏ qua 2 đánh giá và 1 sản phẩm cũ/);
 });
 
 for (const [status, reason, guidance] of [

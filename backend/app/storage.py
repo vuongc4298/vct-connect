@@ -501,7 +501,8 @@ class Store:
             with conn.transaction():
                 self._admit(conn, "CUSTOMER", str(user_id), customer_limit, window_seconds)
                 previous = conn.execute(
-                    """SELECT s.id AS supplier_snapshot_id, s.normalized_data AS supplier_data
+                    """SELECT s.id AS supplier_snapshot_id, s.normalized_data AS supplier_data,
+                              s.raw_payload AS raw_payload
                        FROM analyses a JOIN supplier_snapshots s ON s.id = a.supplier_snapshot_id
                        WHERE a.user_id = %s AND a.actor_type = 'CUSTOMER'
                          AND a.status = 'COMPLETED' AND a.source_url = %s

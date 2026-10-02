@@ -582,7 +582,8 @@ def test_extension_capture_merges_only_same_owner_page_and_rejects_secrets(store
         store.complete_processing(other_id, other_claim["token"], other_payload)
         capture = {"source_url": url, "offer_id": "996518024136",
                    "fields": {"supplier_name": "Current supplier", "price_text": "¥20"}}
-        for title in ["password=secret", "Bearer abcdefghijklmnop"]:
+        for title in ["password=secret", "Bearer abcdefghijklmnop", "sid=abc123; auth=xyz",
+                      "csrftoken=abc123", "ASP.NET_SessionId=abc123"]:
             rejected = client.post("/api/v1/analyses/capture", headers=headers,
                                    json={**capture, "fields": {"product_title": title}})
             assert rejected.status_code == 422
