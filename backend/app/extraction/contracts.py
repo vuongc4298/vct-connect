@@ -4,6 +4,7 @@ Coverage counts the 12 optional SupplierData evidence fields from the MVP spec.
 Platform-specific offer identifiers remain provenance, outside the denominator.
 """
 
+from collections.abc import Callable, Mapping
 from typing import Literal, TypedDict
 
 
@@ -17,6 +18,38 @@ ExtractionStatus = Literal[
     "SUCCESS", "PARTIAL", "AUTH_REQUIRED", "BLOCKED", "UNSUPPORTED_PAGE",
     "TIMEOUT", "PARSE_FAILED",
 ]
+
+
+def evidence_present(value: object) -> bool:
+    """The v1 evidence rule: numeric zero is present; None/empty text/list aren't."""
+    return value is not None and value != "" and value != []
+
+
+def extension_evidence_present(value: object) -> bool:
+    """Legacy extension captures and merges count every non-None value."""
+    return value is not None
+
+
+def evidence_coverage(evidence: Mapping[str, object], *,
+                      present: Callable[[object], bool] = evidence_present) -> dict:
+    """Return v1 coverage in contract order, excluding provenance fields."""
+    missing = [name for name in EVIDENCE_FIELDS if not present(evidence[name])]
+    return {
+        "completeness": round((len(EVIDENCE_FIELDS) - len(missing)) / len(EVIDENCE_FIELDS), 4),
+        "completeness_denominator": list(EVIDENCE_FIELDS),
+        "missing_fields": missing,
+    }
+
+
+def assemble_supplier_data(evidence: Mapping[str, object], *,
+                           present: Callable[[object], bool] = evidence_present, **provenance) -> dict:
+    """Attach the shared contract and coverage to adapter-selected evidence."""
+    return {"contract_version": CONTRACT_VERSION, **provenance,
+            **evidence_coverage(evidence, present=present), **evidence}
+
+
+def evidence_status(data: Mapping[str, object]) -> Literal["PARTIAL", "SUCCESS"]:
+    return "PARTIAL" if data["missing_fields"] else "SUCCESS"
 
 
 class Review(TypedDict):

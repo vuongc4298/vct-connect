@@ -204,7 +204,18 @@ def test_child_environment_is_secret_free(monkeypatch):
 @REAL
 @pytest.mark.parametrize("platform", ADAPTERS)
 def test_actual_chromium_gain_for_all_platforms(platform, caplog):
-    result, html = extracted(platform)
+    from uuid import uuid4
+    from backend.app.extraction.renormalize import renormalize_public_fields
+
+    url, html = fixture(platform)
+    if platform == "1688":
+        # Replay needs retained model identity; a DOM canonical alone cannot bind it.
+        model = {"result": {"data": {
+            "Root": {"fields": {"dataJson": {"offerBaseInfo": {"offerId": "987654321012"}}}},
+            "productTitle": {"fields": {"shopInfo": {"companyName": "Public supplier"}}},
+        }}}
+        html = html.replace("<body>", '<body><script>(function() {})(window.contextPath,' + json.dumps(model) + ');</script>')
+    result = ADAPTERS[platform][1](html, url)
     started = time.monotonic()
     with caplog.at_level(logging.INFO, logger="backend.app.extraction.browser"):
         selected = maybe_render(result, html, html.encode(), enabled=True)
@@ -213,6 +224,22 @@ def test_actual_chromium_gain_for_all_platforms(platform, caplog):
     assert preserves(result["supplier_data"], selected["supplier_data"])
     assert time.monotonic() - started < 11
     print(platform, "fields", field_count(result["supplier_data"]), "->", field_count(selected["supplier_data"]), "elapsed_ms", int((time.monotonic() - started) * 1000))
+    data = selected["supplier_data"]
+    before = deepcopy(selected)
+    replay = renormalize_public_fields(
+        raw_payload=selected["raw_payload"], source_url=selected["source_url"],
+        extraction_method=data["extraction_method"], analysis_mode=data["analysis_mode"],
+        extracted_at=data["extracted_at"], source_snapshot_id=uuid4(),
+        source_extractor_version=data["extractor_version"],
+    )
+    gained = set(result["supplier_data"]["missing_fields"]) - set(data["missing_fields"])
+    assert gained == {"products" if platform == "TAOBAO" else "reviews"}
+    for field in gained:
+        assert replay["supplier_data"][field] == data[field]
+    assert replay["reviews"] == (replay["supplier_data"]["reviews"] or [])
+    assert replay["reviews"] == selected["reviews"]
+    assert replay["raw_payload"]["public_fields"] == selected["raw_payload"]["public_fields"]
+    assert selected == before
 
 
 @REAL

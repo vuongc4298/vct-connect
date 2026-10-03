@@ -83,3 +83,19 @@
 - source_plan: `_bmad-output/initiative-vct-connect-year-one/epic-extraction/story-use-playwright-only-when-public-http-evidence-is-insufficien-plan.md`
   summary: Provide a compatible supervised Chromium sandbox runtime before enabling public browser fallback in Azure.
   evidence: The deployed worker probe vct-connect-dev-analysis-b5fc458 succeeded but returned RUNTIME_UNAVAILABLE for 1688, Taobao and Alibaba, preserving the original HTTP evidence at 1, 1 and 3 populated fields. PUBLIC_BROWSER_FALLBACK remains False; no sandbox bypass was applied.
+
+- source_plan: `C:/Users/eidel/Desktop/VCT Connect/_bmad-output/initiative-vct-connect-year-one/epic-extraction/story-refactor-sweep-plan.md`
+  summary: Resolve static stylesheet cascade order and important priority before marking nodes hidden.
+  evidence: Story 2.8 review B4/E6 reproduced visible login walls disappearing for overridden display declarations; the moved helper AST matches the baseline exactly.
+- source_plan: `C:/Users/eidel/Desktop/VCT Connect/_bmad-output/initiative-vct-connect-year-one/epic-extraction/story-refactor-sweep-plan.md`
+  summary: Resolve inline display declarations in their effective order before pruning visible content.
+  evidence: Story 2.8 review E3 reproduced display:none followed by display:block causing a visible login wall to be removed; the ancestor visibility helper is unchanged from baseline.
+- source_plan: `C:/Users/eidel/Desktop/VCT Connect/_bmad-output/initiative-vct-connect-year-one/epic-extraction/story-refactor-sweep-plan.md`
+  summary: Preserve explicitly visible descendants beneath visibility-hidden ancestors.
+  evidence: Story 2.8 review E4 reproduced a visibility:visible child login wall disappearing when its hidden ancestor is pruned; the limitation predates this refactor.
+- source_plan: `C:/Users/eidel/Desktop/VCT Connect/_bmad-output/initiative-vct-connect-year-one/epic-extraction/story-refactor-sweep-plan.md`
+  summary: Respect stylesheet media applicability when computing static screen visibility.
+  evidence: Story 2.8 review E5 reproduced a print-only hiding rule removing screen-visible login content; the stylesheet helper is AST-identical to baseline.
+- source_plan: `C:/Users/eidel/Desktop/VCT Connect/_bmad-output/initiative-vct-connect-year-one/epic-extraction/story-refactor-sweep-plan.md`
+  summary: Recognize zero percentage opacity when excluding invisible selected evidence.
+  evidence: Story 2.8 review E7 reproduced opacity:0% text surviving static pruning; the unchanged stylesheet regex handles numeric zero only.

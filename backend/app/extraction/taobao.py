@@ -5,94 +5,31 @@ are never retained. Display counts and shop metrics retain their original labels
 """
 from datetime import datetime, timezone
 from hashlib import sha256
-from html.parser import HTMLParser as SourceParser
 import json
 import re
 import time
 from urllib.parse import urlsplit, urlunsplit
 
-from selectolax.parser import HTMLParser
-
-from .contracts import CONTRACT_VERSION, EVIDENCE_FIELDS
+from .contracts import (
+    EVIDENCE_FIELDS, assemble_supplier_data, evidence_status, evidence_present as _present,
+)
 from .fetch import bounded_extract, _public_dns
-from .offer1688 import MalformedPage, _field, _object, _string, _text, _present, _validate_json_evidence, _login_page
+from .evidence import (
+    MalformedPage, field as _field, object as _object, string as _string,
+    text as _text, validate_json_evidence as _validate_json_evidence,
+)
+from .dom import (
+    tree as _tree, active as _active, scripts as _scripts, prune_dom as _prune_dom,
+    login_page as _login_page,
+)
 from .urls import normalize_taobao_url, taobao_identity
 
 EXTRACTOR_VERSION = "taobao-http.v1"
 
 
-def _tree(html):
-    # HTML tree repair can move a head-level noscript's script outside its
-    # inactive ancestor. Remove inert source regions before that repair. The
-    # tokenizer treats script/style contents as text and never runs them.
-    class ActiveSource(SourceParser):
-        def __init__(self):
-            super().__init__(convert_charrefs=False)
-            self.inert = []
-            self.parts = []
-
-        def handle_starttag(self, tag, attrs):
-            if tag in {"noscript", "template"}:
-                self.inert.append(tag)
-            elif not self.inert:
-                self.parts.append(self.get_starttag_text())
-
-        def handle_startendtag(self, tag, attrs):
-            if not self.inert and tag not in {"noscript", "template"}:
-                self.parts.append(self.get_starttag_text())
-
-        def handle_endtag(self, tag):
-            if self.inert:
-                if tag == self.inert[-1]:
-                    self.inert.pop()
-            else:
-                self.parts.append(f"</{tag}>")
-
-        def handle_data(self, data):
-            if not self.inert:
-                self.parts.append(data)
-
-        def handle_entityref(self, name):
-            self.handle_data(f"&{name};")
-
-        def handle_charref(self, name):
-            self.handle_data(f"&#{name};")
-
-        def handle_comment(self, data):
-            pass
-
-    source = ActiveSource()
-    source.feed(html)
-    source.close()
-    return HTMLParser("".join(source.parts))
-
-
 def _nodes(tree, prefix):
     return [node for node in tree.css("[class]")
             if _active(node) and any(token.startswith(prefix) for token in (node.attributes.get("class") or "").split())]
-
-
-def _active(node):
-    while node is not None:
-        if node.tag in {"template", "noscript"} or "hidden" in node.attributes or node.attributes.get("aria-hidden") == "true":
-            return False
-        style = re.sub(r"\s+", "", (node.attributes.get("style") or "").lower())
-        if "display:none" in style or "visibility:hidden" in style or "visibility:collapse" in style or re.search(
-                r"(?:^|;)opacity:(?:0+(?:\.0*)?|\.0+)(?:%|!important|%!important)?(?:;|$)", style):
-            return False
-        node = node.parent
-    return True
-
-
-def _scripts(tree):
-    def executable(node):
-        while node is not None:
-            if node.tag in {"template", "noscript"}:
-                return False
-            node = node.parent
-        return True
-    return [node for node in tree.css("script") if executable(node) and "src" not in node.attributes
-            and (node.attributes.get("type") or "").strip().lower() in {"", "text/javascript", "application/javascript", "text/ecmascript", "application/ecmascript", "module"}]
 
 
 def _context_write(content):
@@ -113,14 +50,6 @@ def _context_write(content):
     return (interpolated_context or re.search(target + r"\s*(?:(?:\|\||&&|\?\?)?=(?!=)|\.[A-Za-z_$][\w$]*\s*=(?!=)|\[[^\]]+\]\s*=(?!=))", code)
             or re.search(r"Object\.assign\s*\(\s*" + target + r"\s*,", code)
             or re.search(r"Object\.defineProperty\s*\(\s*window\s*,\s*['\"]__ICE_APP_CONTEXT__['\"]\s*,", code))
-
-
-def _prune_dom(tree):
-    hidden_roots = [node for node in tree.css("[hidden], [aria-hidden], [style]")
-                    if not _active(node) and _active(node.parent)]
-    for node in hidden_roots:
-        node.decompose()
-    tree.strip_tags(["script", "style"])
 
 
 def _id(value):
@@ -361,19 +290,19 @@ def _parse(html, source_url, mode, extracted_at, page_bytes):
     if not evidence["supplier_name"] and not evidence["products"]:
         raise MalformedPage
     raw["seller"] = {key: seller.get(key) for key in ("shopId", "sellerId", "shopName", "pcShopUrl", "sellerType", "tmall")}
-    missing = [key for key in EVIDENCE_FIELDS if not _present(evidence[key])]
     timestamp = (extracted_at or datetime.now(timezone.utc)).astimezone(timezone.utc).isoformat()
-    supplier_data = {"contract_version": CONTRACT_VERSION, "platform": "TAOBAO", "source_url": source_url,
-                     "offer_id": identity if kind == "item" else None, "platform_supplier_id": supplier_id,
-                     "extracted_at": timestamp, "extraction_method": "PUBLIC_HTTP", "analysis_mode": mode,
-                     "extractor_version": EXTRACTOR_VERSION, "completeness": round((12 - len(missing)) / 12, 4),
-                     "completeness_denominator": list(EVIDENCE_FIELDS), "missing_fields": missing, **evidence}
+    supplier_data = assemble_supplier_data(
+        evidence, platform="TAOBAO", source_url=source_url,
+        offer_id=identity if kind == "item" else None, platform_supplier_id=supplier_id,
+        extracted_at=timestamp, extraction_method="PUBLIC_HTTP", analysis_mode=mode,
+        extractor_version=EXTRACTOR_VERSION,
+    )
     raw_payload = {"source_url": source_url, "captured_at": timestamp,
                    "html_sha256": sha256(page_bytes if page_bytes is not None else html.encode("utf-8")).hexdigest(),
                    "public_fields": raw}
     _validate_json_evidence(supplier_data)
     _validate_json_evidence(raw_payload)
-    return dict(source_url=source_url, extraction_status="PARTIAL" if missing else "SUCCESS",
+    return dict(source_url=source_url, extraction_status=evidence_status(supplier_data),
                 supplier_data=supplier_data, raw_payload=raw_payload, reviews=reviews)
 
 

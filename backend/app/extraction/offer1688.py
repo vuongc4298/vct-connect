@@ -22,7 +22,14 @@ import httpcore
 import httpx
 from selectolax.parser import HTMLParser
 
-from .contracts import CONTRACT_VERSION, EVIDENCE_FIELDS
+from .contracts import (
+    EVIDENCE_FIELDS, assemble_supplier_data, evidence_status, evidence_present as _present,
+)
+from .evidence import (
+    MalformedPage, field as _field, object as _object, string as _string,
+    text as _text, validate_json_evidence as _validate_json_evidence,
+)
+from .dom import login_page as _login_page
 from .urls import normalize_1688_url, offer_id
 
 EXTRACTOR_VERSION = "1688-http.v1"
@@ -33,13 +40,6 @@ from .fetch import (
     DNSResolutionFailed, DeadlineStream, PublicOnlyBackend, _public_transport,
     _public_addresses, _public_dns, bounded_extract,
 )
-
-
-def _text(node) -> str | None:
-    if node is None:
-        return None
-    value = node.text(strip=True)
-    return value or None
 
 
 def _embedded_model(tree: HTMLParser) -> dict:
@@ -62,61 +62,6 @@ def _embedded_model(tree: HTMLParser) -> dict:
     return {}
 
 
-class MalformedPage(ValueError):
-    """An observed embedded structure cannot safely supply evidence."""
-
-
-def _validate_json_evidence(value):
-    """Reject source values that PostgreSQL JSONB cannot retain."""
-    if isinstance(value, str):
-        if "\x00" in value:
-            raise MalformedPage
-        try:
-            value.encode("utf-8")
-        except UnicodeEncodeError as exc:
-            raise MalformedPage from exc
-    elif isinstance(value, float) and not math.isfinite(value):
-        raise MalformedPage
-    elif isinstance(value, dict):
-        for key, item in value.items():
-            _validate_json_evidence(key)
-            _validate_json_evidence(item)
-    elif isinstance(value, list):
-        for item in value:
-            _validate_json_evidence(item)
-
-
-def _field(model: dict, *path):
-    value = model
-    for key in path:
-        if value is None:
-            return None
-        if not isinstance(value, dict):
-            raise MalformedPage
-        value = value.get(key)
-    return value
-
-
-def _object(value) -> dict:
-    if value is None:
-        return {}
-    if not isinstance(value, dict):
-        raise MalformedPage
-    return value
-
-
-def _string(value) -> str | None:
-    if isinstance(value, str):
-        return value.strip() or None
-    if value is not None:
-        raise MalformedPage
-    return None
-
-
-def _present(value) -> bool:
-    return value is not None and value != "" and value != []
-
-
 def _blocked_page(tree: HTMLParser) -> bool:
     title = (_text(tree.css_first("title")) or "").lower()
     body = (_text(tree.css_first("body")) or "")[:2000].lower()
@@ -130,15 +75,6 @@ def _blocked_page(tree: HTMLParser) -> bool:
         if "_____tmd_____/punish" in content or "sessionStorage.x5referer" in content:
             return True
     return False
-
-
-def _login_page(tree: HTMLParser, *, has_public_evidence=False) -> bool:
-    title = (_text(tree.css_first("title")) or "").lower()
-    body = (_text(tree.css_first("body")) or "")[:2000].lower()
-    markers = ("login required", "please log in", "please sign in", "登录后", "请登录")
-    return (any(marker in title for marker in markers)
-            or title.strip() in {"login", "sign in", "登录", "用户登录", "会员登录", "1688登录"}
-            or not has_public_evidence and any(marker in body for marker in markers))
 
 
 def parse_1688_page(html: str, source_url: str, **kwargs) -> dict:
@@ -265,23 +201,12 @@ def _parse_1688_page(html: str, source_url: str, *, analysis_mode: str = "ACCOUN
     # when it is present in the fetched page. This capture has aggregates only.
     if not supplier_name and not offer_title:
         return {"source_url": source_url, "extraction_status": "PARSE_FAILED", "reason": "NO_PUBLIC_EVIDENCE"}
-    missing = [key for key in EVIDENCE_FIELDS if not _present(evidence[key])]
-    supplier_data = {
-        "contract_version": CONTRACT_VERSION,
-        "platform": "1688",
-        "source_url": source_url,
-        "offer_id": offer_id(source_url),
-        "platform_supplier_id": str(supplier_id) if supplier_id else None,
-        "extracted_at": timestamp,
-        "extraction_method": extraction_method,
-        "analysis_mode": analysis_mode,
-        "extractor_version": (UPLOAD_EXTRACTOR_VERSION if extraction_method == "USER_UPLOAD"
-                              else EXTRACTOR_VERSION),
-        "completeness": round((len(EVIDENCE_FIELDS) - len(missing)) / len(EVIDENCE_FIELDS), 4),
-        "completeness_denominator": list(EVIDENCE_FIELDS),
-        "missing_fields": missing,
-        **evidence,
-    }
+    supplier_data = assemble_supplier_data(
+        evidence, platform="1688", source_url=source_url, offer_id=offer_id(source_url),
+        platform_supplier_id=str(supplier_id) if supplier_id else None,
+        extracted_at=timestamp, extraction_method=extraction_method, analysis_mode=analysis_mode,
+        extractor_version=UPLOAD_EXTRACTOR_VERSION if uploaded else EXTRACTOR_VERSION,
+    )
     raw_evidence = {
         "source_url": source_url,
         "captured_at": None if uploaded else timestamp,
@@ -304,7 +229,7 @@ def _parse_1688_page(html: str, source_url: str, *, analysis_mode: str = "ACCOUN
     _validate_json_evidence(raw_evidence)
     return {
         "source_url": source_url,
-        "extraction_status": "PARTIAL" if missing else "SUCCESS",
+        "extraction_status": evidence_status(supplier_data),
         "supplier_data": supplier_data,
         "raw_payload": raw_evidence,
         "reviews": reviews,
