@@ -3,6 +3,7 @@ from pathlib import Path
 import json
 import socket
 import ssl
+from uuid import uuid4
 
 import httpcore
 import httpx
@@ -14,6 +15,8 @@ from backend.app.extraction.offer1688 import (
     TemporaryDNSFailure, UnsafeDestination, _public_dns,
 )
 from backend.app.extraction.extension1688 import DomCapture, normalize_capture
+from backend.app.extraction.renormalize import UnsupportedRawEvidence, renormalize_public_fields
+from backend.app.extraction.contracts import EVIDENCE_FIELDS
 
 
 URL = "https://detail.1688.com/offer/996518024136.html"
@@ -110,6 +113,39 @@ def test_accessible_review_text_is_preserved():
     assert result["reviews"] == [{"text": "Good fabric", "source_url": URL}]
     assert result["supplier_data"]["reviews"] == result["reviews"]
     assert "reviews" not in result["supplier_data"]["missing_fields"]
+
+
+@pytest.mark.parametrize("count", [0, 1, 25])
+def test_saved_1688_review_volume_is_bounded_and_coverage_exact(count):
+    cards = "".join(f'<div class="review-item">Review {i}</div>' for i in range(count))
+    html = f'<link rel="canonical" href="{URL}"><div class="title-content"><h1>Dress</h1></div>{cards}'
+    result = parse_1688_page(html, URL, extracted_at=AT)
+    data = result["supplier_data"]
+    assert result["extraction_status"] == "PARTIAL"
+    assert len(result["reviews"]) == min(count, 20)
+    assert data["reviews"] == (result["reviews"] or None)
+    assert data["missing_fields"] == [field for field in EVIDENCE_FIELDS if data[field] is None]
+    assert data["completeness"] == round((12 - len(data["missing_fields"])) / 12, 4)
+
+
+def test_1688_raw_replay_requires_retained_offer_binding():
+    html = (Path(__file__).parent / "fixtures" / "1688_offer_996518024136.html").read_text(encoding="utf-8")
+    result = parse_1688_page(html, URL, extracted_at=AT)
+    data = result["supplier_data"]
+    replay = renormalize_public_fields(raw_payload=result["raw_payload"], source_url=URL,
+        extraction_method="PUBLIC_HTTP", analysis_mode="ACCOUNT_PUBLIC", extracted_at=data["extracted_at"],
+        source_snapshot_id=uuid4(), source_extractor_version=data["extractor_version"])
+    assert replay["supplier_data"]["extractor_version"] == "1688-raw.v2"
+    assert replay["supplier_data"]["completeness"] == data["completeness"]
+    assert replay["supplier_data"]["missing_fields"] == data["missing_fields"]
+    assert {key: replay["supplier_data"][key] for key in EVIDENCE_FIELDS} == {
+        key: data[key] for key in EVIDENCE_FIELDS
+    }
+    result["raw_payload"]["public_fields"]["offer_base"]["offerId"] = "111111111111"
+    with pytest.raises(UnsupportedRawEvidence):
+        renormalize_public_fields(raw_payload=result["raw_payload"], source_url=URL,
+            extraction_method="PUBLIC_HTTP", analysis_mode="ACCOUNT_PUBLIC", extracted_at=data["extracted_at"],
+            source_snapshot_id=uuid4(), source_extractor_version=data["extractor_version"])
 
 
 @pytest.mark.parametrize("value", [

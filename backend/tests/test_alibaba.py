@@ -3,6 +3,7 @@ from hashlib import sha256
 import json
 import os
 from pathlib import Path
+from uuid import uuid4
 
 import httpx
 import pytest
@@ -11,6 +12,8 @@ os.environ.setdefault('DEVELOPER_MODE', 'true')
 os.environ.setdefault('DATABASE_URL', 'postgresql://unused')
 
 from backend.app.extraction.alibaba import extract_alibaba, parse_alibaba_page, _model, _number
+from backend.app.extraction.renormalize import UnsupportedRawEvidence, renormalize_public_fields
+from backend.app.extraction.contracts import EVIDENCE_FIELDS
 from backend.app.extraction.offer1688 import MalformedPage
 from backend.app.extraction.taobao import _tree
 from backend.app.extraction.urls import normalize_alibaba_url, alibaba_identity, source_platform
@@ -25,6 +28,59 @@ AT = datetime(2026, 10, 1, tzinfo=timezone.utc)
 
 def capture(profile=False):
     return (Path(__file__).parent / 'fixtures' / ('alibaba_profile_dgxuandele.html' if profile else 'alibaba_product_1600147809763.html')).read_text(encoding='utf-8')
+
+
+@pytest.mark.parametrize('profile', [False, True])
+def test_saved_alibaba_shapes_replay_from_selected_fields(profile):
+    url = PROFILE if profile else PRODUCT
+    original = parse_alibaba_page(capture(profile), url, extracted_at=AT)
+    data = original['supplier_data']
+    replay = renormalize_public_fields(raw_payload=original['raw_payload'], source_url=url,
+        extraction_method='PUBLIC_HTTP', analysis_mode='ACCOUNT_PUBLIC', extracted_at=data['extracted_at'],
+        source_snapshot_id=uuid4(), source_extractor_version=data['extractor_version'])
+    assert replay['supplier_data']['extractor_version'] == 'alibaba-raw.v2'
+    assert replay['supplier_data']['missing_fields'] == data['missing_fields']
+    assert replay['supplier_data']['completeness'] == data['completeness']
+    assert replay['reviews'] == original['reviews']
+    assert {key: replay['supplier_data'][key] for key in EVIDENCE_FIELDS} == {
+        key: data[key] for key in EVIDENCE_FIELDS
+    }
+    fields = original['raw_payload']['public_fields']
+    fields['esiteSubDomain' if profile else 'product_identity'] = 'other.en.alibaba.com' if profile else '1'
+    with pytest.raises(UnsupportedRawEvidence):
+        renormalize_public_fields(raw_payload=original['raw_payload'], source_url=url,
+            extraction_method='PUBLIC_HTTP', analysis_mode='ACCOUNT_PUBLIC', extracted_at=data['extracted_at'],
+            source_snapshot_id=uuid4(), source_extractor_version=data['extractor_version'])
+
+
+def test_alibaba_more_than_twenty_reviews_are_bounded_without_coverage_inflation():
+    card = '<div class="r-relative r-whitespace-normal">Review {}</div>'
+    html = capture().replace('<div class="product-review-list">',
+                             '<div class="product-review-list">' + ''.join(card.format(i) for i in range(25)))
+    result = parse_alibaba_page(html, PRODUCT, extracted_at=AT)
+    assert result['extraction_status'] == 'PARTIAL'
+    assert len(result['reviews']) == 20
+    assert len(result['raw_payload']['public_fields']['review_bodies']) == 20
+    assert len({item['text'] for item in result['reviews']}) == 20
+    assert result['supplier_data']['completeness'] == 0.8333
+
+
+@pytest.mark.parametrize('identity', ['supplier', 'sku', 'offer'])
+def test_alibaba_raw_replay_rejects_conflicting_retained_identities(identity):
+    original = parse_alibaba_page(capture(), PRODUCT, extracted_at=AT)
+    fields = original['raw_payload']['public_fields']
+    if identity == 'supplier':
+        fields['seller']['companyProfileUrl'] = 'https://other.en.alibaba.com/company_profile.html'
+    elif identity == 'sku':
+        fields['jsonld_identity'] = [{'sku': '1', 'offers': []}]
+    else:
+        fields['jsonld_identity'] = [{'offers': [{'hostname': 'www.alibaba.com',
+                                                 'path': '/product-detail/Other_1.html'}]}]
+    with pytest.raises(UnsupportedRawEvidence):
+        renormalize_public_fields(raw_payload=original['raw_payload'], source_url=PRODUCT,
+            extraction_method='PUBLIC_HTTP', analysis_mode='ACCOUNT_PUBLIC',
+            extracted_at=original['supplier_data']['extracted_at'],
+            source_snapshot_id=uuid4(), source_extractor_version=original['supplier_data']['extractor_version'])
 
 
 def model_page(model, profile=False):

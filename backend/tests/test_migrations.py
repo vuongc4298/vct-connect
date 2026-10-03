@@ -93,7 +93,8 @@ def _rollback_extraction_revisions(database_url: str) -> None:
         migrations = migrations_module.read_migrations(str(migrations_module.MIGRATIONS_DIR))
         with backend.lock():
             revisions = [migration for migration in backend.to_rollback(migrations)
-                         if migration.id in {"0007_1688_extraction_evidence", "0008_allow_public_extraction"}]
+                         if migration.id in {"0007_1688_extraction_evidence", "0008_allow_public_extraction",
+                                             "0009_allow_snapshot_replay"}]
             backend.rollback_migrations(revisions)
     finally:
         migrations_module._close_backend(backend)
@@ -108,6 +109,29 @@ def _table_names(database_url: str) -> set[str]:
                 "WHERE table_schema = current_schema()"
             )
         }
+
+
+def test_replay_migration_refuses_rollback_that_would_discard_preserved_captures(isolated_database_url):
+    apply_migrations(isolated_database_url)
+    supplier_id = uuid4()
+    captured = datetime(2026, 9, 1, tzinfo=timezone.utc)
+    with psycopg.connect(isolated_database_url) as conn:
+        conn.execute("INSERT INTO suppliers (id, platform, source_url) VALUES (%s, '1688', %s)",
+                     (supplier_id, FIXTURE_URL))
+        for version in ("v1", "v2"):
+            conn.execute(
+                """INSERT INTO supplier_snapshots
+                     (id, supplier_id, raw_payload, normalized_data, extraction_method,
+                      analysis_mode, extractor_version, extracted_at)
+                   VALUES (%s, %s, '{}'::jsonb, '{}'::jsonb, 'PUBLIC_HTTP',
+                           'ACCOUNT_PUBLIC', %s, %s)""",
+                (uuid4(), supplier_id, version, captured),
+            )
+    with pytest.raises(psycopg.errors.RaiseException, match="rollback cannot restore"):
+        _rollback_extraction_revisions(isolated_database_url)
+    assert dict(migration_status(isolated_database_url))["0009_allow_snapshot_replay"] is True
+    with psycopg.connect(isolated_database_url) as conn:
+        assert conn.execute("SELECT count(*) FROM supplier_snapshots WHERE supplier_id = %s", (supplier_id,)).fetchone()[0] == 2
 
 
 def _analysis_columns(database_url: str) -> list[str]:
@@ -205,6 +229,7 @@ def test_fresh_apply_failure_rollback_and_reapply_are_reproducible(
         ("0006_guest_admission_and_provenance", False),
         ("0007_1688_extraction_evidence", False),
         ("0008_allow_public_extraction", False),
+        ("0009_allow_snapshot_replay", False),
     ]
 
     with psycopg.connect(isolated_database_url, autocommit=True) as conn:
@@ -220,6 +245,7 @@ def test_fresh_apply_failure_rollback_and_reapply_are_reproducible(
         ("0006_guest_admission_and_provenance", True),
         ("0007_1688_extraction_evidence", True),
         ("0008_allow_public_extraction", True),
+        ("0009_allow_snapshot_replay", True),
     ]
 
 
@@ -311,7 +337,7 @@ def test_processing_hardening_schema_is_reversible_and_preserves_claims(isolated
     ])
     assert migrated_outbox == (created_id, "PENDING")
 
-    with pytest.raises(RuntimeError, match="0008_allow_public_extraction"):
+    with pytest.raises(RuntimeError, match="0009_allow_snapshot_replay"):
         rollback_core_migration(isolated_database_url)
     _rollback_extraction_revisions(isolated_database_url)
     assert rollback_core_migration(isolated_database_url)
@@ -418,10 +444,7 @@ def test_alignment_refuses_populated_provisional_core_schema(isolated_database_u
     with pytest.raises(psycopg.errors.RaiseException, match="map them explicitly first"):
         apply_migrations(isolated_database_url)
 
-    assert migration_status(isolated_database_url)[-6] == (
-        "0003_align_core_schema_to_spec",
-        False,
-    )
+    assert dict(migration_status(isolated_database_url))["0003_align_core_schema_to_spec"] is False
     with psycopg.connect(isolated_database_url) as conn:
         assert conn.execute("SELECT plan_code FROM entitlements").fetchone()[0] == "PILOT"
 
@@ -510,6 +533,17 @@ def test_core_schema_constraints_indexes_and_representative_join(isolated_databa
             "supplier-123",
             raw_payload,
             normalized_data,
+        )
+
+        # A revised snapshot retains the capture time and belongs to a new
+        # analysis; the analysis association remains unique.
+        conn.execute(
+            """INSERT INTO supplier_snapshots
+                 (id, supplier_id, analysis_id, raw_payload, normalized_data,
+                  extraction_method, analysis_mode, extractor_version, extracted_at)
+               VALUES (%s, %s, %s, '{}'::jsonb, '{}'::jsonb,
+                       'PUBLIC_HTTP', 'ACCOUNT_PUBLIC', 'v2', %s)""",
+            (uuid4(), supplier_id, analysis_id, analyzed_at - timedelta(minutes=5)),
         )
 
         invalid_statements = [
@@ -645,11 +679,11 @@ def test_core_schema_constraints_indexes_and_representative_join(isolated_databa
             ),
             (
                 "INSERT INTO supplier_snapshots "
-                "(id, supplier_id, raw_payload, normalized_data, extraction_method, "
+                "(id, supplier_id, analysis_id, raw_payload, normalized_data, extraction_method, "
                 "analysis_mode, extractor_version, extracted_at) "
-                "VALUES (%s, %s, '{}'::jsonb, '{}'::jsonb, 'FIXTURE', "
+                "VALUES (%s, %s, %s, '{}'::jsonb, '{}'::jsonb, 'FIXTURE', "
                 "'GUEST_PUBLIC', 'v1', %s)",
-                (uuid4(), supplier_id, analyzed_at - timedelta(minutes=5)),
+                (uuid4(), supplier_id, analysis_id, analyzed_at),
             ),
             (
                 "INSERT INTO analyses (id, source_url, status, user_id) "
@@ -809,7 +843,7 @@ def test_core_rollback_preserves_tracer_drops_columns_and_reapplies(isolated_dat
             (user_id, snapshot_id, completed_id),
         )
 
-    with pytest.raises(RuntimeError, match="0008_allow_public_extraction"):
+    with pytest.raises(RuntimeError, match="0009_allow_snapshot_replay"):
         rollback_core_migration(isolated_database_url)
     _rollback_extraction_revisions(isolated_database_url)
     assert rollback_core_migration(isolated_database_url)
@@ -838,7 +872,7 @@ def test_core_rollback_preserves_tracer_drops_columns_and_reapplies(isolated_dat
 
     apply_migrations(isolated_database_url)
     assert migration_status(isolated_database_url)[-1] == (
-        "0008_allow_public_extraction",
+        "0009_allow_snapshot_replay",
         True,
     )
     assert {"user_id", "supplier_snapshot_id", "mode", "scoring_version"} <= set(

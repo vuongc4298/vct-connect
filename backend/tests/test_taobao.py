@@ -3,6 +3,7 @@ from hashlib import sha256
 import json
 import os
 from pathlib import Path
+from uuid import uuid4
 
 import httpx
 import pytest
@@ -11,6 +12,8 @@ os.environ.setdefault("DEVELOPER_MODE", "true")
 os.environ.setdefault("DATABASE_URL", "postgresql://unused")
 
 from backend.app.extraction.taobao import extract_taobao, parse_taobao_page, _model
+from backend.app.extraction.renormalize import UnsupportedRawEvidence, renormalize_public_fields
+from backend.app.extraction.contracts import EVIDENCE_FIELDS
 from backend.app.extraction.urls import normalize_taobao_url, source_platform, taobao_identity
 from backend.app.extraction.fetch import MAX_HTML_BYTES, PublicOnlyBackend, UnsafeDestination
 from backend.app.main import Submission
@@ -25,6 +28,40 @@ AT = datetime(2026, 9, 30, tzinfo=timezone.utc)
 def capture(shop=False):
     name = "taobao_shop_159450000.html" if shop else "taobao_item_1076425861755.html"
     return (Path(__file__).parent / "fixtures" / name).read_text(encoding="utf-8")
+
+
+@pytest.mark.parametrize("shop", [False, True])
+def test_saved_taobao_shapes_replay_from_selected_fields(shop):
+    url = SHOP if shop else ITEM
+    original = parse_taobao_page(capture(shop), url, extracted_at=AT)
+    data = original["supplier_data"]
+    replay = renormalize_public_fields(raw_payload=original["raw_payload"], source_url=url,
+        extraction_method="PUBLIC_HTTP", analysis_mode="ACCOUNT_PUBLIC", extracted_at=data["extracted_at"],
+        source_snapshot_id=uuid4(), source_extractor_version=data["extractor_version"])
+    assert replay["supplier_data"]["extractor_version"] == "taobao-raw.v2"
+    assert replay["supplier_data"]["missing_fields"] == data["missing_fields"]
+    assert replay["reviews"] == original["reviews"]
+    assert {key: replay["supplier_data"][key] for key in EVIDENCE_FIELDS} == {
+        key: data[key] for key in EVIDENCE_FIELDS
+    }
+    original["raw_payload"]["public_fields"]["seller"]["shopId"] = "1" if shop else "159450000"
+    if shop:
+        with pytest.raises(UnsupportedRawEvidence):
+            renormalize_public_fields(raw_payload=original["raw_payload"], source_url=url,
+                extraction_method="PUBLIC_HTTP", analysis_mode="ACCOUNT_PUBLIC", extracted_at=data["extracted_at"],
+                source_snapshot_id=uuid4(), source_extractor_version=data["extractor_version"])
+
+
+def test_taobao_more_than_twenty_reviews_are_stable_and_scoped():
+    card = '<div class="Comment--H5QmJwe9"><div class="contentWrapper--cSa5gEtn"><div class="content--uonoOhaz">Review {}</div></div></div>'
+    html = capture().replace('<div class="Comments--eCO6Uz4o">',
+                             '<div class="Comments--eCO6Uz4o">' + ''.join(card.format(i) for i in range(25)))
+    result = parse_taobao_page(html, ITEM, extracted_at=AT)
+    assert result["extraction_status"] == "PARTIAL"
+    assert len(result["reviews"]) == 20
+    assert len(result["raw_payload"]["public_fields"]["reviews"]) == 20
+    assert len({item["text"] for item in result["reviews"]}) == 20
+    assert result["supplier_data"]["completeness"] == 0.5
 
 
 def model_page(model, shop=False):
