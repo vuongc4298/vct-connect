@@ -3,7 +3,7 @@ title: 'Refactor sweep'
 type: 'refactor'
 ticket: '8'
 created: '2026-10-03'
-status: 'built'
+status: 'done'
 baseline_revision: '90bead71cd8073f352fb6b6801099e3c784d120c'
 route: 'full'
 route_source: 'auto'
@@ -144,3 +144,13 @@ Keep one canonical coverage function returning ordered `missing_fields`, `comple
 - Final actual Chromium queue gate: **12 passed, 57 deselected**, 62.58 seconds, zero skipped; JUnit: `../../../tmp/story28-final-browser-queue-junit.xml`.
 - Four review lenses completed; coverage parity and test reproducibility gaps corrected. Five confirmed pre-existing static CSS visibility groups are recorded in `../../implementation-artifacts/deferred-work.md`. Shared DOM helper ASTs match the original revision, so these limitations were preserved by the refactor.
 - All approved matrix rows have passing covering cases; final whitespace checks pass. Local build is complete. Hosted CI, development deployment and deployed three-platform/extension acceptance remain release gates; no remote operations or live-source success are claimed.
+
+## Release Closeout — 2026-10-03
+
+- User approved the PR, merge, and development release. [PR #3](https://github.com/vuongc4298/vct-connect/pull/3) merged reviewed head `eefbfe05fb9ca388c08e1b1a69874405e16a6e4e` into `main` at `b0eec867aaeab712e39851a5a23d034f31c10a11`. Local `main` is synchronized to that merge.
+- [PR CI 37118824803](https://github.com/vuongc4298/vct-connect/actions/runs/37118824803) and [main CI 37119382650](https://github.com/vuongc4298/vct-connect/actions/runs/37119382650) succeeded, including backend/frontend tests, typecheck, web credential scan, image builds, actual sandboxed Chromium, browser queue ownership/provenance, and Azure template compilation.
+- [Deploy dev 37119968435](https://github.com/vuongc4298/vct-connect/actions/runs/37119968435) succeeded: approved target checks, image publication, processor quiescence, private-network migrations, activation, ingress checks, and guest fixture completion all passed.
+- API and analysis worker use backend digest `sha256:36f806aecb13f9eba21aa9d88f512bf16f369d703482d4b0985bf5b9f9cdda6e`; web uses `sha256:92e91330288bd8b52a20e435711c4a035c3d94abd77a98806575b0ce63f3e4ac`. The worker remains Event-triggered with `PUBLIC_BROWSER_FALLBACK=False`, matching the existing runtime decision.
+- Deployed guest extraction smoke submitted one representative public URL per platform within the guest quota. 1688 (`b977ff61-f53d-4f43-8ca0-7417ddb6fa13`), Taobao (`099096e3-8cfd-4896-abff-c9ba976e2f67`), and Alibaba (`32f0465d-fe50-43b8-8960-71669b7ff91a`) each completed in one attempt with `BLOCKED / ACCESS_CHALLENGE`, no supplier snapshot or reviews, and `PUBLIC_HTTP` provenance. Foreign guest polling returned 404 for each. Unauthenticated import and extension capture returned 401. This verifies access-failure behavior; it does not claim successful extraction from these live pages. Local evidence: `../../../tmp/story28-deployed-outcomes.json`.
+- One-off execution `vct-connect-dev-analysis-hmjdvvr` ran the baseline parity and extension merge suites in the exact deployed backend image with credential environment entries removed: **82 passed**, exit code 0, Azure status `Succeeded`. It exercises all five saved layouts, shared evidence contracts, selected-text rejection, replay, and extension merge/deduplication/immutability without application database writes. Local sanitized evidence: `../../../tmp/story28-image-probe-results.json`.
+- Story 2.8 acceptance is complete. The five documented pre-existing static CSS limitations remain deferred. Browser enrichment activation and manual signed-in extension/network acceptance remain the existing epic follow-ups; this release does not change their status.
