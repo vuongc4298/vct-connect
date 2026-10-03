@@ -15,8 +15,10 @@ import re
 from urllib.parse import urlsplit
 from uuid import UUID
 
-from .contracts import CONTRACT_VERSION, EVIDENCE_FIELDS
-from .offer1688 import _present, _string, _validate_json_evidence
+from .contracts import (
+    EVIDENCE_FIELDS, assemble_supplier_data, evidence_status, evidence_present as _present,
+)
+from .evidence import string as _string, validate_json_evidence as _validate_json_evidence
 from .taobao import _id, _shop_binding
 from .alibaba import _number, _metric, _supplier_host, _hint, _product_id
 from .urls import (alibaba_identity, normalize_alibaba_url, normalize_source_url,
@@ -482,22 +484,19 @@ def renormalize_public_fields(*, raw_payload: dict, source_url: str, extraction_
             raise UnsupportedRawEvidence("Incompatible render provenance")
         supplier_id, product_id, evidence, reviews = {"1688": _offer, "TAOBAO": _taobao,
                                                         "ALIBABA": _alibaba}[platform](fields, source_url)
-        missing = [key for key in EVIDENCE_FIELDS if not _present(evidence[key])]
         replay_time = (renormalized_at or datetime.now(timezone.utc)).astimezone(timezone.utc).isoformat()
         provenance = {"renormalized_from_snapshot_id": str(source_snapshot_id),
                       "source_extractor_version": source_extractor_version,
                       "renormalized_at": replay_time,
                       "replay_limitation": "retained_public_fields_only"}
-        data = {"contract_version": CONTRACT_VERSION, "platform": platform,
-                "source_url": source_url, "offer_id": product_id,
-                "platform_supplier_id": supplier_id, "extracted_at": extracted_at,
-                "extraction_method": extraction_method, "analysis_mode": analysis_mode,
-                "extractor_version": VERSIONS[platform],
-                "completeness": round((len(EVIDENCE_FIELDS) - len(missing)) / len(EVIDENCE_FIELDS), 4),
-                "completeness_denominator": list(EVIDENCE_FIELDS), "missing_fields": missing,
-                **provenance, **evidence}
+        data = assemble_supplier_data(
+            evidence, platform=platform, source_url=source_url, offer_id=product_id,
+            platform_supplier_id=supplier_id, extracted_at=extracted_at,
+            extraction_method=extraction_method, analysis_mode=analysis_mode,
+            extractor_version=VERSIONS[platform], **provenance,
+        )
         replay_raw = deepcopy(raw) | provenance
-        result = {"source_url": source_url, "extraction_status": "PARTIAL" if missing else "SUCCESS",
+        result = {"source_url": source_url, "extraction_status": evidence_status(data),
                   **provenance, "supplier_data": data, "raw_payload": replay_raw, "reviews": reviews}
         _validate_json_evidence(result)
         return result

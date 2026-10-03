@@ -8,7 +8,7 @@ import copy
 from datetime import datetime
 import re
 
-from .contracts import EVIDENCE_FIELDS
+from .contracts import EVIDENCE_FIELDS, evidence_coverage, evidence_status, extension_evidence_present
 from .urls import normalize_source_url
 
 
@@ -143,10 +143,7 @@ def merge_extension_evidence(capture: dict, previous: dict) -> dict:
                 field_sources[field] = ["EXTENSION_DOM"] if new is not None else inherited_sources(field)
     merged["platform_supplier_id"] = prior.get("platform_supplier_id") or current.get("platform_supplier_id")
     merged["extractor_version"] = MERGE_VERSION
-    missing = [field for field in EVIDENCE_FIELDS if merged[field] is None]
-    merged["missing_fields"] = missing
-    merged["completeness_denominator"] = list(EVIDENCE_FIELDS)
-    merged["completeness"] = round((len(EVIDENCE_FIELDS) - len(missing)) / len(EVIDENCE_FIELDS), 4)
+    merged.update(evidence_coverage(merged, present=extension_evidence_present))
     raw = copy.deepcopy(capture["raw_payload"])
     raw["merged_from_snapshot_id"] = baseline
     used_ids = {label.removeprefix("snapshot:") for labels in field_sources.values()
@@ -168,6 +165,6 @@ def merge_extension_evidence(capture: dict, previous: dict) -> dict:
     raw["field_sources"] = field_sources
     raw["dict_key_sources"] = dict_key_sources
     raw["item_sources"] = item_sources
-    return {**capture, "extraction_status": "PARTIAL" if missing else "SUCCESS",
+    return {**capture, "extraction_status": evidence_status(merged),
             "supplier_data": merged, "raw_payload": raw,
             "reviews": copy.deepcopy(merged["reviews"] or [])}

@@ -3,7 +3,7 @@ title: 'Exercise extraction layouts and re-normalization'
 type: 'feature'
 ticket: '7'
 created: '2026-10-03'
-status: 'built'
+status: done
 route: 'full'
 route_source: 'auto'
 review: 'thorough'
@@ -134,6 +134,12 @@ Final verification after all review corrections:
 - Existing FastAPI test-client deprecation warning only. Opt-in skips remain 31 actual Chromium checks and one live Azure check.
 - `git diff --check` and `git diff --cached --check`: clean. Approved frozen intent and original baseline preserved.
 - Four review lenses completed; verified findings corrected, no deferred findings or unresolved acceptance gaps.
+
+## Merge Closeout — 2026-10-03
+
+- User approved merging story 2.7. [PR #2](https://github.com/vuongc4298/vct-connect/pull/2) merged into `main` at `0cba6809da1b068a4d2f7e0a4c47578460fdda4f` from reviewed head `c1109736225ed79378368b53351995ca72f0a58a`.
+- [PR CI 37113764538](https://github.com/vuongc4298/vct-connect/actions/runs/37113764538) succeeded, including backend/frontend tests, typecheck, web credential scan, deployment image builds, actual sandboxed Chromium checks, browser queue ownership/provenance and Azure template compilation.
+- Local `main` synchronized to the merge. The main-branch CI and automatic development deployment are separate release checks; their completion is not claimed here.
 
 **Commands:**
 - `.venv/Scripts/python.exe -m pytest backend/tests/test_extraction.py backend/tests/test_taobao.py backend/tests/test_alibaba.py backend/tests/test_browser_fallback.py -q` — extraction matrix passes.

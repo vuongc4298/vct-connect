@@ -94,7 +94,7 @@ GUARD = r"""(() => {
 
 def _reparse(dom, original, request):
     from selectolax.parser import HTMLParser
-    from .taobao import _tree
+    from .dom import tree as _tree
     from .offer1688 import parse_1688_page
     from .taobao import parse_taobao_page
     from .alibaba import parse_alibaba_page

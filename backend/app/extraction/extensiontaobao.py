@@ -5,8 +5,8 @@ from typing import Literal
 
 from pydantic import BaseModel, ConfigDict, Field, model_validator
 
-from .contracts import CONTRACT_VERSION, EVIDENCE_FIELDS
-from .offer1688 import MalformedPage, _validate_json_evidence
+from .contracts import EVIDENCE_FIELDS, assemble_supplier_data, evidence_status, extension_evidence_present
+from .evidence import MalformedPage, validate_json_evidence as _validate_json_evidence
 from .urls import normalize_taobao_url, taobao_identity
 
 
@@ -88,14 +88,11 @@ def normalize_taobao_capture(capture: TaobaoCapture) -> dict:
     evidence["delivery_information"] = {"shop_shipping_display_text": shipping} if shipping else None
     if not evidence["supplier_name"] and not evidence["products"]:
         return dict(source_url=source, extraction_status="PARSE_FAILED", reason="NO_SELECTED_EVIDENCE")
-    missing = [key for key in EVIDENCE_FIELDS if evidence[key] is None]
     timestamp = datetime.now(timezone.utc).isoformat()
-    data = dict(contract_version=CONTRACT_VERSION, platform="TAOBAO", source_url=source,
+    data = assemble_supplier_data(evidence, present=extension_evidence_present, platform="TAOBAO", source_url=source,
                 offer_id=capture.source_id if capture.source_kind == "item" else None,
                 platform_supplier_id=None, extracted_at=timestamp, extraction_method="EXTENSION_DOM",
-                analysis_mode="EXTENSION_ENHANCED", extractor_version="taobao-extension-dom.v1",
-                completeness=round((12-len(missing))/12, 4), completeness_denominator=list(EVIDENCE_FIELDS),
-                missing_fields=missing, **evidence)
-    return dict(source_url=source, extraction_status="PARTIAL" if missing else "SUCCESS", supplier_data=data,
+                analysis_mode="EXTENSION_ENHANCED", extractor_version="taobao-extension-dom.v1")
+    return dict(source_url=source, extraction_status=evidence_status(data), supplier_data=data,
                 raw_payload=dict(source_url=source, captured_at=timestamp, provenance="USER_PROVIDED_BROWSER_EVIDENCE",
                                  selected_fields=fields.model_dump(exclude_none=True)), reviews=reviews)

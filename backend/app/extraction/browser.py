@@ -16,7 +16,7 @@ import sys
 import tempfile
 import time
 
-from .contracts import EVIDENCE_FIELDS
+from .contracts import EVIDENCE_FIELDS, evidence_present
 
 MAX_BYTES = 2_000_000
 BUDGET_SECONDS = 10
@@ -39,7 +39,8 @@ CODES = frozenset({"DISABLED", "INELIGIBLE_STATUS", "INELIGIBLE_MODE", "INVALID_
 
 
 def present(value):
-    return value is not None and value != "" and value != [] and value != {}
+    # Browser eligibility/gain excludes empty objects in addition to the v1 rule.
+    return evidence_present(value) and value != {}
 
 
 def field_count(data):
@@ -64,7 +65,7 @@ def eligibility(result, html, *, enabled):
     tokens = [token for name, values in DOM_FIELDS[data["platform"]].items() if not present(data.get(name)) for token in values]
     if not tokens:
         return "NO_DOM_SIGNAL"
-    from .taobao import _tree, _scripts
+    from .dom import tree as _tree, scripts as _scripts
     lexical = re.compile(r'''//[^\r\n]*|/\*[\s\S]*?\*/|"(?:\\.|[^"\\])*"|'(?:\\.|[^'\\])*'|`(?:\\.|[^`\\])*`''')
     for script in _scripts(_tree(html)):
         content = script.text()
@@ -99,8 +100,7 @@ def preserves(before, after):
 def access_wall(html):
     # Rendering never receives a visible access wall even if the source also
     # included sparse, identity-bound public metadata. Scripts are not text.
-    from .taobao import _tree, _prune_dom
-    from .alibaba import _stylesheet_hidden
+    from .dom import tree as _tree, prune_dom as _prune_dom, stylesheet_hidden as _stylesheet_hidden
     tree = _tree(html)
     _stylesheet_hidden(tree)
     _prune_dom(tree)

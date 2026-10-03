@@ -13,10 +13,18 @@ import re
 import time
 from urllib.parse import urlsplit
 
-from .contracts import CONTRACT_VERSION, EVIDENCE_FIELDS
+from .contracts import (
+    EVIDENCE_FIELDS, assemble_supplier_data, evidence_status, evidence_present as _present,
+)
 from .fetch import bounded_extract, _public_dns
-from .offer1688 import MalformedPage, _field, _object, _string, _text, _present, _validate_json_evidence, _login_page
-from .taobao import _tree, _active, _scripts, _prune_dom
+from .evidence import (
+    MalformedPage, field as _field, object as _object, string as _string,
+    text as _text, validate_json_evidence as _validate_json_evidence,
+)
+from .dom import (
+    tree as _tree, active as _active, scripts as _scripts, prune_dom as _prune_dom,
+    stylesheet_hidden as _stylesheet_hidden, login_page as _login_page,
+)
 from .urls import normalize_alibaba_url, alibaba_identity, _ALIBABA_PRODUCT, _ALIBABA_STORE
 
 EXTRACTOR_VERSION = "alibaba-http.v1"
@@ -206,35 +214,6 @@ def _access(html, *, has_public_evidence=False):
     if _login_page(tree, has_public_evidence=has_public_evidence) or not has_public_evidence and tree.css_first('form input[type="password"]') is not None:
         return 'AUTH_REQUIRED', 'LOGIN_REQUIRED'
     return None
-
-
-def _stylesheet_hidden(tree):
-    """Remove identifiable static hiding rules from active inline styles only.
-
-    Simple top-level selectors use the existing CSS selector engine. Conditional
-    at-rules and selectors requiring interactive CSS state are not evaluated.
-    """
-    for style in tree.css('style'):
-        if not _active(style):
-            continue
-        css = re.sub(r'/\*[\s\S]*?\*/', '', style.text())
-        for match in re.finditer(r'([^{}]+)\{([^{}]*)\}', css):
-            prefix = css[:match.start()]
-            if prefix.count('{') != prefix.count('}'):
-                continue
-            selectors, declarations = match[1].strip(), match[2]
-            if not re.fullmatch(r'''[A-Za-z0-9_.#\-\s,>+~\[\]="'|*]+''', selectors):
-                continue
-            properties = dict(re.findall(r'(?:^|;)\s*(display|visibility|opacity)\s*:\s*([^;]+)', declarations.lower()))
-            properties = {key: re.sub(r'\s+|!important', '', value) for key, value in properties.items()}
-            hidden = properties.get('display') == 'none' or properties.get('visibility') in {'hidden', 'collapse'} or re.fullmatch(r'0+(?:\.0*)?|\.0+', properties.get('opacity', ''))
-            if not hidden:
-                continue
-            try:
-                for node in tree.css(selectors):
-                    node.attrs['hidden'] = ''
-            except ValueError:
-                continue
 
 
 def _metric(label, value, scope, description=None):
@@ -510,15 +489,14 @@ def _parse(html, source_url, mode, extracted_at, page_bytes):
         evidence['delivery_information'] = {'source_metrics': delivery} if delivery else None
     if not evidence['supplier_name'] and not evidence['products']:
         raise MalformedPage
-    missing = [name for name in EVIDENCE_FIELDS if not _present(evidence[name])]
     timestamp = (extracted_at or datetime.now(timezone.utc)).astimezone(timezone.utc).isoformat()
-    data = dict(contract_version=CONTRACT_VERSION, platform='ALIBABA', source_url=source_url, offer_id=identity if kind == 'product' else None,
+    data = assemble_supplier_data(evidence, platform='ALIBABA', source_url=source_url, offer_id=identity if kind == 'product' else None,
                 platform_supplier_id=supplier_host, extracted_at=timestamp, extraction_method='PUBLIC_HTTP', analysis_mode=mode,
-                extractor_version=EXTRACTOR_VERSION, completeness=round((12-len(missing))/12, 4), completeness_denominator=list(EVIDENCE_FIELDS), missing_fields=missing, **evidence)
+                extractor_version=EXTRACTOR_VERSION)
     raw_payload = dict(source_url=source_url, captured_at=timestamp, html_sha256=sha256(page_bytes if page_bytes is not None else html.encode('utf-8')).hexdigest(), public_fields=raw)
     _validate_json_evidence(data)
     _validate_json_evidence(raw_payload)
-    return dict(source_url=source_url, extraction_status='PARTIAL' if missing else 'SUCCESS', supplier_data=data, raw_payload=raw_payload, reviews=reviews)
+    return dict(source_url=source_url, extraction_status=evidence_status(data), supplier_data=data, raw_payload=raw_payload, reviews=reviews)
 
 
 def parse_alibaba_page(html, source_url, *, analysis_mode='ACCOUNT_PUBLIC', extracted_at=None, page_bytes=None):

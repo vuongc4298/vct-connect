@@ -4,7 +4,7 @@ from datetime import datetime, timezone
 
 from pydantic import BaseModel, ConfigDict, Field, field_validator
 
-from .contracts import CONTRACT_VERSION, EVIDENCE_FIELDS
+from .contracts import EVIDENCE_FIELDS, assemble_supplier_data, evidence_status, extension_evidence_present
 from .urls import normalize_1688_url, offer_id
 
 MAX_CAPTURE_BYTES = 16_384
@@ -63,26 +63,16 @@ def normalize_capture(capture: DomCapture) -> dict:
     if "review_count" in fields:
         evidence["transaction_signals"] = {"review_count": fields["review_count"]}
 
-    missing = [key for key in EVIDENCE_FIELDS if evidence[key] is None]
     timestamp = datetime.now(timezone.utc).isoformat()
-    supplier_data = {
-        "contract_version": CONTRACT_VERSION,
-        "platform": "1688",
-        "source_url": source_url,
-        "offer_id": capture.offer_id,
-        "platform_supplier_id": None,
-        "extracted_at": timestamp,
-        "extraction_method": "EXTENSION_DOM",
-        "analysis_mode": "EXTENSION_ENHANCED",
-        "extractor_version": EXTRACTOR_VERSION,
-        "completeness": round((len(EVIDENCE_FIELDS) - len(missing)) / len(EVIDENCE_FIELDS), 4),
-        "completeness_denominator": list(EVIDENCE_FIELDS),
-        "missing_fields": missing,
-        **evidence,
-    }
+    supplier_data = assemble_supplier_data(
+        evidence, present=extension_evidence_present,
+        platform="1688", source_url=source_url, offer_id=capture.offer_id,
+        platform_supplier_id=None, extracted_at=timestamp, extraction_method="EXTENSION_DOM",
+        analysis_mode="EXTENSION_ENHANCED", extractor_version=EXTRACTOR_VERSION,
+    )
     return {
         "source_url": source_url,
-        "extraction_status": "PARTIAL" if missing else "SUCCESS",
+        "extraction_status": evidence_status(supplier_data),
         "supplier_data": supplier_data,
         "raw_payload": {"source_url": source_url, "captured_at": timestamp,
                         "provenance": "USER_PROVIDED_BROWSER_EVIDENCE",

@@ -56,6 +56,32 @@ def test_merge_rejects_other_page():
         merge_extension_evidence(current, previous)
 
 
+@pytest.mark.parametrize("platform", ["1688", "TAOBAO"])
+@pytest.mark.parametrize("field,value", [("categories", []), ("certifications", []),
+                                         ("activity_history", []), ("supplier_name", "")])
+def test_merge_counts_empty_inherited_values_as_legacy_extension_evidence(platform, field, value):
+    if platform == "1688":
+        current = capture({"product_title": "Dress", "review_count": 0})
+    else:
+        current = normalize_taobao_capture(TaobaoCapture(
+            source_url="https://item.taobao.com/item.htm?id=1076425861755",
+            source_kind="item", source_id="1076425861755",
+            fields={"product_title": "Shirt", "shop_metrics": ["Source metric"]},
+        ))
+    prior = copy.deepcopy(current["supplier_data"])
+    prior.update(extraction_method="PUBLIC_HTTP", analysis_mode="ACCOUNT_PUBLIC")
+    prior[field] = value
+    previous = {"supplier_snapshot_id": uuid4(), "supplier_data": prior}
+    before = copy.deepcopy(previous)
+    merged = merge_extension_evidence(current, previous)
+    assert merged["supplier_data"][field] == value
+    assert field not in merged["supplier_data"]["missing_fields"]
+    assert merged["supplier_data"]["completeness"] == 0.25
+    assert merged["extraction_status"] == "PARTIAL"
+    assert merged["raw_payload"]["field_sources"][field] == [f"snapshot:{previous['supplier_snapshot_id']}"]
+    assert previous == before
+
+
 def test_taobao_review_merge_keeps_one_copy_of_repeated_text():
     source = "https://item.taobao.com/item.htm?id=1076425861755"
     current = normalize_taobao_capture(TaobaoCapture.model_validate({
