@@ -9,6 +9,7 @@ import psycopg
 from psycopg.rows import dict_row
 from .extraction.urls import source_platform, normalize_source_url
 from .extraction.extension_merge import merge_extension_evidence, reject_sensitive_page_state
+from .extraction.renormalize import UnsupportedRawEvidence, renormalize_public_fields
 
 
 class LeaseLost(RuntimeError):
@@ -522,7 +523,68 @@ class Store:
                 self._complete_processing(conn, analysis_id, token, payload)
         return analysis_id
 
-    def _complete_processing(self, conn, analysis_id: UUID, token: UUID, payload: dict) -> str:
+    def renormalize_customer_snapshot(
+        self, source_analysis_id: UUID, user_id: UUID, *,
+        customer_limit: int, window_seconds: int,
+    ) -> UUID:
+        """Create an owned analysis from retained public fields without a crawl."""
+        with self.connect() as conn:
+            with conn.transaction():
+                source = conn.execute(
+                    """SELECT a.source_url, a.mode, a.extraction_method, a.status,
+                              a.supplier_snapshot_id, r.payload AS result,
+                              s.raw_payload, s.normalized_data, s.extracted_at,
+                              s.extractor_version, s.supplier_id,
+                              supplier.platform AS supplier_platform,
+                              supplier.platform_supplier_id
+                       FROM analyses a
+                       JOIN supplier_snapshots s ON s.id = a.supplier_snapshot_id
+                       JOIN suppliers supplier ON supplier.id = s.supplier_id
+                       JOIN analysis_results r ON r.analysis_id = a.id
+                       WHERE a.id = %s AND a.user_id = %s AND a.actor_type = 'CUSTOMER'
+                       FOR UPDATE OF a""",
+                    (source_analysis_id, user_id),
+                ).fetchone()
+                if source is None:
+                    raise LookupError("Owned source analysis not found")
+                old = source["normalized_data"]
+                if (source["status"] != "COMPLETED"
+                        or source["result"].get("extraction_status") not in {"SUCCESS", "PARTIAL"}
+                        or not isinstance(old, dict)
+                        or old.get("source_url") != source["source_url"]
+                        or old.get("analysis_mode") != source["mode"]
+                        or old.get("extraction_method") != source["extraction_method"]
+                        or old.get("extractor_version") != source["extractor_version"]
+                        or old.get("extracted_at") != source["extracted_at"].isoformat()):
+                    raise UnsupportedRawEvidence("Incompatible source snapshot")
+                reject_sensitive_page_state(source["raw_payload"])
+                outcome = renormalize_public_fields(
+                    raw_payload=source["raw_payload"], source_url=source["source_url"],
+                    extraction_method=source["extraction_method"],
+                    analysis_mode=source["mode"], extracted_at=old["extracted_at"],
+                    source_snapshot_id=source["supplier_snapshot_id"],
+                    source_extractor_version=source["extractor_version"],
+                )
+                revised = outcome["supplier_data"]
+                if (revised["platform"] != source["supplier_platform"]
+                        or revised["platform_supplier_id"] != source["platform_supplier_id"]):
+                    raise UnsupportedRawEvidence("Replay cannot change supplier identity")
+                self._admit(conn, "CUSTOMER", str(user_id), customer_limit, window_seconds)
+                analysis_id, token = uuid4(), uuid4()
+                self._insert_analysis(conn, analysis_id, source["source_url"], user_id, actor_type="CUSTOMER")
+                conn.execute(
+                    """UPDATE analyses SET status = 'PROCESSING', attempt_count = 1,
+                              extraction_method = %s, processing_claim_token = %s
+                       WHERE id = %s""",
+                    (source["extraction_method"], token, analysis_id),
+                )
+                self._event(conn, analysis_id, "PROCESSING", 1)
+                self._complete_processing(conn, analysis_id, token, outcome,
+                                          existing_supplier_id=source["supplier_id"])
+                return analysis_id
+
+    def _complete_processing(self, conn, analysis_id: UUID, token: UUID, payload: dict,
+                             *, existing_supplier_id: UUID | None = None) -> str:
         public_payload = {key: value for key, value in payload.items()
                           if key not in {"raw_payload", "reviews", "supplier_data"}}
         row = conn.execute(
@@ -593,9 +655,13 @@ class Store:
             if stored != public_payload:
                 raise ResultConflict("Stored result conflicts with computed result")
         if extracted:
-            supplier_id = uuid4()
+            supplier_id = existing_supplier_id or uuid4()
             external_id = supplier_data.get("platform_supplier_id")
-            if external_id:
+            if existing_supplier_id is not None:
+                # A replay derives older captured evidence. Reuse its supplier
+                # without overwriting the supplier's more recent display data.
+                pass
+            elif external_id:
                 if supplier_data["extraction_method"] in {"USER_UPLOAD", "EXTENSION_DOM"}:
                     supplier = conn.execute(
                         """INSERT INTO suppliers (id, platform, platform_supplier_id, name, source_url)

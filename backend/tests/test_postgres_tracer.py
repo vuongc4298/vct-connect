@@ -17,6 +17,7 @@ from backend.app.fixture import FIXTURE_URL, fixture_result
 from backend.app.extraction import extract_1688, parse_1688_page
 from backend.app.extraction import parse_taobao_page
 from backend.app.extraction.contracts import EVIDENCE_FIELDS
+from backend.app.extraction.renormalize import UnsupportedRawEvidence, VERSIONS
 from backend.app.extraction.extension1688 import DomCapture, normalize_capture
 from backend.app.extraction.extensiontaobao import TaobaoCapture, normalize_taobao_capture
 from backend.app.main import create_app
@@ -277,6 +278,199 @@ def remove_user(store: Store, clerk_user_id: str):
                AND NOT EXISTS (SELECT 1 FROM analyses a WHERE a.user_id = u.id)""",
             (clerk_user_id,),
         )
+
+
+@pytest.mark.parametrize("method", ["PUBLIC_HTTP", "PUBLIC_BROWSER"])
+@pytest.mark.parametrize("platform,layout", [
+    ("1688", "offer"), ("TAOBAO", "item"), ("TAOBAO", "shop"),
+    ("ALIBABA", "product"), ("ALIBABA", "profile"),
+])
+def test_owned_public_raw_replay_creates_immutable_versioned_evidence_without_fetch(
+    store, monkeypatch, platform, layout, method,
+):
+    from backend.app.extraction import parse_alibaba_page
+    fixtures = {
+        ("1688", "offer"): ("1688_offer_996518024136.html", "https://detail.1688.com/offer/996518024136.html", parse_1688_page),
+        ("TAOBAO", "item"): ("taobao_item_1076425861755.html", "https://item.taobao.com/item.htm?id=1076425861755", parse_taobao_page),
+        ("TAOBAO", "shop"): ("taobao_shop_159450000.html", "https://shop159450000.world.taobao.com/category.htm", parse_taobao_page),
+        ("ALIBABA", "product"): ("alibaba_product_1600147809763.html", "https://www.alibaba.com/product-detail/100-Cotton-180gsm-T-shirts-Men_1600147809763.html", parse_alibaba_page),
+        ("ALIBABA", "profile"): ("alibaba_profile_dgxuandele.html", "https://dgxuandele.en.alibaba.com/company_profile.html", parse_alibaba_page),
+    }
+    filename, url, parser = fixtures[(platform, layout)]
+    payload = parser((Path(__file__).parent / "fixtures" / filename).read_text(encoding="utf-8"), url)
+    assert payload["extraction_status"] == "PARTIAL"
+    if method == "PUBLIC_BROWSER":
+        payload["supplier_data"].update(extraction_method=method, extractor_version="public-browser.v1")
+        payload["raw_payload"].update(extraction_method=method, extractor_version="public-browser.v1",
+                                      rendered_at=payload["supplier_data"]["extracted_at"],
+                                      rendered_html_sha256="b" * 64)
+    original_name = payload["supplier_data"]["supplier_name"]
+    payload["supplier_data"]["supplier_name"] = None  # Simulate a superseded v1 mapping.
+    if "supplier_name" not in payload["supplier_data"]["missing_fields"]:
+        payload["supplier_data"]["missing_fields"].insert(0, "supplier_name")
+        payload["supplier_data"]["completeness"] = round((12 - len(payload["supplier_data"]["missing_fields"])) / 12, 4)
+    subject = "raw_replay_" + uuid4().hex
+    owner = store.resolve_user(subject)
+    other = store.resolve_user(subject + "_other")
+    source_id = store.submit_customer(url, owner["id"], azure=False, customer_limit=10, window_seconds=86400)
+    replay_id = None
+    try:
+        claim = store.claim_processing(source_id, 60, 3)
+        store.complete_processing(source_id, claim["token"], payload)
+        before = store.get_for_user(source_id, owner["id"])
+        assert before["supplier_data"]["supplier_name"] is None
+        with store.connect() as conn:
+            supplier_id = conn.execute("SELECT supplier_id FROM supplier_snapshots WHERE analysis_id = %s", (source_id,)).fetchone()["supplier_id"]
+            conn.execute("UPDATE suppliers SET name = 'Newer supplier display' WHERE id = %s", (supplier_id,))
+            supplier_before = conn.execute("SELECT * FROM suppliers WHERE id = %s", (supplier_id,)).fetchone()
+        assert store.get_for_user(source_id, other["id"]) is None
+        with pytest.raises(LookupError):
+            store.renormalize_customer_snapshot(source_id, other["id"], customer_limit=10, window_seconds=86400)
+        with pytest.raises(AdmissionDenied):
+            store.renormalize_customer_snapshot(source_id, owner["id"], customer_limit=1, window_seconds=86400)
+        assert store.get_for_user(source_id, owner["id"]) == before
+        monkeypatch.setattr(httpx, "Client", lambda *args, **kwargs: pytest.fail("Replay attempted HTTP"))
+        monkeypatch.setattr("backend.app.extraction.browser.subprocess.Popen",
+                            lambda *args, **kwargs: pytest.fail("Replay attempted browser"))
+        replay_id = store.renormalize_customer_snapshot(source_id, owner["id"], customer_limit=10, window_seconds=86400)
+        after = store.get_for_user(source_id, owner["id"])
+        replay = store.get_for_user(replay_id, owner["id"])
+        assert after == before
+        assert replay["status"] == "COMPLETED" and replay["supplier_snapshot_id"] != before["supplier_snapshot_id"]
+        assert replay["supplier_data"]["supplier_name"] == original_name
+        assert replay["supplier_data"]["extractor_version"] == VERSIONS[platform]
+        assert replay["supplier_data"]["extracted_at"] == before["supplier_data"]["extracted_at"]
+        assert replay["supplier_data"]["extraction_method"] == before["supplier_data"]["extraction_method"]
+        assert replay["supplier_data"]["completeness"] > before["supplier_data"]["completeness"]
+        assert replay["supplier_data"]["missing_fields"] == [field for field in EVIDENCE_FIELDS if replay["supplier_data"][field] is None]
+        assert replay["result"]["renormalized_from_snapshot_id"] == str(before["supplier_snapshot_id"])
+        assert replay["raw_evidence"]["renormalized_from_snapshot_id"] == str(before["supplier_snapshot_id"])
+        assert replay["raw_evidence"]["replay_limitation"] == "retained_public_fields_only"
+        provenance = {key: replay["result"][key] for key in (
+            "renormalized_from_snapshot_id", "source_extractor_version", "renormalized_at", "replay_limitation"
+        )}
+        assert replay["raw_evidence"] == before["raw_evidence"] | provenance
+        assert replay["events"][0]["status"] == "QUEUED" and replay["events"][-1]["status"] == "COMPLETED"
+        assert replay["reviews"] == payload["reviews"]
+        with store.connect() as conn:
+            assert conn.execute("SELECT * FROM suppliers WHERE id = %s", (supplier_id,)).fetchone() == supplier_before
+            assert conn.execute("SELECT supplier_id FROM supplier_snapshots WHERE analysis_id = %s", (replay_id,)).fetchone()["supplier_id"] == supplier_id
+        with pytest.raises(UnsupportedRawEvidence):
+            store.renormalize_customer_snapshot(replay_id, owner["id"], customer_limit=10, window_seconds=86400)
+    finally:
+        if replay_id:
+            remove(store, replay_id)
+        remove(store, source_id)
+        remove_user(store, subject)
+        remove_user(store, subject + "_other")
+
+
+def test_late_replay_failure_rolls_back_admission_and_all_evidence(store, monkeypatch):
+    url = "https://item.taobao.com/item.htm?id=1076425861755"
+    html = (Path(__file__).parent / "fixtures" / "taobao_item_1076425861755.html").read_text(encoding="utf-8")
+    payload = parse_taobao_page(html, url)
+    assert payload["reviews"]
+    subject = "raw_late_failure_" + uuid4().hex
+    owner = store.resolve_user(subject)
+    source_id = store.submit_customer(url, owner["id"], azure=False, customer_limit=2, window_seconds=86400)
+    tables = ("analyses", "analysis_status_events", "analysis_results", "supplier_snapshots", "supplier_reviews")
+
+    def state():
+        with store.connect() as conn:
+            counts = {table: conn.execute(f"SELECT count(*) AS n FROM {table}").fetchone()["n"] for table in tables}
+            quota = conn.execute("SELECT * FROM admission_counters WHERE scope = 'CUSTOMER' AND subject = %s",
+                                 (str(owner["id"]),)).fetchall()
+        return counts, quota
+
+    try:
+        claim = store.claim_processing(source_id, 60, 3)
+        store.complete_processing(source_id, claim["token"], payload)
+        before = state()
+        source_before = store.get_for_user(source_id, owner["id"])
+        complete = Store._complete_processing
+        calls = []
+
+        def fail_after_completion(self, conn, analysis_id, token, result, **kwargs):
+            complete(self, conn, analysis_id, token, result, **kwargs)
+            calls.append(analysis_id)
+            assert conn.execute("SELECT count(*) AS n FROM supplier_reviews r JOIN supplier_snapshots s "
+                                "ON s.id = r.snapshot_id WHERE s.analysis_id = %s", (analysis_id,)).fetchone()["n"] == len(payload["reviews"])
+            raise RuntimeError("Injected failure after replay persistence")
+
+        monkeypatch.setattr(Store, "_complete_processing", fail_after_completion)
+        with pytest.raises(RuntimeError, match="Injected failure"):
+            store.renormalize_customer_snapshot(source_id, owner["id"], customer_limit=2, window_seconds=86400)
+        assert len(calls) == 1
+        assert state() == before
+        assert store.get_for_user(source_id, owner["id"]) == source_before
+    finally:
+        remove(store, source_id)
+        remove_user(store, subject)
+
+
+def test_unsupported_raw_replay_rolls_back_without_spending_quota(store):
+    url = "https://detail.1688.com/offer/996518024136.html"
+    html = (Path(__file__).parent / "fixtures" / "1688_offer_996518024136.html").read_text(encoding="utf-8")
+    payload = parse_1688_page(html, url)
+    payload["raw_payload"]["public_fields"].pop("offer_base")
+    subject = "raw_reject_" + uuid4().hex
+    owner = store.resolve_user(subject)
+    source_id = store.submit_customer(url, owner["id"], azure=False, customer_limit=2, window_seconds=86400)
+    try:
+        claim = store.claim_processing(source_id, 60, 3)
+        store.complete_processing(source_id, claim["token"], payload)
+        before = store.get(source_id)
+        with store.connect() as conn:
+            used = conn.execute("SELECT used FROM admission_counters WHERE scope = 'CUSTOMER' AND subject = %s ORDER BY window_number DESC LIMIT 1", (str(owner["id"]),)).fetchone()["used"]
+        for _ in range(2):
+            with pytest.raises(UnsupportedRawEvidence):
+                store.renormalize_customer_snapshot(source_id, owner["id"], customer_limit=2, window_seconds=86400)
+        with store.connect() as conn:
+            assert conn.execute("SELECT count(*) AS n FROM analyses WHERE user_id = %s", (owner["id"],)).fetchone()["n"] == 1
+            assert conn.execute("SELECT used FROM admission_counters WHERE scope = 'CUSTOMER' AND subject = %s ORDER BY window_number DESC LIMIT 1", (str(owner["id"]),)).fetchone()["used"] == used
+        assert store.get(source_id) == before
+    finally:
+        remove(store, source_id)
+        remove_user(store, subject)
+
+
+@pytest.mark.parametrize("platform,url", [
+    ("1688", "https://detail.1688.com/offer/996518024136.html"),
+    ("TAOBAO", "https://item.taobao.com/item.htm?id=1076425861755"),
+    ("ALIBABA", "https://www.alibaba.com/product-detail/100-Cotton-180gsm-T-shirts-Men_1600147809763.html"),
+])
+@pytest.mark.parametrize("case,status", [
+    ("login", "AUTH_REQUIRED"), ("blocked", "BLOCKED"),
+    ("changed", "PARSE_FAILED"), ("timeout", "TIMEOUT"),
+])
+def test_three_platform_failure_matrix_settles_without_snapshot(store, monkeypatch, platform, url, case, status):
+    from backend.app.extraction import extract_taobao, extract_alibaba
+    adapter = {"1688": extract_1688, "TAOBAO": extract_taobao, "ALIBABA": extract_alibaba}[platform]
+    attempts = []
+
+    def transport(request):
+        attempts.append(request.url)
+        if case == "timeout":
+            raise httpx.ReadTimeout("fixture timeout", request=request)
+        if case in {"login", "blocked"}:
+            return httpx.Response(401 if case == "login" else 403)
+        return httpx.Response(200, headers={"content-type": "text/html"}, text="<html><h1>Changed layout</h1></html>")
+
+    def extract(source, **kwargs):
+        with httpx.Client(transport=httpx.MockTransport(transport)) as client:
+            return adapter(source, client=client, dns_check=lambda _: True, sleep=lambda _: None, **kwargs)
+
+    monkeypatch.setattr("backend.worker.main." + {"1688": "extract_1688", "TAOBAO": "extract_taobao", "ALIBABA": "extract_alibaba"}[platform], extract)
+    analysis_id = store.submit_local(url)
+    try:
+        assert process_local_once(store)
+        row = store.get(analysis_id)
+        assert row["status"] == "COMPLETED" and row["result"]["extraction_status"] == status
+        assert row["supplier_snapshot_id"] is None and row["supplier_data"] is None
+        assert row["raw_evidence"] is None and row["reviews"] == []
+        assert len(attempts) == (3 if case == "timeout" else 1)
+    finally:
+        remove(store, analysis_id)
 
 
 def test_azure_submission_atomically_creates_initial_event_and_outbox(store):
