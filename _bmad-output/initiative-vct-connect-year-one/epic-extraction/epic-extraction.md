@@ -39,6 +39,12 @@ Owns platform adapters, extraction, normalization, and snapshot provenance. Anal
 
 ## Notes
 
+- Decision: 2026-10-04 - A6 records surviving static-boundary concerns in planned 2.15 and the prior official-API assessment in planned 2.16; these are inventory ownership records, not implementation or acceptance decisions. The completed historical 2.8 sweep remains intact and 2.14 is the current remediation set's completion audit, so no second sweep is inserted into this approved action set. Any future implementation/refactor scope is refined before execution; API assessment never substitutes for the retained deployed-browser criterion.
+
+- Decision: 2026-10-04 - the user retained deployed browser enrichment as required and left full epic acceptance pending. No A3 scope waiver is accepted; compatible-host exact-image deployed gain/preservation remains an activation and acceptance gate.
+- Decision: 2026-10-03 - the user authorized applying retrospective A1-A6 and proceeding with their action items. Track them as 2.9, 2.10, 2.11, 2.12, 2.13 and 2.14 respectively (A4 maps to 2.12 before A3 runtime qualification at 2.11). The completed 2.8 refactor remains historical; the added entries are remediation and acceptance follow-ups, and 2.14 supplies their completion gate rather than another refactor sweep.
+- Decision: 2026-10-03 - implement confirmed defects and qualification evidence before any browser activation. Existing source-session and deployment prerequisites remain explicit; this instruction does not claim that an unavailable manual check has passed.
+
 - Assumption: 1688 is the first live platform, following section 25.
 - Open question: agree permitted media capture and platform terms before production media collection.
 - Open question: field optionality and completeness calculation need representative samples; do not treat an absent field as a zero-risk signal.

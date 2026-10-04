@@ -47,8 +47,8 @@
   summary: Run GitHub CI and an Azure dev smoke check of a queued live 1688 snapshot after a push.
   evidence: The supplied URL returns an anti-bot challenge, so the adapter correctly records BLOCKED without a snapshot; an accessible public URL is needed to verify the deployed success path.
 - source_plan: `_bmad-output/implementation-artifacts/plan-1688-saved-page-import.md`
-  summary: Build a user-invoked 1688 browser extension capture that sends only selected rendered evidence and merges it into owner-scoped snapshots.
-  evidence: The agreed delivery order starts with saved-page import; browser capture is independently shippable and reuses the import provenance contract.
+  summary: RESOLVED — user-invoked 1688 extension capture and owner-scoped merge were implemented.
+  evidence: Superseded by the completed epic-extraction story 2.6 and plan-1688-browser-extension-capture.md, with the earlier accepted 25% live capture. Current-release network/result-opening and Taobao live shop acceptance remain separate under retrospective A5 / ticket 2.13; resolving construction does not claim those checks passed.
 - source_plan: `_bmad-output/implementation-artifacts/plan-1688-saved-page-import.md`
   summary: Assess 1688 Open Platform API eligibility and field coverage before choosing an official integration.
   evidence: API access and available product, supplier, and review fields require verification from the developer portal and do not block the saved-page import.
@@ -99,3 +99,55 @@
 - source_plan: `C:/Users/eidel/Desktop/VCT Connect/_bmad-output/initiative-vct-connect-year-one/epic-extraction/story-refactor-sweep-plan.md`
   summary: Recognize zero percentage opacity when excluding invisible selected evidence.
   evidence: Story 2.8 review E7 reproduced opacity:0% text surviving static pruning; the unchanged stylesheet regex handles numeric zero only.
+
+## Extraction follow-up routing — 2026-10-03
+
+The historical entries above remain their original evidence. The user approved retrospective A1–A6; current execution is consolidated in `initiative-vct-connect-year-one/epic-extraction/tickets.toml` and `retrospective-action-execution.md`:
+
+- Five visibility concerns from the refactor baseline → **2.9 / A1**. Only the correction's regression and adapter/browser evidence can resolve them.
+- Decoded response allocation boundary → **2.10 / A2**. Observe allocation before rejection, including cumulative chunks.
+- Forced runner death, independently bounded cleanup and DOM allocation failure hypotheses → **2.12 / A4**. Qualification precedes activation; these are not three presumed defects.
+- Compatible deployed sandbox runtime → **2.11 / A3**, after 2.12. Current false flag remains; `browser-runtime-decision.md` contains the prepared scope/runtime alternatives.
+- Latest-release selected wire payload, popup recovery/result opening and live Taobao shop capture → **2.13 / A5**. `extension-acceptance-checklist.md` records the exact session-dependent journey. Prior item/import acceptance remains valid historical evidence.
+- Cross-baseline defect and exact-environment acceptance audit → **2.14 / A6**, applied in `extraction-completion-gate.md`. Ticket labels alone never close required evidence gaps.
+
+The earlier extension-construction item is explicitly resolved above by its implementation evidence. Other source accessibility, coverage expansion and platform API eligibility concerns remain separate; this consolidation does not invent their completion.
+
+## Extraction review follow-ups — first-instance deferrals, 2026-10-04
+
+These entries process the ten held first-instance review deferrals once. Later carried verdicts do not append them again. Ticket 2.15 owns the remaining static/consumer boundaries; 2.12 retains access-lifecycle and memory/restart qualification; 2.13 retains representative capture/loading/field-coverage observations; 2.16 records the existing official-API assessment separately. None is resolved by a built label or a declared unsupported input.
+
+- source_plan: `_bmad-output/implementation-artifacts/plan-extraction-retrospective-actions.md`
+  summary: Qualify mixed supported/pseudo selector-list behavior under ticket 2.15.
+  evidence: Original B2 independently compared baseline and candidate: both leave a wall visible when a mixed selector rule is discarded; this predates the correction and needs an explicit supported-input decision and consumer evidence.
+- source_plan: `_bmad-output/implementation-artifacts/plan-extraction-retrospective-actions.md`
+  summary: Qualify Unicode and escaped CSS identifiers under ticket 2.15.
+  evidence: Original B3 found the ASCII selector boundary in both baseline and candidate; Unicode/escape hiding is ignored and requires separate selector and source-classification qualification.
+- source_plan: `_bmad-output/implementation-artifacts/plan-extraction-retrospective-actions.md`
+  summary: Observe transient access walls revealed only by visibility-attribute changes under ticket 2.12.
+  evidence: Original B7 identifies the unchanged observer's missing attribute subscription; actual reveal/hide transitions and their observation cost must be qualified before this lifecycle path is accepted.
+- source_plan: `_bmad-output/implementation-artifacts/plan-extraction-retrospective-actions.md`
+  summary: Establish bounded profile reclamation across worker death/restart under ticket 2.12.
+  evidence: Original B9 and the actual outer-worker death gate leave an interrupted profile; the production cleanup slot exists only in memory and the test's independent deletion does not establish restart reclamation.
+- source_plan: `_bmad-output/implementation-artifacts/plan-extraction-retrospective-actions.md`
+  summary: Finish native browser allocation and durable recovery qualification under ticket 2.12.
+  evidence: Original B10's synthetic allocator bypasses normal collection/encoding/reparse. Parent later observed real UTF-8 MemoryError with caller HTTP preservation and a separate durable kernel-OOM/next-browser completion; isolated serialization, reparsing, durable native-fault completion and permanent broader probe registration remain separate open evidence.
+- source_plan: `_bmad-output/implementation-artifacts/plan-extraction-retrospective-actions.md`
+  summary: Qualify line/block-separated access phrases at static and browser consumers under ticket 2.12.
+  evidence: Original E4 found the same missing BR-separated literal phrase classification in baseline and candidate; normalization/layout separation needs independent current-latch and selected-status checks.
+- source_plan: `_bmad-output/implementation-artifacts/plan-extraction-retrospective-actions.md`
+  summary: Bound or explicitly qualify static CSS matching work under ticket 2.15.
+  evidence: R2-B1 measured multiplicative rule/node work in both baseline and candidate (800 broad rules and 1,000 nodes); neither has a work guard and parsing executes before a subsequent fetch deadline check.
+- source_plan: `_bmad-output/implementation-artifacts/plan-extraction-retrospective-actions.md`
+  summary: Settle ARIA-hidden and HTML-hidden rendering/evidence conventions under ticket 2.15.
+  evidence: R2-B2 compared both versions: aria-hidden text and hidden attributes overridden by display:block are unconditionally suppressed; this is an existing convention requiring a documented consumer decision.
+- source_plan: `_bmad-output/implementation-artifacts/plan-extraction-retrospective-actions.md`
+  summary: Qualify CSS all-shorthand visibility rollback under ticket 2.15.
+  evidence: R2-B3 compared display:none;all:initial in both versions and found the same suppression; the shorthand boundary predates the change and needs independent rollback/priority evidence.
+- source_plan: `_bmad-output/implementation-artifacts/plan-extraction-retrospective-actions.md`
+  summary: Qualify restored visible product links beneath hidden structural shelves under ticket 2.15.
+  evidence: R2-B6's Taobao fixture produces no products in both baseline and candidate because shelf discovery excludes the inactive structural container before selecting restored visible descendants.
+
+- source_plan: `_bmad-output/implementation-artifacts/plan-extraction-retrospective-actions.md`
+  summary: Unverified medium: synchronous worker process-start-time reads may exceed the attempt budget under a reachable kernel stall.
+  evidence: Final edge review identifies browser.py profile-name /proc stat read before supervised launch; settle with actual kernel-delayed read and deadline measurement. Ordinary pseudo-file access and a substituted sleeping function do not establish production reachability.

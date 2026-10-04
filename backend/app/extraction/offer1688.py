@@ -29,7 +29,8 @@ from .evidence import (
     MalformedPage, field as _field, object as _object, string as _string,
     text as _text, validate_json_evidence as _validate_json_evidence,
 )
-from .dom import login_page as _login_page
+from .dom import (login_page as _login_page, tree as _tree, prune_dom as _prune_dom,
+                  require_visibility, visibility_exhausted, access_text)
 from .urls import normalize_1688_url, offer_id
 
 EXTRACTOR_VERSION = "1688-http.v1"
@@ -62,9 +63,16 @@ def _embedded_model(tree: HTMLParser) -> dict:
     return {}
 
 
-def _blocked_page(tree: HTMLParser) -> bool:
-    title = (_text(tree.css_first("title")) or "").lower()
-    body = (_text(tree.css_first("body")) or "")[:2000].lower()
+def _visible_page(html):
+    visible = _tree(html)
+    _prune_dom(visible)
+    return visible
+
+
+def _blocked_page(tree: HTMLParser, visible=None) -> bool:
+    visible = _visible_page(tree.html) if visible is None else visible
+    title = (_text(visible.css_first("title")) or "").lower()
+    body = access_text(visible.css_first("body")).lower()
     markers = ("captcha", "verify you are human", "security verification", "access denied",
                "滑动验证", "安全验证", "请输入验证码", "访问受限")
     if any(marker in title or marker in body for marker in markers):
@@ -83,7 +91,9 @@ def parse_1688_page(html: str, source_url: str, **kwargs) -> dict:
     try:
         return _parse_1688_page(html, source_url, **kwargs)
     except (MalformedPage, RecursionError) as exc:
-        tree = HTMLParser(html)
+        tree = _visible_page(html)
+        if isinstance(exc, RecursionError) or visibility_exhausted(tree):
+            return dict(source_url=source_url, extraction_status='PARSE_FAILED', reason='PARSER_LIMIT')
         visible = _text(tree.css_first(".shop-company-name h1")) or _text(tree.css_first(".title-content h1"))
         if _login_page(tree, has_public_evidence=bool(visible)):
             return {"source_url": source_url, "extraction_status": "AUTH_REQUIRED", "reason": "LOGIN_REQUIRED"}
@@ -102,9 +112,13 @@ def _parse_1688_page(html: str, source_url: str, *, analysis_mode: str = "ACCOUN
     timestamp = (extracted_at or datetime.now(timezone.utc)).astimezone(timezone.utc).isoformat()
     uploaded = extraction_method == "USER_UPLOAD"
     tree = HTMLParser(html)
-    if _blocked_page(tree):
+    # Keep source model/canonical binding on the original tree. Only access text
+    # and selected DOM evidence use the shared static visibility boundary.
+    visible = _visible_page(html)
+    require_visibility(visible)
+    if _blocked_page(tree, visible):
         return {"source_url": source_url, "extraction_status": "BLOCKED", "reason": "ACCESS_CHALLENGE"}
-    if _login_page(tree, has_public_evidence=True):
+    if _login_page(visible, has_public_evidence=True):
         return {"source_url": source_url, "extraction_status": "AUTH_REQUIRED", "reason": "LOGIN_REQUIRED"}
     model = _embedded_model(tree)
     data = _object(_field(model, "result", "data"))
@@ -113,9 +127,9 @@ def _parse_1688_page(html: str, source_url: str, *, analysis_mode: str = "ACCOUN
     rate = _object(title_fields.get("rateInfo"))
     price = _object(_field(data, "mainPrice", "fields", "finalPriceModel", "tradeWithoutPromotion"))
     root = _object(_field(data, "Root", "fields", "dataJson", "offerBaseInfo"))
-    supplier_name = _string(shop.get("authCompanyName")) or _string(shop.get("companyName")) or _text(tree.css_first(".shop-company-name h1"))
-    offer_title = _string(title_fields.get("title")) or _text(tree.css_first(".title-content h1"))
-    if _login_page(tree, has_public_evidence=bool(supplier_name or offer_title)):
+    supplier_name = _string(shop.get("authCompanyName")) or _string(shop.get("companyName")) or _text(visible.css_first(".shop-company-name h1"))
+    offer_title = _string(title_fields.get("title")) or _text(visible.css_first(".title-content h1"))
+    if _login_page(visible, has_public_evidence=bool(supplier_name or offer_title)):
         return {"source_url": source_url, "extraction_status": "AUTH_REQUIRED", "reason": "LOGIN_REQUIRED"}
     canonical = tree.css_first('link[rel="canonical"]')
     matched_offer = False
@@ -155,7 +169,7 @@ def _parse_1688_page(html: str, source_url: str, *, analysis_mode: str = "ACCOUN
         raise MalformedPage
     reviews = []
     seen_reviews = set()
-    for card in tree.css(".evaluation-item, .review-item, .comment-item, .od-evaluation-item, [data-review-id]"):
+    for card in visible.css(".evaluation-item, .review-item, .comment-item, .od-evaluation-item, [data-review-id]"):
         review_text = _text(card)
         if review_text and review_text not in seen_reviews:
             seen_reviews.add(review_text)
@@ -250,9 +264,12 @@ def extract_1688(source_url: str, *, analysis_mode: str = "ACCOUNT_PUBLIC",
                  clock=time.monotonic, sleep=time.sleep, browser_fallback=False, browser_renderer=None) -> dict:
     def access(html):
         tree = HTMLParser(html)
-        if _blocked_page(tree):
+        visible = _visible_page(html)
+        if visibility_exhausted(visible):
+            return 'PARSE_FAILED', 'PARSER_LIMIT'
+        if _blocked_page(tree, visible):
             return "BLOCKED", "ACCESS_CHALLENGE"
-        if _login_page(tree):
+        if _login_page(visible):
             return "AUTH_REQUIRED", "LOGIN_REQUIRED"
         return None
 

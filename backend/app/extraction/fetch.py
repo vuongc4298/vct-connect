@@ -3,6 +3,7 @@ import ipaddress
 import socket
 import ssl
 import time
+import zlib
 from http.cookiejar import CookieJar, DefaultCookiePolicy
 from urllib.parse import urljoin, urlsplit
 import certifi
@@ -10,10 +11,113 @@ import httpcore
 import httpx
 
 MAX_HTML_BYTES = 2_000_000
+# A single unretained sentinel distinguishes an exact-cap page from overflow.
+MAX_DECODED_BYTES = MAX_HTML_BYTES + 1
 MAX_REDIRECTS = 3
 FETCH_BUDGET_SECONDS = 25
 RETRY_DELAYS = (0.5, 1.0)
 TRANSIENT_HTTP_STATUSES = {500, 502, 503, 504}
+DECODE_CHUNK_BYTES = 64 * 1024
+# Deflate has no reliable wire marker: raw stored blocks can resemble zlib.
+# Retain at most this much initial wire data until wrapped output is accepted.
+DEFLATE_REPLAY_BYTES = 64 * 1024
+
+
+class PageTooLarge(Exception):
+    """Decoded response exceeds the shared page capacity."""
+
+
+def _bounded_response_bytes(response, *, deadline, clock):
+    """Decode wire bytes with a bounded zlib output buffer before retaining them.
+
+    A single overflow byte distinguishes an exact-cap body from a larger one.
+    It is never retained or passed to a parser. No unbounded decoder flush is
+    used: EOF and checksums must be reached by bounded decompress calls.
+    """
+    encoding = response.headers.get("content-encoding", "identity").strip().lower()
+    if encoding not in {"identity", "gzip", "deflate"}:
+        raise httpx.DecodingError("Unsupported content encoding")
+
+    def check_deadline():
+        if clock() >= deadline:
+            raise httpx.ReadTimeout("Extraction deadline elapsed")
+
+    # HTTPX response constructors and pre-read MockTransport responses already
+    # decoded their content. iter_raw would raise StreamConsumed and decoding
+    # again would corrupt it. Check the existing bytes without copying them.
+    if response.is_stream_consumed:
+        check_deadline()
+        content = response.content
+        if len(content) > MAX_HTML_BYTES:
+            raise PageTooLarge
+        return content
+
+    content = bytearray()
+    decoder = zlib.decompressobj(16 + zlib.MAX_WBITS) if encoding == "gzip" else None
+    replay = bytearray()
+    wrapped_pending = encoding == "deflate"
+    chunks = iter(response.iter_raw())
+    while True:
+        check_deadline()
+        try:
+            chunk = next(chunks)
+        except StopIteration:
+            break
+        check_deadline()
+        if not chunk:
+            continue
+        if encoding == "identity":
+            if len(chunk) > MAX_HTML_BYTES - len(content):
+                raise PageTooLarge
+            content.extend(chunk)
+            continue
+        if encoding == "deflate" and decoder is None:
+            decoder = zlib.decompressobj(zlib.MAX_WBITS)
+        while chunk:
+            check_deadline()
+            if decoder.eof:
+                if encoding != "gzip":
+                    raise httpx.DecodingError("Trailing compressed data")
+                # RFC gzip members concatenate their decoded bytes; all
+                # members spend the same page budget.
+                decoder = zlib.decompressobj(16 + zlib.MAX_WBITS)
+            maximum = min(DECODE_CHUNK_BYTES, MAX_DECODED_BYTES - len(content))
+            remainder = b""
+            if wrapped_pending:
+                # Split before copying so a large transport chunk cannot grow
+                # the replay buffer beyond its independent wire capacity.
+                capacity = DEFLATE_REPLAY_BYTES - len(replay)
+                if capacity == 0:
+                    raise httpx.DecodingError("Deflate format undecided within replay capacity")
+                remainder = chunk[capacity:]
+                chunk = chunk[:capacity]
+                replay.extend(chunk)
+            try:
+                output = decoder.decompress(chunk, maximum)
+            except zlib.error:
+                if not wrapped_pending:
+                    raise
+                # HTTPX-compatible first-decode fallback, including a valid raw
+                # stream with a plausible zlib header. Once any wrapped output
+                # was accepted (or wrapped EOF reached), never retry corruption.
+                decoder = zlib.decompressobj(-zlib.MAX_WBITS)
+                wrapped_pending = False
+                chunk = bytes(replay)
+                replay.clear()
+                output = decoder.decompress(chunk, maximum)
+            check_deadline()
+            if len(output) > MAX_HTML_BYTES - len(content):
+                raise PageTooLarge
+            content.extend(output)
+            if wrapped_pending and (output or decoder.eof):
+                wrapped_pending = False
+                replay.clear()
+            del output
+            chunk = (decoder.unused_data if decoder.eof else decoder.unconsumed_tail) + remainder
+    check_deadline()
+    if encoding != "identity" and (decoder is None or not decoder.eof):
+        raise httpx.DecodingError("Incomplete compressed response")
+    return bytes(content)
 
 
 class UnsafeDestination(OSError):
@@ -160,7 +264,8 @@ def bounded_extract(source_url: str, *, normalize, identity, parse, classify_acc
                               follow_redirects=False, trust_env=False,
                               cookies=None if accept_cookies else CookieJar(policy=_RejectCookies()),
                               timeout=httpx.Timeout(10.0, connect=5.0),
-                              headers={"User-Agent": "VCTConnectPublicEvidence/1.0", "Accept": "text/html"})
+                              headers={"User-Agent": "VCTConnectPublicEvidence/1.0", "Accept": "text/html",
+                                       "Accept-Encoding": "gzip, deflate"})
     if not accept_cookies:
         client.cookies.clear()
         client.cookies.jar.set_policy(_RejectCookies())
@@ -216,36 +321,27 @@ def bounded_extract(source_url: str, *, normalize, identity, parse, classify_acc
                             return outcome("PARSE_FAILED", "NON_HTML")
                         transient = ("PARSE_FAILED", "UPSTREAM_UNAVAILABLE")
                     else:
-                        content = bytearray()
-                        chunks = iter(response.iter_bytes())
-                        while True:
-                            if clock() >= deadline:
-                                return outcome("TIMEOUT", "HTTP_TIMEOUT")
-                            try:
-                                chunk = next(chunks)
-                            except StopIteration:
-                                break
-                            if clock() >= deadline:
-                                return outcome("TIMEOUT", "HTTP_TIMEOUT")
-                            if len(chunk) > MAX_HTML_BYTES - len(content):
-                                return outcome("PARSE_FAILED", "PAGE_TOO_LARGE")
-                            content.extend(chunk)
+                        content = _bounded_response_bytes(response, deadline=deadline, clock=clock)
                         if clock() >= deadline:
                             return outcome("TIMEOUT", "HTTP_TIMEOUT")
-                        html = decode(bytes(content), response) if decode else content.decode(response.encoding or "utf-8", errors="replace")
+                        html = decode(content, response) if decode else content.decode(response.encoding or "utf-8", errors="replace")
                         if is_transient:
                             access = classify_access(html)
                             if access:
                                 return outcome(*access)
                             transient = ("PARSE_FAILED", "UPSTREAM_UNAVAILABLE")
                         else:
-                            result = parse(html, source_url, analysis_mode=analysis_mode, page_bytes=bytes(content))
+                            result = parse(html, source_url, analysis_mode=analysis_mode, page_bytes=content)
                             if clock() >= deadline:
                                 return outcome("TIMEOUT", "HTTP_TIMEOUT")
                             from .browser import maybe_render
-                            return maybe_render(result, html, bytes(content), enabled=browser_fallback,
+                            return maybe_render(result, html, content, enabled=browser_fallback,
                                                 csp=response.headers.get_list("content-security-policy"),
                                                 renderer=browser_renderer)
+            except PageTooLarge:
+                return outcome("PARSE_FAILED", "PAGE_TOO_LARGE")
+            except zlib.error:
+                return outcome("PARSE_FAILED", "HTTP_ERROR")
             except UnsafeDestination:
                 return outcome("BLOCKED", "UNSAFE_DESTINATION")
             except DNSResolutionFailed:

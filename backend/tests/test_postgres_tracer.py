@@ -87,6 +87,80 @@ def test_public_browser_transition_requires_current_claim(store):
         remove(store, analysis_id)
 
 
+@pytest.mark.skipif(os.getenv("VCT_TEST_BROWSER") != "true", reason="Actual namespace fault completion requires the controlled Linux image")
+@pytest.mark.parametrize("fault", ["refusal", "death", "output", "cleanup"])
+def test_public_browser_fault_preserves_http_owner_claim_and_next_job(store, monkeypatch, tmp_path, fault):
+    from copy import deepcopy
+    from backend.tests.test_browser_fallback import fixture, ADAPTERS
+    from backend.tests.test_browser_supervision import install_supervisor, allocation_runner
+    from backend.app.extraction import browser
+
+    marker = tmp_path / "allocation-refused"
+    runner = {"refusal": allocation_runner(marker),
+              "death": "import os,signal; os.kill(os.getpid(),signal.SIGKILL)",
+              "output": "import os; os.write(1,b'x'*2100000)",
+              "cleanup": "print('{\"code\":\"NO_GAIN\"}')"}[fault]
+    install_supervisor(monkeypatch, runner=runner,
+                       setup="import time\ns._cleanup_profile=lambda p: time.sleep(12)" if fault == "cleanup" else "")
+    url, html = fixture()
+    owner = store.resolve_user("browser_fault_owner_" + uuid4().hex)
+    other = store.resolve_user("browser_fault_other_" + uuid4().hex)
+    settings = Settings(store.database_url, "local", None, None, True, public_browser_fallback=True)
+    ids, originals, claims = [], [], []
+    _, parser = ADAPTERS["1688"]
+    complete = store.complete_processing
+
+    def current_claim(analysis_id, token, payload):
+        with pytest.raises(LeaseLost):
+            complete(analysis_id, uuid4(), payload)
+        claims.append(token)
+        return complete(analysis_id, token, payload)
+
+    monkeypatch.setattr(store, "complete_processing", current_claim)
+
+    def extract(source, **kwargs):
+        expected = parser(html, source, analysis_mode=kwargs["analysis_mode"])
+        # Freeze the exact fetched HTTP object before the actual failing attempt.
+        originals.append(deepcopy(expected))
+        selected = browser.maybe_render(expected, html, html.encode(), enabled=kwargs["browser_fallback"])
+        assert selected is expected and selected == originals[-1]
+        return selected
+
+    monkeypatch.setattr("backend.worker.main.extract_1688", extract)
+    try:
+        first = store.submit_local(url, owner["id"])
+        ids.append(first)
+        assert process_local_once(store, settings)
+        row = store.get_for_user(first, owner["id"])
+        assert row["status"] == "COMPLETED" and row["attempt_count"] == 1
+        assert row["failure_code"] is None
+        assert row["extraction_method"] == "PUBLIC_HTTP"
+        assert row["supplier_data"] == originals[0]["supplier_data"]
+        assert row["raw_evidence"] == originals[0]["raw_payload"]
+        assert "rendered_html_sha256" not in row["raw_evidence"]
+        assert store.get_for_user(first, other["id"]) is None
+        assert len(claims) == 1
+        assert complete(first, uuid4(), originals[0]) == "replay"
+        if fault == "refusal":
+            assert marker.read_text() == "MemoryError"
+        # Same live worker completes another real failure without a retry or a
+        # changed method. Actual subsequent Chromium gain is a separate G6 gate.
+        second = store.submit_local(url, owner["id"])
+        ids.append(second)
+        assert process_local_once(store, settings)
+        next_row = store.get_for_user(second, owner["id"])
+        assert next_row["status"] == "COMPLETED" and next_row["attempt_count"] == 1
+        assert next_row["supplier_data"] == originals[1]["supplier_data"]
+        assert next_row["raw_evidence"] == originals[1]["raw_payload"]
+        assert len(claims) == 2 and claims[0] != claims[1]
+        assert store.get(first)["supplier_snapshot_id"] == row["supplier_snapshot_id"]
+    finally:
+        for analysis_id in reversed(ids):
+            remove(store, analysis_id)
+        remove_user(store, owner["clerk_user_id"])
+        remove_user(store, other["clerk_user_id"])
+
+
 @pytest.mark.parametrize("guest", [False, True])
 @pytest.mark.parametrize("profile", [False, True])
 def test_alibaba_mocked_public_queue_owner_and_immutable_replay(store, monkeypatch, guest, profile):

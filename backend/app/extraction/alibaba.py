@@ -24,6 +24,7 @@ from .evidence import (
 from .dom import (
     tree as _tree, active as _active, scripts as _scripts, prune_dom as _prune_dom,
     stylesheet_hidden as _stylesheet_hidden, login_page as _login_page,
+    require_visibility, visibility_exhausted, access_text,
 )
 from .urls import normalize_alibaba_url, alibaba_identity, _ALIBABA_PRODUCT, _ALIBABA_STORE
 
@@ -203,15 +204,18 @@ def _supplier_host(value):
 
 def _access(html, *, has_public_evidence=False):
     tree = _tree(html)
+    if visibility_exhausted(tree):
+        return 'PARSE_FAILED', 'PARSER_LIMIT'
     _stylesheet_hidden(tree)
     challenge = any(_active(node) for node in tree.css('punish-component, #nc-container'))
     _prune_dom(tree)
-    visible = (_text(tree.css_first('body')) or '')[:2000].lower()
+    visible = access_text(tree.css_first('body')).lower()
     title = (_text(tree.css_first('title')) or '').lower()
     markers = ('captcha', 'verify you are human', 'security verification', 'access denied', '安全验证', '滑动验证')
     if challenge or any(marker in title for marker in markers) or not has_public_evidence and any(marker in visible for marker in markers):
         return 'BLOCKED', 'ACCESS_CHALLENGE'
-    if _login_page(tree, has_public_evidence=has_public_evidence) or not has_public_evidence and tree.css_first('form input[type="password"]') is not None:
+    if _login_page(tree, has_public_evidence=has_public_evidence) or not has_public_evidence and any(
+            _active(node) for node in tree.css('form input[type="password"]')):
         return 'AUTH_REQUIRED', 'LOGIN_REQUIRED'
     return None
 
@@ -230,6 +234,7 @@ def _parse(html, source_url, mode, extracted_at, page_bytes):
     expected = alibaba_identity(source_url)
     kind, identity = expected
     tree = _tree(html)
+    require_visibility(tree)
     _stylesheet_hidden(tree)
     for node in tree.css('link, meta'):
         if not _active(node):

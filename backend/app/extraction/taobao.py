@@ -21,6 +21,7 @@ from .evidence import (
 from .dom import (
     tree as _tree, active as _active, scripts as _scripts, prune_dom as _prune_dom,
     login_page as _login_page,
+    require_visibility, visibility_exhausted, access_text,
 )
 from .urls import normalize_taobao_url, taobao_identity
 
@@ -97,11 +98,13 @@ def _access(html, *, has_public_evidence=False, source_url=None):
         except (MalformedPage, RecursionError, ValueError, TypeError):
             pass
     tree = _tree(html)
+    if visibility_exhausted(tree):
+        return 'PARSE_FAILED', 'PARSER_LIMIT'
     # An observed small script-only TMD response redirects to its punishment
     # endpoint. A marker in a populated legitimate page is insufficient.
     scripts = "\n".join(s.text() for s in _scripts(tree))
     _prune_dom(tree)
-    visible = _text(tree.css_first("body")) or ""
+    visible = access_text(tree.css_first("body"))
     title = (_text(tree.css_first("title")) or "").lower()
     challenge = ("_____tmd_____/punish" in scripts and "location" in scripts
                  or "_____tmd_____" in scripts and "login_jump" in scripts
@@ -165,6 +168,7 @@ def parse_taobao_page(html, source_url, *, analysis_mode="ACCOUNT_PUBLIC", extra
 def _parse(html, source_url, mode, extracted_at, page_bytes):
     kind, identity = taobao_identity(source_url)
     tree = _tree(html)
+    require_visibility(tree)
     canonicals = [node for node in tree.css("link") if "canonical" in node.attributes.get("rel", "").lower().split()]
     if len(canonicals) > 1:
         raise MalformedPage
@@ -269,6 +273,8 @@ def _parse(html, source_url, mode, extracted_at, page_bytes):
         cards = [card for shelf in shelves for card in shelf.css(".shop-item-card")]
         for card in cards:
             for link in card.css("a[href]"):
+                if not _active(link) and not any(_active(child) for child in link.css('*')):
+                    continue
                 href = link.attributes["href"]
                 try:
                     url = normalize_taobao_url("https:" + href if href.startswith("//") else href)

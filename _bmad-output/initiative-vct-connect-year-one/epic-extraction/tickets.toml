@@ -89,3 +89,105 @@ covers = ["R4"]
 after = [2, 3, 4, 5, 6, 7]
 hitl = false
 risk = "low"
+
+[[entry]]
+id = 9
+type = "bug"
+title = "Classify access walls using effective screen visibility"
+description = "Correct the five confirmed shared visibility defects so visible access walls are classified and invisible text does not create a false barrier."
+verify = "All five retrospective visibility reproductions and valid three-platform layouts produce the expected access statuses and evidence boundaries."
+covers = ["R4"]
+after = [8]
+hitl = false
+risk = "medium"
+severity = "P2"
+refine = true
+
+[[entry]]
+id = 10
+type = "bug"
+title = "Bound decoded public response memory before allocation"
+description = "Enforce the public response byte budget during decompression while retaining finite retries, explicit failure statuses and decoded evidence provenance."
+verify = "Compressed-response limit and valid response cases execute through each adapter without oversized decoded allocations or inappropriate snapshots."
+covers = ["R4"]
+after = [8]
+hitl = false
+risk = "medium"
+severity = "P2"
+refine = true
+
+[[entry]]
+id = 12
+type = "story"
+title = "Qualify browser process cleanup and memory failure boundaries"
+description = "Exercise abrupt runner death, slow cleanup and allocation failure under the existing sandbox limits and correct any demonstrated loss of cleanup or preserved HTTP evidence."
+verify = "Actual container fault probes report descendant cleanup, bounded termination, worker survival and preserved HTTP evidence with no skipped covering case."
+covers = ["R4"]
+after = [9, 10]
+hitl = false
+risk = "high"
+unknown = "The three runtime failure hypotheses require measured qualification before activation."
+
+[[entry]]
+id = 11
+type = "story"
+title = "Resolve deployed browser runtime availability and acceptance scope"
+description = "Qualify a compatible supervised Chromium runtime or record an explicit delivery-scope decision retaining disabled fallback until the measured runtime prerequisites hold."
+verify = "The runtime decision identifies the exact supported environment, required qualification evidence and deployment activation gate without relaxing sandbox controls."
+covers = ["R4"]
+after = [12]
+hitl = true
+risk = "high"
+unknown = "Cloud deployment or a paid runtime change needs a concrete release decision after investigation."
+
+[[entry]]
+id = 13
+type = "story"
+title = "Verify signed-in extension payload and merged results"
+description = "Complete latest-release selected-only wire payload, owner-scoped merge, result-opening and live Taobao shop checks using an accessible source session."
+verify = "Recorded browser/network observations and persisted result metadata demonstrate the signed-in journey without platform credentials or duplicate evidence."
+covers = ["R4"]
+after = [9, 10]
+hitl = true
+risk = "high"
+unknown = "An authenticated accessible shop page and browser session are required for live shop acceptance."
+
+[[entry]]
+id = 14
+type = "story"
+title = "Enforce evidence-based extraction completion gates"
+description = "Apply an epic completion checklist that reconciles surviving defects, deployed capability, resource boundaries and superseded follow-ups with their source evidence."
+verify = "The extraction gate reports each criterion and every follow-up honestly, rejects unresolved blockers and distinguishes a declared deferral from a completed runtime or manual check."
+covers = ["R4"]
+after = [9, 10]
+hitl = false
+risk = "medium"
+
+[[entry]]
+id = 15
+type = "story"
+title = "Qualify remaining static visibility and evidence boundaries"
+description = "Use the qualified shared extraction boundary to settle the recorded selector, Unicode, shorthand, hidden-attribute, structural-shelf and CSS-work concerns with distinct consumer evidence and explicit supported-input boundaries."
+verify = "Each recorded concern has an independent reproduction, a justified correction or recorded boundary, selected normalized/raw evidence and hashes, and a finite observed adversarial work outcome without treating unsupported visibility as reassuring."
+covers = ["R4"]
+after = [12]
+hitl = false
+risk = "medium"
+refine = true
+unknown = "Selector breadth, hidden-attribute interpretation and the parser work policy require refinement; this entry records ownership and does not authorize broad CSS support or claim these concerns resolved."
+references = ["parent - _bmad-output/initiative-vct-connect-year-one/epic-extraction/epic-extraction.md, R4", "review - _bmad-output/implementation-artifacts/plan-extraction-retrospective-actions.md, B2/B3 and R2-B1/B2/B3/B6", "inventory - _bmad-output/implementation-artifacts/deferred-work.md, extraction review follow-ups"]
+notes = ["Decision: Recorded as a planned A6 inventory follow-up; implementation is not part of the six current actions.", "Open question: Refine the recorded boundaries and size the implementation before starting; the stable 2.12 compiler/qualification handoff supplies its actual-browser baseline."]
+
+[[entry]]
+id = 16
+type = "story"
+title = "Assess 1688 official API eligibility and permitted field coverage"
+description = "After the representative extension acceptance/coverage record identifies evidence gaps, a person supplies permitted developer-portal access so official 1688 API eligibility and documented field coverage can be assessed as a separate future integration decision."
+verify = "Record current official eligibility, permitted fields and unresolved access requirements with primary sources, compare them with the 2.13 evidence gaps, and state a supported decision without claiming an API implementation or browser-scope waiver."
+covers = ["R4"]
+after = [13]
+hitl = true
+risk = "medium"
+unknown = "Developer-portal access and API entitlement are unknown; any signup, paid access or integration needs a separate concrete decision."
+references = ["parent - _bmad-output/initiative-vct-connect-year-one/epic-extraction/epic-extraction.md, R4", "source - _bmad-output/implementation-artifacts/plan-1688-saved-page-import.md, official API follow-up", "coverage - _bmad-output/initiative-vct-connect-year-one/epic-extraction/extension-acceptance-checklist.md, representative selected fields"]
+notes = ["Decision: Recorded as a planned A6 inventory follow-up; it does not replace the retained deployed-browser requirement."]

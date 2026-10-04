@@ -56,13 +56,21 @@ jobs:
           docker build --file frontend/apps/web/Dockerfile --build-arg NEXT_PUBLIC_CLERK_PUBLISHABLE_KEY --tag vct-web:ci .
       - name: Verify actual sandboxed Chromium with no network
         run: >-
-          docker run --rm --init --network none --cpus 0.5 --memory 1g --shm-size 256m
+          docker run --rm --init --network none --cpus 0.5 --memory 1g --memory-swap 1g --shm-size 256m
           --security-opt seccomp=infra/browser-seccomp.json
           --env VCT_TEST_BROWSER=true vct-backend:ci
-          python -m pytest backend/tests/test_browser_fallback.py -q -ra -p no:cacheprovider
+          python -m pytest backend/tests/test_browser_fallback.py backend/tests/test_browser_supervision.py
+          -k 'not kernel_oom' -q -ra -p no:cacheprovider
+      - name: Observe allocation failure in a disposable shared cgroup
+        run: >-
+          docker run --rm --init --network none --cpus 0.5 --memory 1g --memory-swap 1g --shm-size 256m
+          --security-opt seccomp=infra/browser-seccomp.json
+          --env VCT_TEST_BROWSER=true --env VCT_TEST_BROWSER_OOM=true vct-backend:ci
+          timeout 60 python -m pytest backend/tests/test_browser_supervision.py
+          -k kernel_oom -q -s -ra -p no:cacheprovider
       - name: Verify Chromium queue ownership and immutable provenance in PostgreSQL
         run: >-
-          docker run --rm --init --network host --cpus 0.5 --memory 1g --shm-size 256m
+          docker run --rm --init --network host --cpus 0.5 --memory 1g --memory-swap 1g --shm-size 256m
           --security-opt seccomp=infra/browser-seccomp.json
           --env VCT_TEST_BROWSER=true
           --env VCT_TEST_DATABASE_URL=postgresql://vct_ci:vct_ci@127.0.0.1:5432/vct_ci

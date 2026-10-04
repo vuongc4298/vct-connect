@@ -10,4 +10,5 @@ httpx>=0.28,<0.29
 httpcore>=1,<2
 certifi>=2024,<2028
 selectolax>=0.4,<1
+tinycss2>=1.4,<2
 playwright==1.63.0
