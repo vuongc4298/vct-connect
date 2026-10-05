@@ -4,7 +4,7 @@ import unicodedata
 
 from pydantic import BaseModel, ConfigDict, Field, ValidationError
 
-PROMPT_VERSION = "vi-text.v2"
+PROMPT_VERSION = "vi-text.v4"
 SCHEMA_VERSION = "text-report.v2"
 PIPELINE_VERSION = "saved-evidence.v1"
 Text = Annotated[str, Field(min_length=1, max_length=1600)]
@@ -87,6 +87,8 @@ def screen_vietnamese(text: str) -> bool:
                     "khoản hoàn tiền tranh chấp văn bản kích thước màu sắc thử nghiệm phù hợp "
                     "chi thực tế năng lực sản xuất kiểm soát khả đáp ứng bất kỳ tổng hợp".split())
     words_vi.update("tôi khá chắc chắn cách diễn giải vì nội dung nhất quán tự báo cáo hiệu chuẩn".split())
+    # Evidence-supported product vocabulary; sentence thresholds and script guards stay intact.
+    words_vi.update("tiêu đề khăn giấy ăn dạng rút lớp tờ đặc mềm mại da nhạy cảm trẻ em tham khảo nhân dân tệ miễn".split())
     foreign_words = {"the", "this", "that", "is", "are", "and", "with", "should", "supplier", "reliable", "before", "order"}
     sentences = re.split(r"[!?;\n]+|(?<!\d)\.|\.(?!\d)", text)
     checked = False

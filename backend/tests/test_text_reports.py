@@ -418,7 +418,7 @@ def test_valid_confidence_is_application_labeled_and_prompt_versioned(score):
     assert store.state == "READY"
     assert store.report["self_reported_confidence"] == {
         **data["self_reported_confidence"], "provenance": "model_self_reported", "calibration": "uncalibrated"}
-    assert store.metadata["prompt_version"] == "vi-text.v2"
+    assert store.metadata["prompt_version"] == "vi-text.v4"
     assert store.metadata["schema_version"] == "text-report.v2"
     assert 'self_reported_confidence' in provider.calls[0][0][0]["content"]
 
@@ -489,3 +489,25 @@ def test_natural_vietnamese_confidence_basis_is_accepted():
     store = MemoryStore()
     process_report_once(store, configured(), FakeProvider(json.dumps(data, ensure_ascii=False)))
     assert store.state == "READY"
+
+
+def test_embedded_foreign_brand_requires_vietnamese_rendering():
+    from backend.app.interpretation.contracts import ReportValidationError
+    data = json.loads(content())
+    data["summary"] = "Trang hi\u1ec3n th\u1ecb s\u1ea3n ph\u1ea9m kh\u0103n gi\u1ea5y th\u01b0\u01a1ng hi\u1ec7u \u6d4b\u8bd5."
+    with pytest.raises(ReportValidationError) as error:
+        validate_report(json.dumps(data), [{"id": "E1", "value": "source"}])
+    assert (error.value.reason, error.value.location) == ("NON_VIETNAMESE_PROSE", "summary")
+    data["summary"] = "Trang hi\u1ec3n th\u1ecb s\u1ea3n ph\u1ea9m kh\u0103n gi\u1ea5y; ch\u01b0a x\u00e1c minh \u0111\u1ed9c l\u1eadp."
+    assert validate_report(json.dumps(data), [{"id": "E1", "value": "source"}])["summary"] == data["summary"]
+
+
+def test_vietnamese_tissue_description_with_source_quote():
+    data = json.loads(content())
+    title = "\u6d4b\u8bd5"
+    data["findings"][0]["text"] = "Ti\u00eau \u0111\u1ec1 s\u1ea3n ph\u1ea9m '" + title + "' g\u1ee3i \u00fd \u0111\u00e2y l\u00e0 kh\u0103n gi\u1ea5y \u0103n d\u1ea1ng r\u00fat, ba l\u1edbp; ti\u00eau \u0111\u1ec1 tuy\u00ean b\u1ed1 m\u1ec1m m\u1ea1i v\u00e0 ph\u00f9 h\u1ee3p cho da nh\u1ea1y c\u1ea3m v\u00e0 tr\u1ebb em."
+    evidence = [{"id":"E1", "value":{"title": title}}]
+    assert validate_report(json.dumps(data), evidence)
+    data["findings"][0]["text"] += " The supplier is reliable."
+    with pytest.raises(ValueError):
+        validate_report(json.dumps(data), evidence)

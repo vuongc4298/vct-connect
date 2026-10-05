@@ -1,6 +1,6 @@
 # Proposed bounded diagnostic and correction run
 
-Status: proposed; not approved or executed.
+Status: approved by the operator on 2026-10-05; execution results recorded separately.
 
 The two approved local diagnostics encountered different first failures:
 SCHEMA_INVALID/findings, then NON_VIETNAMESE_PROSE/summary. Neither produced the
