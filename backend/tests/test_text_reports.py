@@ -194,7 +194,7 @@ def test_vietnamese_source_quantities_and_quoted_source_text_remain_valid():
     data = json.loads(content())
     data["summary"] = "Nguồn hiển thị MOQ 1000 2000 3000 và giá 4.8 USD."
     data["findings"][0]["text"] = 'Trang hiển thị sản phẩm “中国商品” và tỷ lệ đánh giá tích cực 90%.'
-    assert validate_report(json.dumps(data, ensure_ascii=False), [{"id": "E1"}])["summary"] == data["summary"]
+    assert validate_report(json.dumps(data, ensure_ascii=False), [{"id": "E1", "value": "中国商品"}])["summary"] == data["summary"]
 
 
 @pytest.mark.parametrize("quoted", [
@@ -577,7 +577,7 @@ def test_vietnamese_shipping_service_prose_with_versioned_validation(prose):
     store = MemoryStore()
     process_report_once(store, configured(), FakeProvider(json.dumps(data)))
     assert store.state == "READY"
-    assert store.metadata["validation_version"] == "vi-prose.v3"
+    assert store.metadata["validation_version"] == "vi-prose.v4"
     assert store.metadata["prompt_version"] == "vi-text.v7"
     for foreign in [" The supplier is reliable.", " \u4f9b\u5e94\u5546\u53ef\u9760", " Le fournisseur est fiable."]:
         assert not screen_vietnamese(prose + foreign)
@@ -586,14 +586,44 @@ def test_vietnamese_shipping_service_prose_with_versioned_validation(prose):
         validate_report(json.dumps(data), [{"id":"E1","value":"source"}])
 
 
-PROSE_CASES = [json.loads(line) for line in
-    (Path(__file__).parent / "fixtures/vietnamese_report_prose.jsonl").read_text(encoding="utf-8").splitlines()]
+PROSE_CASES = [json.loads(line) for name in ("vietnamese_report_prose.jsonl",
+    "vietnamese_report_prose_probe.jsonl", "vietnamese_report_prose_independent.jsonl")
+    for line in (Path(__file__).parent / "fixtures" / name).read_text(encoding="utf-8").splitlines()]
 
 
 @pytest.mark.parametrize("case", PROSE_CASES, ids=[case["id"] for case in PROSE_CASES])
 def test_offline_source_related_prose_corpus(case):
     # Synthetic language examples; acceptance here does not verify a claim's truth.
     assert screen_vietnamese(case["text"]) is case["expected_vietnamese"]
+
+
+@pytest.mark.parametrize("opening,closing", [("'", "'"), ("‘", "’"), ('"', '"'), ("“", "”"), ("`", "`")])
+def test_source_quote_exemptions_require_exact_evidence_and_vietnamese_context(opening, closing):
+    source = "freight collect, duties excluded"
+    quote = opening + source + closing
+    data = json.loads(content())
+    data["findings"][0]["text"] = "Nguồn ghi " + quote + "."
+    evidence = [{"id": "E1", "value": source}]
+    assert validate_report(json.dumps(data), evidence)["findings"] == data["findings"]
+    assert not screen_vietnamese(data["findings"][0]["text"])
+    for rejected in ([], [{"id": "E1"}], [{"id": "E1", "value": source + " extra"}]):
+        # Empty evidence fails citations first; otherwise no arbitrary quote exemption.
+        with pytest.raises(ValueError):
+            validate_report(json.dumps(data), rejected)
+    for prose in (quote, "Nguồn ghi " + quote + " và payment must clear before dispatch.",
+                  "Nguồn ghi " + opening + source + "."):
+        data["findings"][0]["text"] = prose
+        with pytest.raises(ValueError, match="NON_VIETNAMESE_PROSE"):
+            validate_report(json.dumps(data), evidence)
+    data["findings"][0]["text"] = "Nguồn ghi " + quote + "."
+    data["self_reported_confidence"]["basis"] = "Nguồn ghi " + quote + "."
+    with pytest.raises(ValueError, match="NON_VIETNAMESE_PROSE"):
+        validate_report(json.dumps(data), evidence)
+
+
+@pytest.mark.parametrize("foreign", ["надежный", "ปลอดภัย", "موثوق", "αξιόπιστος"])
+def test_padded_non_latin_prose_remains_visible(foreign):
+    assert not screen_vietnamese("Nguồn có thông tin sản phẩm cần xác minh độc lập " + foreign)
 
 
 def test_authentic_taobao_grounding_projection_and_vietnamese_settlement():

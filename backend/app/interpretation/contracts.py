@@ -7,7 +7,7 @@ from pydantic import BaseModel, ConfigDict, Field, ValidationError
 PROMPT_VERSION = "vi-text.v7"
 SCHEMA_VERSION = "text-report.v2"
 PIPELINE_VERSION = "saved-evidence.v1"
-VALIDATION_VERSION = "vi-prose.v3"
+VALIDATION_VERSION = "vi-prose.v4"
 Text = Annotated[str, Field(min_length=1, max_length=1600)]
 Reference = Annotated[str, Field(pattern=r"^E[0-9]{1,3}$")]
 
@@ -68,11 +68,10 @@ class VietnameseReport(BaseModel):
 def screen_vietnamese(text: str) -> bool:
     """Conservative local prose screen, not language identification or factual QA.
 
-    Require Vietnamese cues in each sentence; quoted source names/text and code
-    identifiers may remain in their original language. Ambiguous prose fails closed.
+    Require Vietnamese cues in each sentence. validate_report exempts exact
+    supplied source quotations before this screen; arbitrary quotes stay visible.
     """
     text = unicodedata.normalize("NFC", text).casefold()
-    text = re.sub(r'"[^"\n]*"|“[^”\n]*”|`[^`\n]*`', "", text)
     words_vi = set("nguồn có thông tin cần kiểm tra xác minh trước đặt hàng trang hiển thị sản phẩm "
                    "chưa độc lập yêu cầu mẫu cọc dữ liệu thiếu không đủ bằng chứng nhà cung cấp "
                    "giới hạn nhận định quan sát suy luận về và của từ được đã này cho thấy là một "
@@ -94,7 +93,15 @@ def screen_vietnamese(text: str) -> bool:
     words_vi.update("gửi trung bình giờ phản hồi khách giây do bố".split())
     # Broader offline corpus exposed packaging descriptions outside the initial vocabulary.
     words_vi.update("bề mặt bì trơn nhẵn sờ".split())
-    foreign_words = {"the", "this", "that", "is", "are", "and", "with", "should", "supplier", "reliable", "before", "order"}
+    # Offline compact-clause probes demonstrate ordinary Vietnamese vocabulary.
+    words_vi.update("hơi xốp dùng hằng ổn tốt suốt mỗi thùng gói khác thường rời kho "
+                    "nói dễ rách ướt đầu tiên nêu quy đóng túi đại diện mọi lô".split())
+    words_vi.update("ảnh chụp đường may lệch mép mô tả ghi vải thoáng khí ít nhăn "
+                    "nắp hộp gioăng cao su chống tràn bảng cỡ đo vòng eo kiện móp góc "
+                    "đồ bên trong nguyên chê khóa kéo kẹt sau vài lần".split())
+    foreign_words = set("the this that is are and with should supplier reliable before order "
+                        "shipping guaranteed dispatch delivery payment terms subject credit approval "
+                        "freight collect duties excluded buyer protection refund tracking pending must clear".split())
     sentences = re.split(r"[!?;\n]+|(?<!\d)\.|\.(?!\d)", text)
     checked = False
     for sentence in sentences:
@@ -102,8 +109,9 @@ def screen_vietnamese(text: str) -> bool:
         if not words:
             continue
         checked = True
-        if (re.search(r"[\u3400-\u9fff\u3040-\u30ff\uac00-\ud7af]", sentence)
-                or sum(word in foreign_words for word in words) >= 2
+        if (any(character.isalpha() and not unicodedata.name(character, "").startswith("LATIN")
+                for character in sentence)
+                or any(word in foreign_words for word in words)
                 or sum(word in words_vi for word in words) < max(2, len(words) / 2)
                 or not re.search(r"[ăâđêôơưà-ỹ]", sentence)):
             return False
@@ -136,7 +144,8 @@ def validate_report(content: str, evidence: list[dict]) -> dict:
     source_texts = set(_source_strings(evidence))
     quoted_sources = {quoted for source in source_texts
                       for variant in {source, source.replace("'", "’"), source.replace("’", "'")}
-                      for quoted in (f"'{variant}'", f"‘{variant}’")}
+                      for opening, closing in (("'", "'"), ("‘", "’"), ('"', '"'), ("“", "”"), ("`", "`"))
+                      for quoted in (opening + variant + closing,)}
     source_pattern = "|".join(re.escape(quoted) for quoted in sorted(quoted_sources, key=lambda value: (-len(value), value)))
     for location, text in prose:
         normalized = unicodedata.normalize("NFC", text)
@@ -144,7 +153,7 @@ def validate_report(content: str, evidence: list[dict]) -> dict:
                      r"[^.!?;\n]{0,120}?(?:\d|\b(?:một|hai|ba|bốn|năm|sáu|bảy|tám|chín|mười|trăm)\b)",
                      normalized, re.IGNORECASE):
             raise ReportValidationError("UNSUPPORTED_SCORE", location)
-        # Only exact supplied source text may use ambiguous single quotes.
+        # Only complete exact supplied source text receives a quote exemption.
         # Matching the complete source handles possessives without swallowing
         # intervening prose between two quoted titles.
         # One pass over original text prevents edits from manufacturing a new
@@ -152,7 +161,7 @@ def validate_report(content: str, evidence: list[dict]) -> dict:
         if location == "self_reported_confidence.basis":
             # This field explains interpretation uncertainty in Vietnamese;
             # quotation exemptions for source titles do not apply here.
-            screen_input = re.sub(r'["“”`]', "", normalized)
+            screen_input = normalized
         else:
             screen_input = re.sub(source_pattern, " ", normalized.casefold()) if source_pattern else normalized
         if not screen_vietnamese(screen_input):

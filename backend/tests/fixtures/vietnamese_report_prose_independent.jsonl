@@ -1,0 +1,24 @@
+{"id":"seam","expected_vietnamese":true,"text":"Ảnh chụp cho thấy đường may lệch ở mép túi."}
+{"id":"fabric","expected_vietnamese":true,"text":"Mô tả ghi vải thoáng khí, ít nhăn."}
+{"id":"lid","expected_vietnamese":true,"text":"Nắp hộp có gioăng cao su chống tràn."}
+{"id":"size","expected_vietnamese":true,"text":"Bảng kích cỡ thiếu số đo vòng eo."}
+{"id":"deposit","expected_vietnamese":true,"text":"Khoản đặt cọc được trừ vào tiền hàng."}
+{"id":"custom_order","expected_vietnamese":true,"text":"Đơn đặt riêng cần duyệt mẫu trước khi sản xuất."}
+{"id":"packaging_fee","expected_vietnamese":true,"text":"Giá niêm yết chưa gồm phí đóng kiện."}
+{"id":"returns","expected_vietnamese":true,"text":"Hàng lỗi được đổi trong bảy ngày kể từ lúc nhận."}
+{"id":"damage","expected_vietnamese":true,"text":"Kiện hàng móp góc nhưng đồ bên trong còn nguyên."}
+{"id":"zipper","expected_vietnamese":true,"text":"Người mua chê khóa kéo bị kẹt sau vài lần dùng."}
+{"id":"accessories","expected_vietnamese":true,"text":"Đơn giao thiếu phụ kiện đi kèm."}
+{"id":"color","expected_vietnamese":true,"text":"Một khách nhận xét màu thực tế nhạt hơn ảnh."}
+{"id":"english_payment","expected_vietnamese":false,"text":"Nguồn ghi payment terms subject to credit approval."}
+{"id":"english_freight","expected_vietnamese":false,"text":"Phí vận chuyển: freight collect, duties excluded."}
+{"id":"english_refund","expected_vietnamese":false,"text":"Đơn hàng có buyer protection and guaranteed refund."}
+{"id":"english_tracking","expected_vietnamese":false,"text":"Nguồn mô tả đường may chắc chắn. Tracking pending."}
+{"id":"french_seam","expected_vietnamese":false,"text":"Les coutures sont irrégulières près de la fermeture."}
+{"id":"french_packaging","expected_vietnamese":false,"text":"Người mua nhận xét l’emballage était abîmé à l’arrivée."}
+{"id":"spanish_deposit","expected_vietnamese":false,"text":"El anticipo se descuenta del importe total."}
+{"id":"spanish_returns","expected_vietnamese":false,"text":"Điều kiện mua: devolución gratuita dentro de siete días."}
+{"id":"chinese_terms","expected_vietnamese":false,"text":"Trang ghi 运费另计，定制商品不退换。"}
+{"id":"japanese_zipper","expected_vietnamese":false,"text":"Nhận xét cho biết ファスナーがすぐ壊れました。"}
+{"id":"korean_terms","expected_vietnamese":false,"text":"Người bán ghi 배송비는 별도이며 반품은 불가합니다."}
+{"id":"russian_terms","expected_vietnamese":false,"text":"Điều khoản ghi предоплата обязательна, доставка оплачивается отдельно."}
