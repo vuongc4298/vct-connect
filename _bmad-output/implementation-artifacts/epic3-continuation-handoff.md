@@ -95,3 +95,8 @@ Continuation implementation/release evidence: `story31-v2-release-acceptance.md`
 Implementation and regression review are complete; the live Chinese gate remains
 open. Earlier preparation-only and demo freeze notes above are historical; the
 latest approved v2 release preserves the saved v1 fallback and prior dispatches.
+
+The subsequent approved one-call local language diagnostic failed
+SCHEMA_INVALID/findings before language validation and retained no rejected
+prose. See `story31-language-diagnostic-result.md`; a safe schema-subtype helper
+is prepared offline, but its distinct paid followup remains unapproved.

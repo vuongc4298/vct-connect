@@ -1,7 +1,7 @@
 # Proposed bounded language diagnostic
 
-Status: proposed; requires operator approval. No further paid request authorized
-by this proposal until approval is received.
+Status: approved by the operator on 2026-10-05. Exactly one fresh diagnostic
+request is authorized with the bounds and retention policy below.
 
 The single v2 rehearsal failed `NON_VIETNAMESE_PROSE / findings.text`.
 Rejected content was not retained, so the current evidence cannot distinguish
@@ -33,3 +33,8 @@ Proposed next experiment:
 This changes the rejected-output retention boundary and authorizes a new paid
 experiment. The earlier approved plan requires an explicit bounded/redacted
 policy for such storage, which is why this proposal needs approval.
+
+The operator approved and the single authorized call completed. See
+`story31-language-diagnostic-result.md`. It failed schema validation before
+language validation and saved no rejected prose. This authorization is consumed;
+any additional paid diagnostic needs a fresh approval.
