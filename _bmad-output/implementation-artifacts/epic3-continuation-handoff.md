@@ -1,0 +1,92 @@
+# Epic 3 continuation after the Oct 6 demo priority change
+
+Prepared 2026-10-05. Verified pushed demo baseline:
+`29344d20da6d861439dcdc1c79306f5b1e3d2630`, branch `codex/oct6-text-report`.
+This is a reconciliation and starting intent, not a completed story or epic.
+
+## What the demo already delivered
+
+- Backend `LLMProvider` protocol and YEScale adapter, bounded structured output,
+  selected public evidence projection, exact requested/returned model checks,
+  thinking control, deadlines and conservative spending reservations.
+- Immutable snapshot-linked report jobs, persistent dispatch ledger, one app
+  dispatch per report job, lease fencing, uncertain-state recovery and owner-scoped
+  saved report retrieval. Unknown actual costs remain unknown.
+- Vietnamese summary, evidence-linked observations/inferences, limitations and
+  pre-order actions, independent report progress, extraction fallback and reopen.
+- Deployed signed-in 1688 saved-page interpretation and report acceptance. Citation
+  E2 and exact persisted report reopening passed the final presentation rehearsal.
+- UI source restoration for uploaded, public and extension saved analyses.
+
+Reuse `backend/app/interpretation/{provider,contracts,service}.py`,
+`backend/app/storage.py`, `backend/db/migrations/0010_text_reports.py`,
+`backend/worker/main.py`, `frontend/apps/web/app/text-report.tsx` and existing
+report/API contracts. Do not build a second gateway or duplicate dispatch ledger.
+
+## Reconcile original stories without claiming full completion
+
+| Story | Existing contribution | Remaining original acceptance |
+| --- | --- | --- |
+| 3.1 YEScale supplier interpretation | Adapter, structured Vietnamese text report, versions/settings/usage/latency/reservation and backend-only credentials exist. | Chinese interpretation has not passed. Invalid-output diagnostics are coarse; rejected response/output needed for evaluation is not retained. Original confidence output needs a distinct contract and meaning; do not substitute a model's self-rating for calibrated assessment confidence. Actual cost is unknown where no trustworthy billing value is supplied. |
+| 3.2 Deterministic review signals | Selected review bodies can reach interpretation; extracted evidence IDs/provenance exist. | Complaint grouping, duplicate/timing/rating-text/volume signals and review reliability are not implemented. Missing dates/ratings must remain unknown. |
+| 3.3 Semantic/structured review interpretation | Provider, evidence projection and run metadata can be reused. | Embeddings, near-duplicate clustering, complaint category/severity and manipulation/reliability outputs are pending; original dependencies on 3.1 and 3.2 remain. |
+| 3.4 Factory/trader evidence | Existing extraction provenance and provider interfaces are reusable. | Direction/strength/reliability aggregation, contradictory/self-claim handling, likelihood/confidence and uncertainty are pending. Trader status alone must not add risk. |
+| 3.5 Risk/Confidence/Coverage | Source extraction coverage exists; illustrative fixture scores are separate. | Full deterministic versioned assessment and seven dimensions, thresholds, manipulation adjustments and approved critical floors remain pending. Owner approval of critical evidence eligibility is required by the original ticket. |
+| 3.7 Complete worker assessment | Snapshot-linked interpretation/report processing and replay protections exist. | Review/factory/risk integration, assessment/run/finding/score storage and the complete REPORTING handoff are pending. Current extraction can complete before the separate text-report job; preserve compatibility and explicitly reconcile this with the original locked-job assessment lifecycle. |
+| 3.6, 3.9 Media | No demo contribution to media analysis. | Permitted image/video interpretation, retention/provenance and worker assessment enrichment remain pending. |
+| 3.8 Refactor sweep | Focused demo corrections were reviewed and tested. | Epic-wide cleanup after all prerequisites is pending. |
+
+Reporting Epic 4 likewise has a reusable text-report UI, authorized retrieval,
+progress, limitations and citations. Full assessment-backed risk/confidence/
+coverage, guest-safe assessment projection and complete reporting acceptance
+are not done. Do not mark 3.1, 3.7, Epic 3 or Epic 4 done from demo evidence.
+
+## Recommended next implementation: finish the interpretation foundation
+
+Use `bmad-build` with original ticket 3.1 and this handoff as additional context.
+Limit the first continuation to safe diagnostic observability and reproducible
+Chinese-input acceptance; retain the already working provider/persistence path.
+
+1. Distinguish schema, citation, unsupported-score and Vietnamese-prose validation
+   failures internally with bounded enumerated reasons; maintain safe user-facing
+   failure states and never log credentials or unbounded source/provider payloads.
+2. Establish a bounded, redacted diagnostic/evaluation output policy before
+   retaining rejected model text. Existing production failures cannot be diagnosed
+   conclusively from INVALID_OUTPUT metadata alone; do not guess the cause or
+   weaken validation to make an unobserved response pass.
+3. Exercise authentic sanitized Chinese title/review input with offline regression
+   fixtures first. A fake-provider test proves integration, not live translation
+   quality. Require a separate reviewed live result for substantive acceptance.
+4. Reconcile original 3.1 confidence/run-output requirements in its build plan.
+   Keep interpretation uncertainty distinct from deterministic risk confidence.
+5. After the foundation's chosen acceptance passes, build original 3.2, then 3.3
+   and 3.4 subject to their dependencies, then owner-gated 3.5 and complete 3.7.
+   Media and the epic refactor follow their original prerequisites.
+
+## Live evidence and constraints to preserve
+
+- READY 1688 report: `36677413-84b7-45b5-8255-828fbe4cd0c8`. The product title
+  is English, so it is not proof of Chinese translation quality.
+- Chinese attempt `c40adda8-aba1-42c2-8306-12f8604f1abc`: UNCERTAIN /
+  PROVIDER_TIMEOUT, one dispatch, retained reservation $0.0021396.
+- Fresh Chinese attempt `5d86a995-5687-4b60-9e18-b31c87216d7e`: FAILED /
+  INVALID_OUTPUT, exact expected returned model, 1052 input / 1888 output,
+  49377ms, one dispatch, retained reservation $0.0021396. Neither attempt is
+  relabeled or replayed. Capture timestamp remains unknown.
+- Candidate `deepseek-v4.1-flash`, expected return
+  `deepseek-v4-1-flash-260910`, operator-observed version, thinking disabled.
+  This is a demo candidate, not a human-benchmark-selected production model or
+  established immutable gateway version guarantee.
+- Existing approved ceilings: $2 total / $0.10 per call, no account top-ups;
+  deployed ledger cap $0.09, deadline 120 seconds, output cap 2400 tokens.
+  Preserve reservations for uncertain spend. Latest displayed balance $0.092
+  is rounded and does not authorize resetting the ledger or additional retries.
+- No new paid generation is part of this preparation. Any subsequent live
+  diagnostic must be deliberate, account for retained spend and stay within
+  approved limits. Do not silently change models or auto-replay failed jobs.
+
+Original ticket requirements and dependency graph remain authoritative. The
+original checkout's edited priority documents and untracked operational artifacts
+are preserved. This handoff records contributions without rewriting ticket truth.
+Detailed evidence: `activation-oct6-text-report.md`; presentation fallback:
+`oct6-demo-walkthrough.md`.
