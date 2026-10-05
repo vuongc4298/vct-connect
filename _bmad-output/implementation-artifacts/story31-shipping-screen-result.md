@@ -12,4 +12,22 @@ Local code commit2124b19537a96a1447be153cc45371136200ba63, not pushed. Backend d
 
 Combined retained reservations after diagnostic: cloud $0.01550865 plus local $0.02385210 = $0.03936075, within $0.09. Single diagnostic authorization consumed. Story3.1 still needs a complete accepted owner-scoped live report, substantive fixture-grounded interpretation, confidence labeling and identical reopen. No further paid request is included in this completed diagnostic.
 
-A separate one-request owned cloud acceptance authorization has been requested after the reviewed release. It is pending and no additional provider request has run. The exact local diagnostic failure remains preserved, not relabeled or replayed.
+The operator separately approved one additional owned cloud acceptance request, and it ran once after the healthy reviewed release. That approval is now consumed. The exact local diagnostic failure remains preserved, not relabeled or replayed.
+
+
+## Separately approved acceptance outcome
+
+Owned analysis7de59f78-c93a-4764-ae51-410dbe1df587, snapshot e34e4ded-3259-4a70-86f6-7c3dd61b5c31, dispatch77b2d00e-aec4-401f-a508-6f93ec66e921, request20261005201253839206928PCNj48XT. FAILED / INVALID_OUTPUT / NON_VIETNAMESE_PROSE / findings.text. Complete provider response, input1597/output889 tokens, latency20058ms, validation_version vi-prose.v2, compact prompt vi-text.v5 and exact expected returned model. No rejected prose retained from cloud, so this new field's cause remains unknown. Owner-scoped reopen preserves the failure and extraction; screenshot tmp/story31-screen2-language-rejection.jpg. No retry or additional diagnostic occurred.
+
+Reservation $0.00251655, configured-rate usage estimate $0.00077295, displayed billing detail charge $0.0005 and rounded balance $0.0817; actual invoice cost unknown/null. Final cloud ledger8 retained dispatches / $0.01802520, local reserves $0.02385210, combined $0.04187730 within $0.09. Cloud pending zero. Both this turn's authorized calls consumed, reservations together $0.00503310. No prior failures, snapshots or ledgers relabeled/reset.
+
+## Offline coverage probes
+
+To avoid another blind paid diagnostic, checked12 agent-curated synthetic Vietnamese fixture-related examples and6 foreign/mixed-language negatives. This is a small development check, not an independent labeled benchmark or population accuracy estimate. Two Vietnamese examples were falsely rejected; all6 negatives rejected. Cases are independently written synthetic prose, never private model output:
+
+- `Bề mặt bao bì trơn nhẵn.`
+- `Bao bì được mô tả là trơn nhẵn khi sờ.`
+
+These demonstrate remaining dictionary coverage gaps. They do not establish the missing cloud finding's cause. Full probes retained locally in tmp/story31-screen2-offline-probes.json. No further production guard change or paid request was made after acceptance.
+
+Next work should build and review a broader offline language-screen corpus from supported source descriptions, seller claims, review wording and mixed-language adversarial cases, then evaluate a systematic vocabulary/identification approach before another paid acceptance attempt. Preserve all script, citation, credential and score protections. Story3.1 remains partial, with READY-report interpretation/confidence/identical-reopen acceptance still open.
