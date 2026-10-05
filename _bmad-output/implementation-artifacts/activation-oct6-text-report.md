@@ -122,7 +122,7 @@ preserving operational evidence. Backend configuration now additionally supports
 YESCALE_MODEL=deepseek-v4.1-flash
 YESCALE_EXPECTED_RETURNED_MODEL=deepseek-v4-1-flash-260910
 YESCALE_THINKING=disabled
-TEXT_REPORT_DEADLINE_SECONDS=90
+TEXT_REPORT_DEADLINE_SECONDS=120
 ```
 
 Empty expected-returned ID defaults to the requested ID. Empty thinking omits
@@ -163,3 +163,35 @@ Four provider calls total; sum of displayed charges is approximately $0.0035.
 Model compatibility and saved-response validation are established. Consistent
 live READY completion remains unverified due to the final upstream 503; retain
 extraction-only fallback and the clearly labeled validated offline report.
+
+Operator subsequently approved increasing the deadline and proceeding with a
+fresh rehearsal, then route/backup investigation if needed. Active rehearsal
+deadline is now 120 seconds, the existing supported cap. The 90-second values
+above describe historical calls. Extended rehearsal reserves against a
+conservative $0.094 balance cap, preserving the prior uncertain reservation;
+existing jobs are never requeued.
+
+## Extended rehearsal succeeded
+
+The fresh 120-second rehearsal reached READY on 2026-10-05. Analysis
+`36065625-f59a-4493-96cf-e643d19b19ec`, immutable snapshot
+`13edcde9-576c-473f-9320-de9fe6cfce4a`, gateway request
+`20261005132445186801329cw3ZGF7X`. Returned exact expected version
+`deepseek-v4-1-flash-260910`, thinking disabled, 860 input/1353 output tokens,
+observed latency 42015ms, reserve $0.0020292. Schema, citations, Vietnamese
+prose and score checks passed; original extraction was preserved. A fresh Store
+reopened the exact persisted report for its owner; the schema has one dispatch
+and another worker poll found no queued work. The previous uncertain job and its
+reserve remain intact. This successful call finished well below 90s, so the
+timeout increase cannot be claimed as the cause of upstream recovery.
+
+YEScale dashboard confirms successful Starter call and displayed $0.0009 charge.
+Five total requests, four displayed charges totaling approximately $0.0044;
+the earlier 503 displays $0.00. No backup model was needed. Readable local
+preview: `tmp/live-vietnamese-report-20261005.md`; retained report/ledger evidence:
+`tmp/live-yescale-rehearsal-20261005-extended.json`.
+
+Live local READY persistence/reopen acceptance is now established for this
+bounded saved evidence. Azure deployment, real Clerk browser acceptance and
+Chinese-to-Vietnamese translation acceptance remain pending. Use the successful
+saved report and extraction fallback if gateway availability varies.
