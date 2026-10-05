@@ -181,6 +181,62 @@ def test_vietnamese_source_quantities_and_quoted_source_text_remain_valid():
     assert validate_report(json.dumps(data, ensure_ascii=False), [{"id": "E1"}])["summary"] == data["summary"]
 
 
+@pytest.mark.parametrize("quoted", [
+    "'Women's Autumn and Winter Retro Elegant Knitted Texture Fabric V Neck Slim Long Sleeve Long Dress'",
+    "‘Women's Autumn and Winter Long Dress’", "‘Women’s Autumn and Winter Long Dress’", "'中国商品'",
+    "'Girls' Autumn and Winter Retro Elegant Knitted Texture Fabric V Neck Slim Long Sleeve Long Dress'",
+    "‘Girls’ Autumn and Winter Long Dress’",
+])
+def test_single_quoted_source_titles_preserve_vietnamese_context(quoted):
+    data = json.loads(content())
+    data["findings"][0]["text"] = f"Nguồn liệt kê một sản phẩm: {quoted}."
+    evidence = [{"id": "E1", "value": [{"title": quoted[1:-1].replace("’", "'")}]}]
+    assert validate_report(json.dumps(data, ensure_ascii=False), evidence)["findings"] == data["findings"]
+
+
+@pytest.mark.parametrize("prose", [
+    "'The supplier is reliable and should accept an order.'",
+    "Nguồn có thông tin '中国商品'. The supplier is reliable.",
+    "Nguồn liệt kê một sản phẩm: 'Women's Autumn and Winter Long Dress.",
+    "Nguồn có thông tin supplier's terms and buyer's order are reliable.",
+])
+def test_single_quotes_do_not_hide_unquoted_foreign_prose(prose):
+    assert not screen_vietnamese(prose)
+
+
+def test_single_quotes_do_not_hide_unsupported_scores():
+    data = json.loads(content())
+    data["summary"] = "Nguồn hiển thị 'Điểm rủi ro là 72'."
+    with pytest.raises(ValueError, match="UNSUPPORTED_SCORE"):
+        validate_report(json.dumps(data, ensure_ascii=False), [{"id": "E1"}])
+
+
+@pytest.mark.parametrize("prose", [
+    "Nguồn có thông tin '中国商品'and the supplier is reliable '中国商品'.",
+    "Nguồn có thông tin ‘中国商品’and the supplier is reliable ‘中国商品’.",
+    "Nguồn liệt kê một sản phẩm: 'The supplier is reliable and should accept an order'.",
+])
+def test_single_quoted_source_matching_keeps_foreign_prose_visible(prose):
+    data = json.loads(content())
+    data["findings"][0]["text"] = prose
+    with pytest.raises(ValueError, match="NON_VIETNAMESE_PROSE"):
+        validate_report(json.dumps(data, ensure_ascii=False), [{"id": "E1", "value": "中国商品"}])
+
+
+@pytest.mark.parametrize("values", [["中国'商品'中国", "商品"], ["商品", "中国'商品'中国"]])
+def test_nested_source_apostrophes_do_not_depend_on_evidence_order(values):
+    data = json.loads(content())
+    data["findings"][0]["text"] = "Nguồn liệt kê một sản phẩm: ‘中国'商品'中国’."
+    assert validate_report(json.dumps(data, ensure_ascii=False), [{"id": "E1", "value": values}])
+
+
+def test_source_removal_cannot_manufacture_another_source_match():
+    data = json.loads(content())
+    data["findings"][0]["text"] = "Nguồn có thông tin '中国'Autumn'商品'."
+    with pytest.raises(ValueError, match="NON_VIETNAMESE_PROSE"):
+        validate_report(json.dumps(data, ensure_ascii=False), [{"id": "E1", "value": ["Autumn", "中国商品"]}])
+
+
 def test_unicode_escaped_synthetic_key_cannot_be_persisted_as_decoded_prose():
     data = json.loads(content())
     data["summary"] = data["summary"].replace(".", " và mã private-key.")

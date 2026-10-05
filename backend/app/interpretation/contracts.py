@@ -64,18 +64,40 @@ def screen_vietnamese(text: str) -> bool:
     return checked
 
 
+def _source_strings(value):
+    if isinstance(value, str) and value:
+        yield unicodedata.normalize("NFC", value).casefold()
+    elif isinstance(value, dict):
+        for item in value.values():
+            yield from _source_strings(item)
+    elif isinstance(value, list):
+        for item in value:
+            yield from _source_strings(item)
+
+
 def validate_report(content: str, evidence: list[dict]) -> dict:
     report = VietnameseReport.model_validate_json(content)
     references = {entry["id"] for entry in evidence}
     if any(ref not in references for finding in report.findings for ref in finding.citations):
         raise ValueError("UNKNOWN_CITATION")
     prose = [report.summary, *(finding.text for finding in report.findings), *report.limitations, *report.actions]
+    source_texts = set(_source_strings(evidence))
+    quoted_sources = {quoted for source in source_texts
+                      for variant in {source, source.replace("'", "’"), source.replace("’", "'")}
+                      for quoted in (f"'{variant}'", f"‘{variant}’")}
+    source_pattern = "|".join(re.escape(quoted) for quoted in sorted(quoted_sources, key=lambda value: (-len(value), value)))
     for text in prose:
         normalized = unicodedata.normalize("NFC", text)
         if re.search(r"(?:(?:điểm|chỉ số|mức)\s+(?:rủi ro|tin cậy)|độ tin cậy|risk score|confidence score)"
                      r"[^.!?;\n]{0,120}?(?:\d|\b(?:một|hai|ba|bốn|năm|sáu|bảy|tám|chín|mười|trăm)\b)",
                      normalized, re.IGNORECASE):
             raise ValueError("UNSUPPORTED_SCORE")
-        if not screen_vietnamese(normalized):
+        # Only exact supplied source text may use ambiguous single quotes.
+        # Matching the complete source handles possessives without swallowing
+        # intervening prose between two quoted titles.
+        # One pass over original text prevents edits from manufacturing a new
+        # match; longest-first matching preserves nested source apostrophes.
+        screen_input = re.sub(source_pattern, " ", normalized.casefold()) if source_pattern else normalized
+        if not screen_vietnamese(screen_input):
             raise ValueError("NON_VIETNAMESE_PROSE")
     return report.model_dump()
