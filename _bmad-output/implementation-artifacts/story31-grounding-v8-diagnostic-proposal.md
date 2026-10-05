@@ -1,0 +1,13 @@
+# Proposed bounded grounding v8 diagnostic — 2026-10-06
+
+Status: pending explicit approval. The completed acceptance's one-request authorization is consumed. No fresh diagnostic fence, provider dispatch or rejected-content capture has run.
+
+Run one fresh local diagnostic capped at $0.01 using the authentic sanitized Taobao fixture with its original upload bytes, current source projection, vi-text.v8 / text-report.v2 / vi-prose.v4. Preserve deepseek-v4.1-flash, expected returned deepseek-v4-1-flash-260910, thinking disabled, 120-second deadline, 2,400-token output cap and no retry. Do not replay the failed cloud job or automatically run another acceptance.
+
+Retain only the first rejected findings.text, redacted, maximum 1,600 characters and 8,000 UTF-8 bytes, in tmp/story31-resolution-call-grounding-v8.private.json. This path is Git ignored and currently absent. Save no entire response, headers, credentials, HTML, reviewer/account identifiers, URLs or contacts. Keep existing rejected cloud prose discarded. If validation rejects elsewhere, schema or credential checks fail, or redaction cannot safely establish the limit, keep safe metadata only. READY yields no rejected-prose capture; inspect accepted meaning separately without claiming that it explains earlier discarded wording.
+
+The prepared findings-only wrapper passes offline checks without database access, key lookup, provider calls or capture. It withholds markup, credential/account-shaped tokens and long identifiers, rejects duplicated/credential-echoed JSON, redacts contact fields, checks the limits, and requires the safe settlement reason/location to match before writing the private capture. The underlying broader helper does not authorize other prose fields. A fresh exclusive fence and isolated schema must prevent a second dispatch; retain uncertain reservations and all prior results/private artifacts.
+
+Verified existing cloud/local retained reservations total $0.05855910. Maximum configured reservation $0.0051936 fits $0.01 and would keep combined retained at most $0.06375270, below $0.09. Assert the prior local ledger equals $0.02668935 before dispatch; stop on changed accounting. Keep reservation, configured usage estimate, displayed gateway charge and unknown invoice actual distinct. No top-up, ledger reset or automatic retry is included.
+
+Purpose: obtain concrete rejected wording if the failure recurs, distinguishing actual foreign prose from an evidenced screen false positive before changing validation. This nondeterministic fresh request may return READY instead, as the prior local diagnostic did. Record that outcome and stop after one call. Any implementation correction, deployment or additional paid acceptance is outside this proposal.
