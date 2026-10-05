@@ -1,7 +1,9 @@
 # Oct 6 live report activation
 
 Implementation: local commit `541d99e`, branch `codex/oct6-text-report`.
-Activation and paid calls remain disabled while operator information is pending.
+Azure activation completed on 2026-10-05 after migration and queue audit.
+Owned Clerk browser acceptance remains pending. Earlier disabled states below
+describe the historical rehearsal stages.
 
 ## Verified target
 
@@ -195,3 +197,45 @@ Live local READY persistence/reopen acceptance is now established for this
 bounded saved evidence. Azure deployment, real Clerk browser acceptance and
 Chinese-to-Vietnamese translation acceptance remain pending. Use the successful
 saved report and extraction fallback if gateway availability varies.
+
+## Azure activation: 2026-10-05
+
+- Configuration commit `ecb1b9c`; backend image digest
+  `sha256:4cbe10510b68165f3b40d33191cc41dcf706fc3a237f6d228883d6fb9e2acaed`;
+  web image digest
+  `sha256:bae4b3d1460cf52bcad7fb38b588b7ea8093bcda76ad26c2c13974e29689347a`.
+- Built using the existing deployed Clerk publishable key. Report tests in the
+  actual backend image: 92 passed; authentication tests: 32 passed. Bicep
+  compiled; deployment script tests: 20 passed. Quick review finding about
+  subsequent deployments disabling reports was patched.
+- Full-template what-if included unrelated database/network default changes.
+  Used narrow application image and worker configuration updates instead,
+  preserving infrastructure, identity permissions and the existing queue.
+- Stopped analysis executions and dispatcher replicas before migration.
+  Private migration execution `vct-connect-dev-migrate-btey0en` succeeded.
+  Private audit execution `vct-connect-dev-migrate-hw2jdf2` succeeded: zero
+  dispatches/reservations and zero pending historical owned extractions.
+  Four queued historical reports were held as UNAVAILABLE/PRE_ACTIVATION_HOLD;
+  three existing reports were INSUFFICIENT. No extraction or ledger was deleted.
+- Dispatcher revision `vct-connect-dev-dispatcher--0000018` is running. Analysis
+  job is Event-triggered on the existing `vct-connect-standard/vct-analyse`
+  queue, polling every 30 seconds, max three executions. Switching to Manual
+  had cleared its event configuration; the reviewed original rule was restored.
+- Both workers have a backend-only Key Vault reference to `yescale-api-key`,
+  thinking disabled, requested `deepseek-v4.1-flash`, exact expected returned
+  `deepseek-v4-1-flash-260910`, 120-second deadline, 2400 output token cap and
+  $0.09 lifetime ledger budget. The $0.10 per-call ceiling remains; the smaller
+  total cap accounts conservatively for funded balance and retained local
+  reservations. No top-up or automatic replay was performed.
+- Web availability, unauthenticated rejection and private API ingress checks
+  passed. Guest fixture completed once through the deployed queue with
+  cookie-scoped status; no paid report is generated for a guest.
+  Signed-in browser saved-page import/report/reopen still requires the
+  operator's fresh Clerk login in the opened VCT Connect tab.
+- Operational rollback references, deployment parameters, audit output and
+  scripts are retained under `tmp/azure-report-*`; secret values are absent.
+- Dependency audit reports eight existing workspace advisories (seven high,
+  one moderate): Clerk extension dependency chain and Next's PostCSS build
+  dependency. Dependency upgrade is separate follow-up; the web flow does not
+  use the extension bundle or compile user-supplied CSS. This rollout did not
+  claim a clean dependency audit.
