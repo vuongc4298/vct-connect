@@ -293,3 +293,53 @@ Operational evidence is retained in `tmp/cloud-report-acceptance-logs.json`,
 this acceptance demonstrates Vietnamese interpretation of the saved evidence,
 not Chinese-title translation quality. Source freshness remains unknown and
 no computed risk or confidence score is presented.
+
+## Reopened source correction: 2026-10-05
+
+Commit `8799ac8` restores the source URL on the first owned response for every
+extraction method and removes the extension-only assumption for saved links.
+Subsequent polling preserves form edits. All 80 frontend tests and typecheck
+passed; independent quick review found no actionable issues. The production web
+build succeeded using the existing Clerk public configuration.
+
+Deployed web digest
+`sha256:a5954af3acaded647bd2d0a354069213e4b6ace9e8eab665a5eec602931a228c`,
+revision `vct-connect-dev-web--0000010`: Healthy, Running, Provisioned.
+The signed-in saved report reload displays its actual source
+`https://detail.1688.com/offer/996518024136.html`, no fixture badge, and exactly
+the same persisted report section. No generation was submitted during this check.
+Screenshot: `tmp/reopened-report-source-fixed.jpg`.
+
+Demo status: the selected signed-in vertical journey is verified. Presentation
+walkthrough and saved-result fallback are recorded in `oct6-demo-walkthrough.md`.
+Chinese title/review interpretation was rehearsed separately with the
+existing sanitized Taobao product capture; this does not close the full analysis,
+reporting, extraction or pilot epics. The original checkout's edited development
+pipeline is preserved rather than overwritten from this worktree's older copy.
+
+## Chinese evidence rehearsal: explicit upstream failure
+
+Used `backend/tests/fixtures/taobao_item_1076425861755.html`, derived from the
+operator's authenticated capture with documented provenance in
+`backend/tests/fixtures/taobao-provenance.md`. Original capture time is unknown.
+This source has authentic Chinese product/review text; account/session state and
+reviewer identities are removed. The model projection selects bounded public
+title, prices, metrics, delivery text and review bodies, excluding supplier IDs,
+identity, contacts and raw HTML. One deliberate submission was made under the
+existing approved bounds.
+
+Analysis `c40adda8-aba1-42c2-8306-12f8604f1abc`, immutable snapshot
+`39d6a669-0384-43c2-8ed1-1837c0b7ad37`: extraction COMPLETED/PARTIAL; report
+UNCERTAIN/PROVIDER_TIMEOUT after 120001ms. Read-only private inspection execution
+`vct-connect-dev-migrate-3xf10w0` confirmed exactly one dispatch
+`9fe5a1fe-d800-49c5-a552-39ae1c589fd0`, reserve $0.0021396 retained, actual cost
+unknown/null. Logs retained in `tmp/cloud-chinese-inspect-logs.json`.
+
+YEScale detail at 2026-10-05 14:59:14 Asia/Bangkok, request abbreviated suffix
+`H3JJ03`, reports request_failed, 503/do_request_failed/transient_upstream,
+latency 120084ms, zero usage and displayed $0.00, without a billing charge ledger.
+Gateway metadata reports retry_count 1; this is an upstream gateway retry, not
+an additional application dispatch. No application replay, relabeling or reserve
+deletion occurred. Chinese translation acceptance remains unverified because
+no report returned. Use the already verified saved Vietnamese report for the
+demo; the Chinese extraction is retained as a second evidence example.
