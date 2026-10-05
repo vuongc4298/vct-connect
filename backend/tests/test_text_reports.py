@@ -12,6 +12,21 @@ from backend.app.interpretation.contracts import screen_vietnamese
 from backend.app.interpretation.provider import ReportConfig, YEScaleProvider, ProviderError
 from backend.app.interpretation.service import process_report_once, prepare_evidence, bounded_generate
 from backend.app.interpretation.service import minimize
+from scripts.evaluate_report_prose import evaluate
+
+
+@pytest.mark.parametrize("text,reason", [
+    ("Nguồn có thông tin sản phẩm. " * 60, "SCHEMA_INVALID"),
+    ("Nguồn hiển thị điểm rủi ro 5.", "UNSUPPORTED_SCORE"),
+])
+def test_offline_probe_separates_non_language_rejections(tmp_path, text, reason):
+    fixture = tmp_path / "probe.jsonl"
+    fixture.write_text(json.dumps({"id": "other", "expected_vietnamese": True, "text": text}), encoding="utf-8")
+    result = evaluate(fixture)
+    assert result["cases"][0]["screen_accepts"]
+    assert result["cases"][0]["report_rejection"]["reason"] == reason
+    assert result["report_language_mismatches"] == []
+    assert result["report_other_rejections"] == ["other"]
 
 
 def configured(**kwargs):

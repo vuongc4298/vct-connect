@@ -155,3 +155,10 @@ These entries process the ten held first-instance review deferrals once. Later c
 - source_plan: `_bmad-output/implementation-artifacts/plan-story31-confidence-basis-guidance.md`
   summary: Existing unsupported-score regex can reject qualitative confidence explanations that mention evidence quantities or ordinary number words.
   evidence: Offline synthetic confidence-basis probes using a confidence-label phrase followed by 2 reviews or một phần trigger UNSUPPORTED_SCORE without asserting a numeric score. Prompt guidance v6 avoids the ambiguous construction, but the guard itself remains conservative. A broader validated score-assertion design is separate; missing rejected cloud prose cannot establish historical causes.
+
+- source_plan: `_bmad-output/implementation-artifacts/plan-story31-language-contract-investigation.md`
+  summary: Revise the Vietnamese-language contract for short natural clauses and mixed-language boundaries before further live acceptance.
+  evidence: Targeted25-case synthetic probe reproduces6 Vietnamese false rejections and2 foreign/mixed false acceptances through both screen_vietnamese and validate_report; existing57 cases still match labels. Small vocabulary and sentence coverage do not establish robust language identification. The missing v7 response's exact cause remains unknown; investigation does not authorize a production threshold change.
+- source_plan: `_bmad-output/implementation-artifacts/plan-story31-language-contract-investigation.md`
+  summary: Bind foreign quotation exemptions to supplied evidence while preserving legitimate source names and identifiers.
+  evidence: unprovided_english_quote passes validate_report with evidence E1 containing no source text because double-quoted content is stripped unconditionally. Independent straight/curly-quote probes reproduce this pre-existing boundary. Source quotation policy and meaningful negative tests must be settled before correction; no guard change in the approved offline investigation.

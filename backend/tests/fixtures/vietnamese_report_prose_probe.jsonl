@@ -1,0 +1,25 @@
+{"id": "review_texture", "expected_vietnamese": true, "text": "Giấy hơi xốp."}
+{"id": "review_thickness", "expected_vietnamese": true, "text": "Độ dày bình thường."}
+{"id": "review_daily", "expected_vietnamese": true, "text": "Dùng hằng ngày vẫn ổn."}
+{"id": "review_value", "expected_vietnamese": true, "text": "Giá hợp lý."}
+{"id": "review_praise", "expected_vietnamese": true, "text": "Chất lượng tốt, dùng suốt."}
+{"id": "review_packaging", "expected_vietnamese": true, "text": "Bao bì nhẵn khi chạm."}
+{"id": "title_layers", "expected_vietnamese": true, "text": "Khăn giấy rút 100 lần, ba lớp."}
+{"id": "starting_before", "expected_vietnamese": true, "text": "Giá trước ưu đãi từ 3,35 nhân dân tệ."}
+{"id": "starting_after", "expected_vietnamese": true, "text": "Giá sau ưu đãi từ 2,01 nhân dân tệ."}
+{"id": "fees_unknown", "expected_vietnamese": true, "text": "Phí vận chuyển chưa rõ."}
+{"id": "dispatch", "expected_vietnamese": true, "text": "Trung bình xuất hàng sau 23 giờ."}
+{"id": "dispatch_not_arrival", "expected_vietnamese": true, "text": "Đây là thời gian gửi hàng, chưa phải lúc nhận hàng."}
+{"id": "product_scope", "expected_vietnamese": true, "text": "Tỷ lệ đánh giá tốt của sản phẩm trong ba tháng gần đây."}
+{"id": "shop_scope", "expected_vietnamese": true, "text": "Cửa hàng hiển thị điểm 4,9 và tỷ lệ đánh giá của hội viên."}
+{"id": "sample", "expected_vietnamese": true, "text": "Chỉ đọc được hai nhận xét."}
+{"id": "review_count", "expected_vietnamese": true, "text": "Khoảng hai vạn đánh giá."}
+{"id": "brand_title", "expected_vietnamese": true, "text": "Tiêu đề ghi thương hiệu, chưa xác minh."}
+{"id": "suitability", "expected_vietnamese": true, "text": "Lời quảng cáo phù hợp cho trẻ nhỏ chưa được xác minh."}
+{"id": "scope_label", "expected_vietnamese": true, "text": "Sản phẩm."}
+{"id": "foreign_tail", "expected_vietnamese": false, "text": "Nguồn hiển thị sản phẩm; Shipping guaranteed."}
+{"id": "foreign_inline", "expected_vietnamese": false, "text": "Nguồn hiển thị sản phẩm, shipping guaranteed."}
+{"id": "independent_package_price", "expected_vietnamese": true, "text": "Giá mỗi thùng khác giá mỗi gói."}
+{"id": "independent_dispatch", "expected_vietnamese": true, "text": "Hàng thường rời kho sau một ngày."}
+{"id": "independent_wet_review", "expected_vietnamese": true, "text": "Một nhận xét nói giấy dễ rách khi ướt."}
+{"id": "unprovided_english_quote", "expected_vietnamese": false, "text": "Nguồn hiển thị sản phẩm \"The supplier is reliable\"."}
