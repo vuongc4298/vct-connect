@@ -71,6 +71,15 @@ cover the observed rejected phrases. 92 focused tests pass. The retained paid
 diagnostic response now passes validation offline; failed database jobs were
 not changed and no additional paid request was needed for this verification.
 
+Second quick review of the language correction: no actionable findings.
+Committed as 2762ce8. A subsequent fresh-analysis live completion check timed
+out at 90s; YEScale reconciled it as upstream 503/transient_upstream with no
+displayed charge. Kept UNCERTAIN and its reserve; no replay. Provider availability
+is an external limitation, not a reason to relax report validation. Final live
+READY persistence remains unverified; saved real diagnostic output validates
+offline after the correction. Four calls cost approximately $0.0035 at dashboard
+precision. Deployment remains pending.
+
 ## Verification
 
 - Run backend/tests/test_text_reports.py: all provider and service cases pass.

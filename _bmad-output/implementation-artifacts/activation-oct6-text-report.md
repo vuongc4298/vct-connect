@@ -132,3 +132,34 @@ identifiers and the thinking setting are retained in report metadata. These
 settings are local preparation, not Azure activation. The deliberate second
 rehearsal uses a new schema/analysis and accounts for the prior displayed charge
 with an effective balance cap of $0.0984; the first dispatch remains intact.
+
+## Adapter verification outcome
+
+Local commits: `fdebda3` (exact returned version/thinking) and `2762ce8`
+(ordinary Vietnamese purchasing vocabulary). Both quick reviews found no
+actionable findings. Final focused suite: 92 passed; isolated PostgreSQL suite:
+10 passed before the pure language-screen correction. No Azure deployment,
+public authentication/browser acceptance or Chinese translation acceptance.
+
+Second call: app FAILED/INVALID_OUTPUT, 860 input/1578 output, 26.36s; gateway
+ledger displays $0.0011 and balance after $0.0974. Third deliberate diagnostic:
+860 input/1190 output, 15.05s; dashboard charge $0.0008. Retained bounded report
+text established NON_VIETNAMESE_PROSE false positives on ordinary Vietnamese
+fabric/returns/payment/dispute terms. Six regression phrases pass after the
+lexicon correction; foreign-script/English/schema/citation/score guards remain.
+The same real diagnostic response passes all report checks offline, saved as
+`tmp/live-yescale-validated-report.json`. Failed jobs were not relabeled READY.
+
+Final fresh-analysis call: analysis `7e9342cf-dff7-4328-8793-97f80a1f5850`,
+dispatch `a0d7dbad-937f-4cb9-b484-b692d08ac05e`, local state UNCERTAIN /
+PROVIDER_TIMEOUT at 90016ms, reserve $0.0020292 retained. YEScale request detail
+at 2026-10-05 13:13:13 Asia/Bangkok (abbreviated ID ending Vqs7rx) reports
+request_failed, 503, do_request_failed, transient_upstream, retry_count 0,
+latency 89909ms, usage zero and displayed cost $0.00. No billing ledger charge
+is shown for that failed request. Product ledger remains uncertain with actual
+cost unknown; no paid replay or reserve deletion followed reconciliation.
+
+Four provider calls total; sum of displayed charges is approximately $0.0035.
+Model compatibility and saved-response validation are established. Consistent
+live READY completion remains unverified due to the final upstream 503; retain
+extraction-only fallback and the clearly labeled validated offline report.
