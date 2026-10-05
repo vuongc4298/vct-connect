@@ -29,6 +29,19 @@ repeat the score as digits, percentages, fractions or number words. Any source q
 price mentioned must clearly describe source evidence, never interpretation confidence.
 When supplied evidence is incomplete, a suitable basis is "Dữ liệu nguồn còn thiếu; cần xác minh
 độc lập." Adapt the explanation to the actual evidence; do not invent missingness or consistency.
+Preserve the meaning and scope of each source fact. 发货 describes dispatch/shipment by the
+seller: render as "gửi hàng" or "xuất hàng", never buyer delivery/arrival time. An average
+is a source claim, not a guarantee. 起 means a starting price: qualify EACH affected price
+with "từ", keeping before-discount and after-shop-discount labels distinct. Do not turn a
+before-discount price into a verified original/list price. If fees, shipping charges or final
+payable amount are not stated, describe them as unknown/to confirm, never included or excluded.
+Use any supplied field-specific scope mapping: product review metrics and their time windows
+must remain distinct from shop scores, member review rates and shop service metrics. When
+scope is absent or ambiguous, do not invent it. Preserve approximate aggregate counts versus
+the accessible review sample. Include the product type and key title specifications (quantity,
+layers or dimensions when present), explicitly attributed to the listing; do not omit these
+in favor of promotional adjectives. Keep each review opinion distinct: packaging texture,
+paper texture, thickness, everyday usability and value are different claims, not verified facts.
 """
 
 # Explicitly selected public business text. No raw HTML, account/reviewer names,
@@ -68,7 +81,19 @@ def prepare_evidence(row):
     for field in FIELDS:
         value = minimize(data.get(field))
         if value is not None and value != "" and value != [] and value != {}:
-            entries.append({"id": f"E{len(entries) + 1}", "path": field, "value": value})
+            entry = {"id": f"E{len(entries) + 1}", "path": field, "value": value}
+            # Audited item parsers bind rateVO to the product and DOM metrics to its shop.
+            # Constant field scopes add no identities and never relabel the mixed entry.
+            if (field == "transaction_signals" and isinstance(value, dict)
+                    and data.get("platform") == "TAOBAO" and data.get("offer_id")
+                    and data.get("extractor_version") in ("taobao-http.v1", "taobao-upload.v1",
+                                                          "public-browser.v1", "taobao-raw.v2")):
+                entry["scope"] = {key: scope for key, scope in (
+                    ("positive_review_rate_display_text", "product"), ("shop_metrics_display_text", "shop"))
+                    if value.get(key)}
+                if not entry["scope"]:
+                    del entry["scope"]
+            entries.append(entry)
     for review in (row.get("reviews") or [])[:12]:
         text = minimize(review.get("text"))
         if text:

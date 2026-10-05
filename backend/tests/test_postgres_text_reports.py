@@ -203,7 +203,10 @@ def test_authentic_chinese_projection_persistence_and_owner_reopen_offline(repor
     other = store.resolve_user("chinese-other")
     source = "https://item.taobao.com/item.htm?id=1076425861755"
     html = (Path(__file__).parent / "fixtures/taobao_item_1076425861755.html").read_text(encoding="utf-8")
-    payload = parse_taobao_page(html, source, extraction_method="USER_UPLOAD", uploaded_bytes=len(html.encode("utf-8")))
+    payload = parse_taobao_page(html, source, extraction_method="USER_UPLOAD", uploaded_bytes=html.encode("utf-8"))
+    assert payload["supplier_data"]["extractor_version"] == "taobao-upload.v1"
+    assert payload["raw_payload"]["provenance"] == "USER_PROVIDED_SAVED_PAGE"
+    assert payload["raw_payload"]["captured_at"] is None
     analysis_id = store.import_customer_page(source, owner["id"], payload, customer_limit=20, window_seconds=86400)
     original = store.get_for_user(analysis_id, owner["id"])
     # Hand-authored output checks the pipeline only, not live translation quality.
@@ -220,6 +223,7 @@ def test_authentic_chinese_projection_persistence_and_owner_reopen_offline(repor
     evidence = report["evidence"]
     assert evidence[0]["path"] == "products" and "洁柔抽纸" in evidence[0]["value"][0]["title"]
     assert evidence[1]["path"] == "price_information"
+    assert evidence[2]["scope"] == {"positive_review_rate_display_text": "product", "shop_metrics_display_text": "shop"}
     reviews = [entry["value"] for entry in evidence if entry["path"] == "reviews"]
     assert reviews == ["质量特别好，一直都用的这款抽纸", "外包装摸起来挺顺滑的，不过纸张质地稍微有些疏松，厚度一般。不过日常使用完全足够了，性价比不错"]
     exported = provider.calls[0][0][1]["content"]

@@ -418,7 +418,7 @@ def test_valid_confidence_is_application_labeled_and_prompt_versioned(score):
     assert store.state == "READY"
     assert store.report["self_reported_confidence"] == {
         **data["self_reported_confidence"], "provenance": "model_self_reported", "calibration": "uncalibrated"}
-    assert store.metadata["prompt_version"] == "vi-text.v6"
+    assert store.metadata["prompt_version"] == "vi-text.v7"
     assert store.metadata["schema_version"] == "text-report.v2"
     assert 'self_reported_confidence' in provider.calls[0][0][0]["content"]
 
@@ -506,7 +506,7 @@ def test_qualitative_confidence_basis_with_source_numbers_settles_ready(basis):
     assert store.state == "READY"
     assert store.report["self_reported_confidence"] == {
         "score": 0.65, "basis": basis, "provenance": "model_self_reported", "calibration": "uncalibrated"}
-    assert store.metadata["prompt_version"] == "vi-text.v6"
+    assert store.metadata["prompt_version"] == "vi-text.v7"
     assert not process_report_once(store, configured(), provider) and len(provider.calls) == 1
 
 
@@ -563,7 +563,7 @@ def test_vietnamese_shipping_service_prose_with_versioned_validation(prose):
     process_report_once(store, configured(), FakeProvider(json.dumps(data)))
     assert store.state == "READY"
     assert store.metadata["validation_version"] == "vi-prose.v3"
-    assert store.metadata["prompt_version"] == "vi-text.v6"
+    assert store.metadata["prompt_version"] == "vi-text.v7"
     for foreign in [" The supplier is reliable.", " \u4f9b\u5e94\u5546\u53ef\u9760", " Le fournisseur est fiable."]:
         assert not screen_vietnamese(prose + foreign)
     data["findings"][0]["citations"] = ["E99"]
@@ -579,3 +579,60 @@ PROSE_CASES = [json.loads(line) for line in
 def test_offline_source_related_prose_corpus(case):
     # Synthetic language examples; acceptance here does not verify a claim's truth.
     assert screen_vietnamese(case["text"]) is case["expected_vietnamese"]
+
+
+def test_authentic_taobao_grounding_projection_and_vietnamese_settlement():
+    from backend.app.extraction import parse_taobao_page
+    html = (Path(__file__).parent / "fixtures/taobao_item_1076425861755.html").read_text(encoding="utf-8")
+    source = "https://item.taobao.com/item.htm?id=1076425861755"
+    payload = parse_taobao_page(html, source, extraction_method="USER_UPLOAD", uploaded_bytes=html.encode("utf-8"))
+    assert payload["supplier_data"]["extractor_version"] == "taobao-upload.v1"
+    assert payload["raw_payload"]["provenance"] == "USER_PROVIDED_SAVED_PAGE"
+    assert payload["raw_payload"]["captured_at"] is None
+    store = MemoryStore()
+    store.row.update(source_url=source, supplier_data=payload["supplier_data"], reviews=payload["reviews"])
+    original = json.dumps(store.row["supplier_data"], ensure_ascii=False, sort_keys=True)
+    # Hand-authored output verifies compatibility and settlement, not live model semantics.
+    data = json.loads(content())
+    texts = [
+        ("Theo tiêu đề, sản phẩm là khăn giấy rút 100 lượt, 3 lớp; chưa xác minh độc lập.", ["E1"]),
+        ("Giá hiển thị trước ưu đãi từ 3.35 tệ, sau ưu đãi từ 2.01 tệ; phí chưa xác định.", ["E2"]),
+        ("Nguồn hiển thị tỷ lệ đánh giá tích cực sản phẩm 100% trong 3 tháng; cửa hàng có tỷ lệ 97% cho người mua thành viên.", ["E3"]),
+        ("Cửa hàng công bố thời gian gửi hàng trung bình 23 giờ; chưa xác minh độc lập.", ["E4"]),
+        ("Một người mua khen chất lượng; người khác cho biết giấy hơi xốp, độ dày trung bình và đủ dùng hằng ngày.", ["E5", "E6"]),
+    ]
+    data["findings"] = [{"kind": "observation", "text": text, "citations": refs} for text, refs in texts]
+    provider = FakeProvider(json.dumps(data, ensure_ascii=False))
+    assert process_report_once(store, configured(), provider) and store.state == "READY"
+    evidence = store.report["evidence"]
+    assert [e["id"] for e in evidence] == [f"E{i}" for i in range(1, 7)]
+    assert evidence[2]["scope"] == {"positive_review_rate_display_text": "product", "shop_metrics_display_text": "shop"}
+    assert evidence[1]["value"]["price"]["priceDesc"] == evidence[1]["value"]["extraPrice"]["priceDesc"] == "起"
+    assert evidence[3]["value"]["shop_shipping_display_text"] == ["平均23小时发货"]
+    exported = provider.calls[0][0][1]["content"]
+    assert json.loads(exported)["evidence"] == evidence
+    for private in ("心相印维达生活馆", "159450000", "2895982467", "1076425861755", "<html>", source):
+        assert private not in exported
+    assert json.dumps(store.row["supplier_data"], ensure_ascii=False, sort_keys=True) == original
+    assert store.metadata["prompt_version"] == "vi-text.v7"
+    assert store.report["self_reported_confidence"]["calibration"] == "uncalibrated"
+    assert not process_report_once(store, configured(), provider) and len(provider.calls) == 1
+
+
+@pytest.mark.parametrize("version", ["taobao-http.v1", "taobao-upload.v1", "public-browser.v1", "taobao-raw.v2"])
+def test_scope_annotation_follows_audited_taobao_item_provenance(version):
+    data = {"platform": "TAOBAO", "offer_id": "item", "extractor_version": version,
+            "transaction_signals": {"positive_review_rate_display_text": "近3个月好评率90%"}}
+    entry = prepare_evidence({"supplier_data": data})[0]
+    assert entry["scope"] == {"positive_review_rate_display_text": "product"}
+    assert entry["value"] == data["transaction_signals"]
+
+
+@pytest.mark.parametrize("override", [
+    {"platform": "ALIBABA"}, {"offer_id": None}, {"extractor_version": "unknown"},
+    {"transaction_signals": {"sales_display_text": "2万+"}},
+])
+def test_scope_annotation_does_not_invent_missing_or_unsupported_scope(override):
+    data = {"platform": "TAOBAO", "offer_id": "item", "extractor_version": "taobao-upload.v1",
+            "transaction_signals": {"positive_review_rate_display_text": "100%", "shop_metrics_display_text": ["97%"]}, **override}
+    assert "scope" not in prepare_evidence({"supplier_data": data})[0]
