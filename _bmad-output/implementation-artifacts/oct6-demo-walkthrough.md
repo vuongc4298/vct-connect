@@ -4,9 +4,9 @@
 
 1. Sign in to VCT Connect. Explain that the demo interprets saved public evidence;
    platform access can be blocked and source freshness may be unknown.
-2. Enter `https://detail.1688.com/offer/996518024136.html` and select
-   `backend/tests/fixtures/1688_offer_996518024136.html`. Submit once. Show progress
-   while extraction and Vietnamese interpretation complete.
+2. Open the verified owned saved report below. Show its matching source URL,
+   saved-evidence status and capture provenance. Explain that it was produced
+   through the signed-in import and queue flow; no new generation is needed.
 3. Read the Vietnamese summary. Explain source observations versus inferences,
    missing evidence, limitations and pre-order actions. No computed risk or
    confidence score is supplied by this real report path.
@@ -14,6 +14,16 @@
    These are saved source claims, not independently verified facts.
 5. Reopen the owned saved link below. Show the same persisted report and source.
    Reopening does not request generation.
+
+Suggested speaking sequence: 30 seconds for evidence origin and saved status;
+60 seconds for the summary and observations versus inferences; 45 seconds for
+limitations and sample/order checks; 30 seconds for E2; 15 seconds to reopen.
+This is a presentation timing guide, not a measured human presentation duration.
+
+Optional live submission is separate: enter
+`https://detail.1688.com/offer/996518024136.html`, choose
+`backend/tests/fixtures/1688_offer_996518024136.html`, then submit once only if
+fresh generation is intentionally wanted within the existing spending limits.
 
 ## Saved-result fallback
 
@@ -49,3 +59,12 @@ a completed report. Further diagnosis is after-demo work unless reprioritized.
 
 Full scoring, review clustering, image/video analysis, production history,
 Watchlist, human evaluation and formal pilot validation remain after-demo work.
+
+## Final browser rehearsal: 2026-10-05
+
+Saved report, limitations and pre-order actions were present. E2 citation navigated
+to its evidence disclosure and expanded minimum 37.00, maximum 39.00 and MOQ 1.
+A fresh owned-link navigation returned identical report section text and the
+correct source URL. No submission or generation occurred in this rehearsal.
+The verified report tab was retained at its summary for presentation.
+Screenshot proof: `tmp/final-rehearsal-e2.jpg`.
