@@ -5,7 +5,7 @@ import time
 from queue import Queue, Empty
 from threading import Thread
 
-from .contracts import PROMPT_VERSION, SCHEMA_VERSION, PIPELINE_VERSION, VietnameseReport, validate_report, ReportValidationError
+from .contracts import PROMPT_VERSION, SCHEMA_VERSION, PIPELINE_VERSION, VALIDATION_VERSION, VietnameseReport, validate_report, ReportValidationError
 from .provider import ReportConfig, YEScaleProvider, ProviderError
 
 SYSTEM = """Bạn viết báo cáo tiếng Việt cho người mua trước khi đặt hàng.
@@ -110,7 +110,7 @@ def process_report_once(store, config=None, provider=None):
                 "expected_returned_model": config.expected_returned_model or config.model,
                 "thinking": config.thinking or "provider_default",
                 "prompt_version": PROMPT_VERSION, "schema_version": SCHEMA_VERSION,
-                "pipeline_version": PIPELINE_VERSION, "actual_cost_usd": None, "cost_provenance": "unknown"}
+                "pipeline_version": PIPELINE_VERSION, "validation_version": VALIDATION_VERSION, "actual_cost_usd": None, "cost_provenance": "unknown"}
     def finish(state, code=None, report=None):
         store.settle_text_report(analysis_id, token, state, code, report, metadata)
     row = store.get(analysis_id)

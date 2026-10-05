@@ -511,3 +511,22 @@ def test_vietnamese_tissue_description_with_source_quote():
     data["findings"][0]["text"] += " The supplier is reliable."
     with pytest.raises(ValueError):
         validate_report(json.dumps(data), evidence)
+
+
+@pytest.mark.parametrize("prose", [
+    "Theo ng\u01b0\u1eddi b\u00e1n, th\u1eddi gian g\u1eedi h\u00e0ng trung b\u00ecnh l\u00e0 18 gi\u1edd v\u00e0 ph\u1ea3n h\u1ed3i kh\u00e1ch h\u00e0ng trung b\u00ecnh l\u00e0 12 gi\u00e2y.",
+    "Th\u00f4ng tin v\u1eadn chuy\u1ec3n v\u00e0 ph\u1ea3n h\u1ed3i kh\u00e1ch h\u00e0ng do ng\u01b0\u1eddi b\u00e1n c\u00f4ng b\u1ed1, ch\u01b0a x\u00e1c minh \u0111\u1ed9c l\u1eadp.",
+])
+def test_vietnamese_shipping_service_prose_with_versioned_validation(prose):
+    data = json.loads(content())
+    data["findings"][0]["text"] = prose
+    store = MemoryStore()
+    process_report_once(store, configured(), FakeProvider(json.dumps(data)))
+    assert store.state == "READY"
+    assert store.metadata["validation_version"] == "vi-prose.v2"
+    assert store.metadata["prompt_version"] == "vi-text.v5"
+    for foreign in [" The supplier is reliable.", " \u4f9b\u5e94\u5546\u53ef\u9760", " Le fournisseur est fiable."]:
+        assert not screen_vietnamese(prose + foreign)
+    data["findings"][0]["citations"] = ["E99"]
+    with pytest.raises(ValueError):
+        validate_report(json.dumps(data), [{"id":"E1","value":"source"}])
