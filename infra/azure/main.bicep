@@ -10,6 +10,23 @@ param webImageDigest string
 param enableProcessing bool = false
 @description('Opt-in cached public HTML rendering. Unavailable Chromium sandbox retains HTTP evidence.')
 param publicBrowserFallback bool = false
+@description('Opt in to paid reports only after migration and a report queue audit.')
+param enableTextReports bool = false
+@description('Non-secret worker report settings; backend validation enforces limits. Budget is a lifetime ledger cap.')
+param textReportSettings object = {
+  YESCALE_CHAT_ENDPOINT: 'https://api.yescale.io/v1/chat/completions'
+  YESCALE_MODEL: 'deepseek-v4.1-flash'
+  YESCALE_MODEL_VERSION: 'operator-observed-20261005'
+  YESCALE_EXPECTED_RETURNED_MODEL: 'deepseek-v4-1-flash-260910'
+  YESCALE_THINKING: 'disabled'
+  TEXT_REPORT_BUDGET_USD: '0.09'
+  TEXT_REPORT_CALL_CEILING_USD: '0.10'
+  YESCALE_INPUT_USD_PER_MILLION: '0.15'
+  YESCALE_OUTPUT_USD_PER_MILLION: '0.60'
+  TEXT_REPORT_MAX_INPUT_BYTES: '24000'
+  TEXT_REPORT_MAX_OUTPUT_TOKENS: '2400'
+  TEXT_REPORT_DEADLINE_SECONDS: '120'
+}
 param registryName string
 param vaultName string
 param clerkPublishableKey string
@@ -66,6 +83,17 @@ var backendImage = '${registryName}.azurecr.io/vct-backend@${backendImageDigest}
 var webImage = '${registryName}.azurecr.io/vct-web@${webImageDigest}'
 var databaseSecretUrl = '${vault.properties.vaultUri}secrets/database-url'
 var clerkSecretUrl = '${vault.properties.vaultUri}secrets/clerk-secret-key'
+var workerSecrets = concat([
+  { name: 'database-url', keyVaultUrl: databaseSecretUrl, identity: runtimeIdentity.id }
+], enableTextReports ? [
+  { name: 'yescale-api-key', keyVaultUrl: '${vault.properties.vaultUri}secrets/yescale-api-key', identity: runtimeIdentity.id }
+] : [])
+var configuredReportEnvironment = [for setting in items(textReportSettings): { name: setting.key, value: string(setting.value) }]
+var reportEnvironment = concat([
+  { name: 'TEXT_REPORT_ENABLED', value: string(enableTextReports) }
+], enableTextReports ? concat([
+  { name: 'YESCALE_API_KEY', secretRef: 'yescale-api-key' }
+], configuredReportEnvironment) : [])
 
 resource registry 'Microsoft.ContainerRegistry/registries@2023-07-01' existing = {
   name: registryName
@@ -247,14 +275,14 @@ resource dispatcher 'Microsoft.App/containerApps@2024-03-01' = if (enableProcess
     configuration: {
       activeRevisionsMode: 'Single'
       registries: [{ server: registry.properties.loginServer, identity: runtimeIdentity.id }]
-      secrets: [{ name: 'database-url', keyVaultUrl: databaseSecretUrl, identity: runtimeIdentity.id }]
+      secrets: workerSecrets
     }
     template: {
       containers: [{
         name: 'dispatcher'
         image: backendImage
         command: ['python', '-m', 'backend.worker.main']
-        env: [
+        env: concat([
           { name: 'DATABASE_URL', secretRef: 'database-url' }
           { name: 'QUEUE_TRANSPORT', value: 'azure' }
           { name: 'AZURE_SERVICE_BUS_NAMESPACE', value: serviceBusNamespace }
@@ -262,7 +290,7 @@ resource dispatcher 'Microsoft.App/containerApps@2024-03-01' = if (enableProcess
           { name: 'WORKER_MODE', value: 'dispatcher' }
           { name: 'API_RUNTIME', value: 'worker' }
           { name: 'AZURE_CLIENT_ID', value: runtimeIdentity.properties.clientId }
-        ]
+        ], reportEnvironment)
         resources: { cpu: json('0.5'), memory: '1Gi' }
       }]
       scale: { minReplicas: 1, maxReplicas: 1 }
@@ -282,7 +310,7 @@ resource analysisJob 'Microsoft.App/jobs@2025-01-01' = if (enableProcessing) {
       replicaRetryLimit: 1
       replicaTimeout: 900
       registries: [{ server: registry.properties.loginServer, identity: runtimeIdentity.id }]
-      secrets: [{ name: 'database-url', keyVaultUrl: databaseSecretUrl, identity: runtimeIdentity.id }]
+      secrets: workerSecrets
       eventTriggerConfig: {
         parallelism: 1
         replicaCompletionCount: 1
@@ -308,7 +336,7 @@ resource analysisJob 'Microsoft.App/jobs@2025-01-01' = if (enableProcessing) {
         name: 'analysis'
         image: backendImage
         command: ['python', '-m', 'backend.worker.main']
-        env: [
+        env: concat([
           { name: 'DATABASE_URL', secretRef: 'database-url' }
           { name: 'QUEUE_TRANSPORT', value: 'azure' }
           { name: 'AZURE_SERVICE_BUS_NAMESPACE', value: serviceBusNamespace }
@@ -319,7 +347,7 @@ resource analysisJob 'Microsoft.App/jobs@2025-01-01' = if (enableProcessing) {
           { name: 'PROCESSING_LEASE_SECONDS', value: '780' }
           { name: 'AZURE_LOCK_RENEWAL_SECONDS', value: '780' }
           { name: 'AZURE_CLIENT_ID', value: runtimeIdentity.properties.clientId }
-        ]
+        ], reportEnvironment)
         resources: { cpu: json('0.5'), memory: '1Gi' }
       }]
     }

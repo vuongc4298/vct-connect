@@ -43,6 +43,26 @@ if [[ ! "$BACKEND_DIGEST" =~ ^sha256:[0-9a-f]{64}$ || ! "$WEB_DIGEST" =~ ^sha256
   exit 2
 fi
 
+report_parameters=()
+if [[ "$phase" == 'activation' ]]; then
+  # Preserve a previously audited opt-in; initial deployment still defaults off.
+  report_env=$(az containerapp list --resource-group VCT_Connect_Service_Bus \
+    --query "[?name=='vct-connect-dev-dispatcher'].properties.template.containers[0].env" \
+    --only-show-errors --output json)
+  report_file=$(mktemp)
+  trap 'rm -f "$report_file"' EXIT
+  python -c 'import json, sys
+rows = json.load(sys.stdin)
+env = {e["name"]: e["value"] for e in (rows[0] if rows else []) if "value" in e}
+if env.get("TEXT_REPORT_ENABLED") == "true":
+    settings = {k: v for k, v in env.items() if k.startswith(("YESCALE_", "TEXT_REPORT_")) and k not in ("TEXT_REPORT_ENABLED", "YESCALE_API_KEY")}
+    print(json.dumps({"enableTextReports": {"value": True}, "textReportSettings": {"value": settings}}))' \
+    <<< "$report_env" > "$report_file"
+  if [[ -s "$report_file" ]]; then
+    report_parameters+=("@$report_file")
+  fi
+fi
+
 az deployment group create \
   --resource-group VCT_Connect_Service_Bus \
   --name "$deployment_prefix-$GITHUB_RUN_ID-$GITHUB_RUN_ATTEMPT" \
@@ -50,5 +70,5 @@ az deployment group create \
   --parameters backendImageDigest="$BACKEND_DIGEST" webImageDigest="$WEB_DIGEST" \
     enableProcessing="$enable_processing" registryName="$REGISTRY_NAME" \
     vaultName="$VAULT_NAME" clerkPublishableKey="$NEXT_PUBLIC_CLERK_PUBLISHABLE_KEY" \
-    clerkIssuer="$CLERK_ISSUER" \
+    clerkIssuer="$CLERK_ISSUER" "${report_parameters[@]}" \
   --only-show-errors --output none

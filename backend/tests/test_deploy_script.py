@@ -31,7 +31,13 @@ def run_deploy(tmp_path):
     if not BASH:
         pytest.skip("Bash is required for the deployment script")
     fake_az = tmp_path / "az"
-    fake_az.write_text("#!/usr/bin/env bash\nprintf '%s\\n' AZ_CALLED \"$@\"\n", encoding="utf-8")
+    fake_az.write_text(
+        '#!/usr/bin/env bash\nif [[ "$1 $2" == "containerapp list" ]]; then\n'
+        '  printf "%s\\n" "${REPORT_ENV_JSON:-[]}"\nelse\n'
+        '  printf "%s\\n" AZ_CALLED "$@"\n'
+        '  for arg in "$@"; do [[ "$arg" == @* ]] && cat "${arg:1}"; done\nfi\nexit 0\n',
+        encoding="utf-8",
+    )
     fake_az.chmod(0o755)
 
     def run(*args, config=CONFIG):
@@ -46,6 +52,19 @@ def run_deploy(tmp_path):
         )
 
     return run
+
+
+def test_activation_preserves_opt_in_and_limits_without_key(run_deploy):
+    import json
+    rows = [[{"name": "TEXT_REPORT_ENABLED", "value": "true"},
+             {"name": "TEXT_REPORT_BUDGET_USD", "value": "0.09"},
+             {"name": "YESCALE_API_KEY", "secretRef": "yescale-api-key"},
+             {"name": "DATABASE_URL", "secretRef": "database-url"}]]
+    result = run_deploy("activation", config={**CONFIG, "REPORT_ENV_JSON": json.dumps(rows)})
+    assert result.returncode == 0, result.stderr
+    parameters = json.loads(result.stdout.splitlines()[-1])
+    assert parameters == {"enableTextReports": {"value": True},
+                          "textReportSettings": {"value": {"TEXT_REPORT_BUDGET_USD": "0.09"}}}
 
 
 @pytest.mark.parametrize(
