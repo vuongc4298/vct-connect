@@ -107,6 +107,8 @@ export type Analysis = {
 };
 
 export type TextReport = {
+  self_reported_confidence?: { score: number; basis: string;
+    provenance: "model_self_reported"; calibration: "uncalibrated" };
   summary: string;
   findings: Array<{ kind: "observation" | "inference"; text: string; citations: string[] }>;
   limitations: string[];

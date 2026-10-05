@@ -152,3 +152,21 @@ verifies compilation but cannot verify authentication. Live quality, factual
 support of model prose, latency/cost, provider model-version guarantees, and
 Azure acceptance require credentials, model pin, approved budget, and a separately
 authorized release.
+
+## Interpretation confidence and validation diagnostics
+
+New reports use `vi-text.v2` / `text-report.v2` and require
+`self_reported_confidence` with a score from 0 to 1 and a Vietnamese basis.
+The application labels it `model_self_reported` and `uncalibrated`. It describes
+the model's interpretation uncertainty; it is not supplier safety, factual
+accuracy, or deterministic assessment confidence. Stored v1 reports reopen
+without invented confidence or another provider request.
+
+Rejected output remains `FAILED / INVALID_OUTPUT`. Dispatch metadata retains
+only fixed `validation_reason` and allowlisted `validation_location` values:
+`SCHEMA_INVALID`, `UNKNOWN_CITATION`, `UNSUPPORTED_SCORE`,
+`NON_VIETNAMESE_PROSE`, or `CREDENTIAL_ECHO`. Rejected response text, dynamic
+keys and exception messages are not retained. Existing reservations and
+one-dispatch fencing apply; neither failed nor uncertain calls auto-retry.
+Offline Chinese fixture checks verify transport and persistence only. Live
+translation acceptance remains a separate bounded rehearsal.

@@ -24,7 +24,8 @@ def configured(**kwargs):
 def content(citation="E1"):
     return json.dumps({"summary": "Nguồn có thông tin sản phẩm; cần xác minh trước đặt hàng.",
                        "findings": [{"kind": "observation", "text": "Trang hiển thị sản phẩm.", "citations": [citation]}],
-                       "limitations": ["Chưa xác minh độc lập."], "actions": ["Yêu cầu mẫu trước đặt cọc."]}, ensure_ascii=False)
+                       "limitations": ["Chưa xác minh độc lập."], "actions": ["Yêu cầu mẫu trước đặt cọc."],
+                       "self_reported_confidence": {"score": 0.65, "basis": "Dữ liệu nguồn còn thiếu; cần xác minh độc lập."}}, ensure_ascii=False)
 
 
 class FakeProvider:
@@ -385,3 +386,106 @@ def test_deadline_discards_hung_provider():
             bounded_generate(Hanging(), [], configured(deadline_seconds=0.01), "dispatch")
     finally:
         release.set()
+
+
+@pytest.mark.parametrize("confidence,reason,location", [
+    (None, "SCHEMA_INVALID", "self_reported_confidence"),
+    ({}, "SCHEMA_INVALID", "self_reported_confidence.score"),
+    *(({"score": score, "basis": "Chưa xác minh độc lập."}, "SCHEMA_INVALID", "self_reported_confidence.score")
+      for score in [True, -0.01, 1.01, float("nan"), float("inf"), "0.5"]),
+    *(({"score": 0.5, "basis": basis}, "NON_VIETNAMESE_PROSE", "self_reported_confidence.basis")
+      for basis in ["The supplier is reliable.", "供应商可靠", "Nguồn hiển thị sản phẩm. “供应商可靠，放心购买”", 'Nguồn hiển thị sản phẩm. "The supplier is reliable."']),
+    ({"score": 0.5, "basis": "Độ tin cậy là 90%."}, "UNSUPPORTED_SCORE", "self_reported_confidence.basis"),
+    ({"score": 0.5, "basis": "Chưa xác minh độc lập.", "calibration": "calibrated"}, "SCHEMA_INVALID", "self_reported_confidence")])
+def test_bad_confidence_fails_with_safe_location(confidence, reason, location):
+    data = json.loads(content())
+    if confidence is None:
+        del data["self_reported_confidence"]
+    else:
+        data["self_reported_confidence"] = confidence
+    store = MemoryStore()
+    process_report_once(store, configured(), FakeProvider(json.dumps(data, ensure_ascii=False)))
+    assert store.state == "FAILED" and store.code == "INVALID_OUTPUT" and store.report is None
+    assert (store.metadata["validation_reason"], store.metadata["validation_location"]) == (reason, location)
+
+
+@pytest.mark.parametrize("score", [0, 0.65, 1])
+def test_valid_confidence_is_application_labeled_and_prompt_versioned(score):
+    data = json.loads(content())
+    data["self_reported_confidence"]["score"] = score
+    store, provider = MemoryStore(), FakeProvider(json.dumps(data, ensure_ascii=False))
+    process_report_once(store, configured(), provider)
+    assert store.state == "READY"
+    assert store.report["self_reported_confidence"] == {
+        **data["self_reported_confidence"], "provenance": "model_self_reported", "calibration": "uncalibrated"}
+    assert store.metadata["prompt_version"] == "vi-text.v2"
+    assert store.metadata["schema_version"] == "text-report.v2"
+    assert 'self_reported_confidence' in provider.calls[0][0][0]["content"]
+
+
+@pytest.mark.parametrize("case,reason,location", [
+    ("json", "SCHEMA_INVALID", "report"), ("extra_key", "SCHEMA_INVALID", "report"),
+    ("nested_key", "SCHEMA_INVALID", "findings"), ("schema", "SCHEMA_INVALID", "findings.kind"),
+    ("citation", "UNKNOWN_CITATION", "findings.citations"),
+    ("score", "UNSUPPORTED_SCORE", "summary"), ("language", "NON_VIETNAMESE_PROSE", "actions"),
+    ("literal_key", "CREDENTIAL_ECHO", "report"), ("escaped_key", "CREDENTIAL_ECHO", "report"),
+    ("escaped_extra_key", "CREDENTIAL_ECHO", "report")])
+def test_diagnostics_never_retain_rejected_values_keys_or_exceptions(case, reason, location):
+    data = json.loads(content())
+    sentinel = "sensitive-source-value"
+    if case == "extra_key": data[sentinel] = sentinel
+    if case == "nested_key": data["findings"][0][sentinel] = sentinel
+    if case == "schema": data["findings"][0]["kind"] = sentinel
+    if case == "citation": data["findings"][0]["citations"] = ["E99"]
+    if case == "score": data["summary"] = "Điểm rủi ro là 72%."
+    if case == "language": data["actions"] = [sentinel]
+    if case in {"literal_key", "escaped_key"}: data["summary"] = "private-key"
+    if case == "escaped_extra_key": data["private-key"] = sentinel
+    output = json.dumps(data, ensure_ascii=False)
+    if case.startswith("escaped"):
+        output = output.replace("private-key", "".join(f"\\u{ord(char):04x}" for char in "private-key"))
+    if case == "json": output = '{"' + sentinel
+    store, provider = MemoryStore(), FakeProvider(output)
+    process_report_once(store, configured(), provider)
+    assert store.state == "FAILED" and store.report is None and store.code == "INVALID_OUTPUT"
+    assert (store.metadata["validation_reason"], store.metadata["validation_location"]) == (reason, location)
+    serialized = json.dumps(store.metadata)
+    assert sentinel not in serialized and "private-key" not in serialized and "ValidationError" not in serialized
+    assert not process_report_once(store, configured(), provider) and len(provider.calls) == 1
+
+
+@pytest.mark.parametrize("field", ["summary", "findings", "limitations", "actions", "self_reported_confidence"])
+def test_confidence_score_cannot_be_repeated_in_prose(field):
+    data = json.loads(content())
+    prose = "Điểm tự báo cáo của mô hình là 0.65; cần xác minh độc lập."
+    if field == "findings": data[field][0]["text"] = prose
+    elif field == "self_reported_confidence": data[field]["basis"] = prose
+    elif field in {"limitations", "actions"}: data[field] = [prose]
+    else: data[field] = prose
+    store = MemoryStore()
+    process_report_once(store, configured(), FakeProvider(json.dumps(data, ensure_ascii=False)))
+    assert store.state == "FAILED" and store.metadata["validation_reason"] == "UNSUPPORTED_SCORE"
+
+
+@pytest.mark.parametrize("case", ["nesting", "duplicate", "escaped_duplicate"])
+def test_complete_invalid_json_never_settles_as_uncertain_or_hides_credentials(case):
+    if case == "nesting": output = "[" * 2000 + "0" + "]" * 2000
+    else:
+        key = "".join(f"\\u{ord(char):04x}" for char in "private-key")
+        first = key if case == "escaped_duplicate" else "Nguồn hiển thị sản phẩm."
+        output = '{"summary":"' + first + '",' + content()[1:]
+    store, provider = MemoryStore(), FakeProvider(output)
+    process_report_once(store, configured(), provider)
+    assert store.state == "FAILED" and store.report is None and store.code == "INVALID_OUTPUT"
+    assert store.metadata["validation_reason"] == ("CREDENTIAL_ECHO" if case == "escaped_duplicate" else "SCHEMA_INVALID")
+    assert store.metadata["validation_location"] == "report"
+    assert "private-key" not in json.dumps(store.metadata)
+    assert not process_report_once(store, configured(), provider) and len(provider.calls) == 1
+
+
+def test_natural_vietnamese_confidence_basis_is_accepted():
+    data = json.loads(content())
+    data["self_reported_confidence"]["basis"] = "Tôi khá chắc chắn về cách diễn giải vì nội dung nhất quán."
+    store = MemoryStore()
+    process_report_once(store, configured(), FakeProvider(json.dumps(data, ensure_ascii=False)))
+    assert store.state == "READY"

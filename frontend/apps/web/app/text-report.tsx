@@ -25,7 +25,15 @@ export function TextReport({ analysis }: { analysis: Analysis }) {
     </>}
     {report && <>
       <p>{report.summary}</p>
-      <p>Không có điểm rủi ro hoặc độ tin cậy được tính toán. Độ mới của nguồn: chưa xác định.</p>
+      <p>{report.self_reported_confidence
+        ? "Không có điểm rủi ro hoặc độ tin cậy đánh giá được tính toán. Độ mới của nguồn: chưa xác định."
+        : "Không có điểm rủi ro hoặc độ tin cậy được tính toán. Độ mới của nguồn: chưa xác định."}</p>
+      {report.self_reported_confidence && <aside aria-label="Độ tin cậy do mô hình tự báo cáo">
+        <h3>Độ tin cậy do mô hình tự báo cáo — chưa được hiệu chuẩn</h3>
+        <p>Điểm tự báo cáo: {report.self_reported_confidence.score} / 1</p>
+        <p>{report.self_reported_confidence.basis}</p>
+        <p>Đây không phải độ an toàn của nhà cung cấp, độ chính xác thực tế hay độ tin cậy của đánh giá.</p>
+      </aside>}
       <dl><dt>Trích xuất</dt><dd>{report.extracted_at}</dd>
         <dt>Tạo báo cáo</dt><dd>{state?.generated_at}</dd></dl>
       <h3>Nhận định và nguồn</h3>

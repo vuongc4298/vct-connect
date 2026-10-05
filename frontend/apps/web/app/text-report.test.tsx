@@ -45,6 +45,17 @@ test("validated report renders citations, inference, actions, limitations, dates
   assert.match(html, /id="report-owned-E1"/);
   assert.equal(analysisPresentation(value).shouldPoll, false);
   assert.doesNotMatch(html, /64|72%|risk-ring/);
+  assert.doesNotMatch(html, /Điểm tự báo cáo|chưa được hiệu chuẩn/);
+  value.text_report.report!.self_reported_confidence = {
+    score: 0.65, basis: "Dữ liệu nguồn còn thiếu; cần xác minh độc lập.",
+    provenance: "model_self_reported", calibration: "uncalibrated",
+  };
+  const v2 = renderToStaticMarkup(<TextReport analysis={value} />);
+  for (const text of ["Độ tin cậy do mô hình tự báo cáo — chưa được hiệu chuẩn", "0.65", " / 1",
+    "Dữ liệu nguồn còn thiếu; cần xác minh độc lập.", "không phải độ an toàn", "độ chính xác thực tế", "độ tin cậy của đánh giá"])
+    assert.ok(v2.includes(text));
+  assert.match(v2, /href="#report-owned-E1"/);
+  assert.equal(analysisPresentation(value).shouldPoll, false);
 });
 
 test("fixture and guest cannot display full reports", () => {

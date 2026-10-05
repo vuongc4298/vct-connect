@@ -9,12 +9,12 @@ from fastapi.testclient import TestClient
 
 from backend.tests.test_migrations import isolated_database_url
 from backend.tests.test_postgres_tracer import HeaderSubjectVerifier
-from backend.tests.test_text_reports import configured, FakeProvider
+from backend.tests.test_text_reports import configured, FakeProvider, content
 from backend.app.config import Settings
 from backend.app.main import create_app
 from backend.app.storage import Store, LeaseLost
 from backend.app.interpretation.service import process_report_once
-from backend.app.extraction import parse_1688_page
+from backend.app.extraction import parse_1688_page, parse_taobao_page
 from backend.app.migrations import migration_status
 
 
@@ -54,6 +54,10 @@ def test_migration_owned_saved_evidence_progress_report_reopen_and_citations(rep
     for field in ("status", "result", "supplier_snapshot_id", "supplier_data", "raw_evidence", "events", "reviews"):
         assert after[field] == before[field]
     report = after["text_report"]["report"]
+    assert report["self_reported_confidence"] == {"score": 0.65,
+        "basis": "Dữ liệu nguồn còn thiếu; cần xác minh độc lập.",
+        "provenance": "model_self_reported", "calibration": "uncalibrated"}
+    assert after["text_report"]["generated_at"]
     ids = {item["id"] for item in report["evidence"]}
     assert all(ref in ids for finding in report["findings"] for ref in finding["citations"])
     assert Store(store.database_url).get_for_user(analysis_id, owner["id"])["text_report"]["report"] == report
@@ -191,3 +195,71 @@ def test_continuous_worker_drains_report_only_imports_with_empty_extraction_and_
         assert row["status"] == "COMPLETED" and row["text_report"]["state"] == "READY"
         assert row["text_report"]["report"]["summary"]
     assert len(provider.calls) == 2
+
+
+def test_authentic_chinese_projection_persistence_and_owner_reopen_offline(report_store):
+    store = report_store
+    owner = store.resolve_user("chinese-owner")
+    other = store.resolve_user("chinese-other")
+    source = "https://item.taobao.com/item.htm?id=1076425861755"
+    html = (Path(__file__).parent / "fixtures/taobao_item_1076425861755.html").read_text(encoding="utf-8")
+    payload = parse_taobao_page(html, source, extraction_method="USER_UPLOAD", uploaded_bytes=len(html.encode("utf-8")))
+    analysis_id = store.import_customer_page(source, owner["id"], payload, customer_limit=20, window_seconds=86400)
+    original = store.get_for_user(analysis_id, owner["id"])
+    # Hand-authored output checks the pipeline only, not live translation quality.
+    data = json.loads(content())
+    data["findings"] = [
+        {"kind": "observation", "text": "Nguồn hiển thị sản phẩm “洁柔抽纸Face粉软柔韧100抽3层抽实惠亲肤细腻宝宝可用2元包邮”.", "citations": ["E1"]},
+        {"kind": "observation", "text": "Nguồn hiển thị giá 2.01 và 3.35.", "citations": ["E2"]},
+    ]
+    provider = FakeProvider(json.dumps(data, ensure_ascii=False))
+    assert process_report_once(store, configured(), provider)
+    reopened = Store(store.database_url).get_for_user(analysis_id, owner["id"])
+    assert reopened["text_report"]["state"] == "READY"
+    report = reopened["text_report"]["report"]
+    evidence = report["evidence"]
+    assert evidence[0]["path"] == "products" and "洁柔抽纸" in evidence[0]["value"][0]["title"]
+    assert evidence[1]["path"] == "price_information"
+    reviews = [entry["value"] for entry in evidence if entry["path"] == "reviews"]
+    assert reviews == ["质量特别好，一直都用的这款抽纸", "外包装摸起来挺顺滑的，不过纸张质地稍微有些疏松，厚度一般。不过日常使用完全足够了，性价比不错"]
+    exported = provider.calls[0][0][1]["content"]
+    for private in ("心相印维达生活馆", "159450000", "2895982467", "1076425861755", "<html>"):
+        assert private not in exported
+    assert report["self_reported_confidence"]["score"] == 0.65
+    assert report["metadata"]["actual_cost_usd"] is None
+    assert Store(store.database_url).get_for_user(analysis_id, owner["id"])["text_report"] == reopened["text_report"]
+    assert store.get_for_user(analysis_id, other["id"]) is None
+    for field in ("supplier_data", "reviews", "raw_evidence", "supplier_snapshot_id", "result"):
+        assert reopened[field] == original[field]
+    assert not process_report_once(store, configured(), provider) and len(provider.calls) == 1
+
+
+def test_safe_diagnostic_persisted_in_dispatch_metadata_without_rejected_payload(report_store):
+    store = report_store
+    _, analysis_id = saved(store)
+    data = json.loads(content())
+    data["sensitive-source-key"] = "sensitive-source-value"
+    provider = FakeProvider(json.dumps(data))
+    process_report_once(store, configured(), provider)
+    assert store.get(analysis_id)["text_report"]["state"] == "FAILED"
+    with store.connect() as conn:
+        ledger = conn.execute("SELECT * FROM text_report_dispatches WHERE analysis_id = %s", (analysis_id,)).fetchone()
+    assert ledger["metadata"]["validation_reason"] == "SCHEMA_INVALID"
+    assert ledger["metadata"]["validation_location"] == "report"
+    assert "sensitive-source" not in json.dumps(ledger["metadata"])
+    assert ledger["actual_usd"] is None and ledger["reserved_usd"] > 0
+    assert not process_report_once(store, configured(), provider)
+
+
+def test_saved_v1_report_reopens_without_inferred_confidence_or_generation(report_store):
+    store = report_store
+    owner, analysis_id = saved(store)
+    process_report_once(store, configured(), FakeProvider())
+    legacy = store.get(analysis_id)["text_report"]["report"]
+    del legacy["self_reported_confidence"]
+    legacy["metadata"].update(prompt_version="vi-text.v1", schema_version="text-report.v1")
+    with store.connect() as conn:
+        conn.execute("UPDATE text_report_jobs SET report = %s::jsonb WHERE analysis_id = %s", (json.dumps(legacy), analysis_id))
+    assert Store(store.database_url).get_for_user(analysis_id, owner["id"])["text_report"]["report"] == legacy
+    provider = FakeProvider()
+    assert not process_report_once(store, configured(), provider) and not provider.calls

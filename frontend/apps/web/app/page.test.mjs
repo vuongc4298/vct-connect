@@ -9,7 +9,8 @@ import { JSDOM } from "jsdom";
 import { build } from "esbuild";
 
 for (const method of ["USER_UPLOAD", "PUBLIC_HTTP", "EXTENSION_DOM"]) {
-test(`mounted buyer Page reopens ${method} report with its source, citations and extraction fallback`, async () => {
+for (const version of ["v1", "v2"]) {
+test(`mounted buyer Page reopens ${method} ${version} report with its source, citations and extraction fallback`, async () => {
   const directory = dirname(fileURLToPath(import.meta.url));
   const temporary = await mkdtemp(join(resolve(directory, "../../../node_modules"), ".page-test-"));
   const bundle = join(temporary, "page.cjs");
@@ -56,11 +57,14 @@ test(`mounted buyer Page reopens ${method} report with its source, citations and
         raw_evidence: null, reviews: [],
         text_report: { state: "READY", failure_code: null, generated_at: "2026-10-05T01:00:00Z", report: {
           summary: "Báo cáo đã lưu cho người mua.",
+          ...(version === "v2" ? { self_reported_confidence: { score: 0.65,
+            basis: "Dữ liệu nguồn còn thiếu; cần xác minh độc lập.",
+            provenance: "model_self_reported", calibration: "uncalibrated" } } : {}),
           findings: [{ kind: "observation", text: "Nguồn hiển thị sản phẩm.", citations: ["E1"] }],
           limitations: ["Chưa xác minh độc lập."], actions: ["Yêu cầu mẫu trước đặt cọc."],
           evidence: [{ id: "E1", path: "products", value: "中国商品" }], source_url: source,
           snapshot_id: "owned-snapshot", extracted_at: "2026-10-05T00:00:00Z", capture_freshness: "unknown",
-          metadata: { model: "pinned", model_version: "v1", prompt_version: "vi-text.v1", schema_version: "text-report.v1",
+          metadata: { model: "pinned", model_version: "v1", prompt_version: `vi-text.${version}`, schema_version: `text-report.${version}`,
             pipeline_version: "saved-evidence.v1", actual_cost_usd: null, cost_provenance: "unknown" },
         } },
       });
@@ -74,6 +78,12 @@ test(`mounted buyer Page reopens ${method} report with its source, citations and
     assert.equal(container.querySelector('#source-url').value, source);
     assert.ok(!container.querySelector('#url-help').textContent.includes('Dữ liệu fixture'));
     assert.ok(container.textContent.includes("Báo cáo đã lưu cho người mua."));
+    const confidence = container.querySelector('[aria-label="Độ tin cậy do mô hình tự báo cáo"]');
+    if (version === "v2") {
+      assert.ok(confidence?.textContent.includes("chưa được hiệu chuẩn"));
+      assert.ok(confidence?.textContent.includes("0.65 / 1"));
+      assert.ok(confidence?.textContent.includes("Dữ liệu nguồn còn thiếu; cần xác minh độc lập."));
+    } else assert.equal(confidence, null);
     const citation = container.querySelector(`a[href="#report-${id}-E1"]`);
     assert.equal(citation?.textContent, "E1");
     assert.ok(container.querySelector(`[id="report-${id}-E1"]`).textContent.includes("中国商品"));
@@ -92,4 +102,5 @@ test(`mounted buyer Page reopens ${method} report with its source, citations and
     await rm(temporary, { recursive: true, force: true });
   }
 });
+}
 }
