@@ -1,4 +1,4 @@
-# Proposed bounded diagnostic and correction run
+# Approved bounded diagnostic and correction run
 
 Status: approved by the operator on 2026-10-05; execution results recorded separately.
 
@@ -8,7 +8,7 @@ findings-only sample permitted by the first policy. A useful diagnostic must
 handle whichever allowed prose field fails first. The prepared offline helper
 does that without changing production validation.
 
-## Proposed authorization
+## Approved authorization
 
 - At most three deliberate fresh requests, total spending ceiling $0.03 and
   $0.01 per request, within the existing $2 aggregate approval and conservative
@@ -45,5 +45,6 @@ does that without changing production validation.
 
 The expanded first-field policy and bounded batch avoid needing a separate
 approval for each known validation location. The helper already passes offline
-retention/selection checks. No broader capture or further paid call will occur
-until the operator approves this concrete proposal.
+retention/selection checks. The operator approved this concrete proposal. The three-request batch is now
+exhausted; see story31-bounded-resolution-result.md. No additional paid calls
+are authorized by this proposal.

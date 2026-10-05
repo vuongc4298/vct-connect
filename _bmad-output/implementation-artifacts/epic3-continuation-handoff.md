@@ -106,3 +106,6 @@ but summary failed the language screen. No sample was saved under the earlier
 findings-only policy. See `story31-schema-followup-result.md`. Broader first-prose
 capture and a three-request resolution batch are proposed in
 `story31-bounded-resolution-proposal.md`; neither is approved or executed yet.
+
+
+The broader policy and three-request resolution batch were subsequently approved and executed. Two retained first-field diagnostics supported Vietnamese source-rendering/prompt and tissue-vocabulary corrections, reviewed and tested with 147 focused tests locally and in the non-root offline image. Commit 115ba712ec38124042558119fc8a423243d1ff4f is released to dev, not pushed to Git. Final cloud acceptance failed OUTPUT_INCOMPLETE at 2400 output tokens; owner-scoped reopen preserves that failure. The batch is exhausted and Story 3.1 remains partial. See story31-bounded-resolution-result.md for final spending, revisions and the next truncation blocker. No additional paid call or replay is authorized by this batch.
