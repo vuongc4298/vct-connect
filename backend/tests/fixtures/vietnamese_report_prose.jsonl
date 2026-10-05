@@ -1,0 +1,57 @@
+{"id": "packaging", "expected_vietnamese": true, "text": "Bề mặt bao bì trơn nhẵn."}
+{"id": "packaging_touch", "expected_vietnamese": true, "text": "Bao bì được mô tả là trơn nhẵn khi sờ."}
+{"id": "paper_texture", "expected_vietnamese": true, "text": "Tờ giấy hơi rời, độ dày trung bình."}
+{"id": "paper_daily", "expected_vietnamese": true, "text": "Khăn giấy đủ dùng hằng ngày, theo nhận xét của người mua."}
+{"id": "review_praise", "expected_vietnamese": true, "text": "Một người mua khen chất lượng tốt và tiếp tục sử dụng sản phẩm."}
+{"id": "review_coverage", "expected_vietnamese": true, "text": "Chỉ có hai nội dung đánh giá truy cập được; chưa biết độ phủ đầy đủ."}
+{"id": "review_value", "expected_vietnamese": true, "text": "Một đánh giá cho rằng sản phẩm đáng tiền nhưng giấy hơi xốp."}
+{"id": "review_attribution", "expected_vietnamese": true, "text": "Nhận xét về độ mềm và độ dày là lời người mua, chưa xác minh độc lập."}
+{"id": "title_claim", "expected_vietnamese": true, "text": "Tiêu đề quảng cáo giấy mềm và phù hợp cho trẻ em; đây là lời người bán."}
+{"id": "title_layers", "expected_vietnamese": true, "text": "Tiêu đề mô tả khăn giấy dạng rút, ba lớp và một trăm tờ."}
+{"id": "price_start", "expected_vietnamese": true, "text": "Giá sau giảm hiển thị từ 2,01 nhân dân tệ, chưa phải giá cuối cùng."}
+{"id": "price_before", "expected_vietnamese": true, "text": "Giá trước giảm hiển thị từ 3,35 nhân dân tệ."}
+{"id": "price_final", "expected_vietnamese": true, "text": "Cần xác nhận giá cuối cùng, phí vận chuyển và điều kiện áp dụng ưu đãi."}
+{"id": "currency", "expected_vietnamese": true, "text": "Nhân dân tệ là đơn vị tiền tệ được nguồn hiển thị."}
+{"id": "shipping_claim", "expected_vietnamese": true, "text": "Người bán công bố thời gian gửi hàng trung bình là 18 giờ."}
+{"id": "service_claim", "expected_vietnamese": true, "text": "Người bán công bố phản hồi khách hàng trung bình là 12 giây."}
+{"id": "shipping_unknown", "expected_vietnamese": true, "text": "Thời gian gửi hàng trung bình không bảo đảm thời điểm giao hàng thực tế."}
+{"id": "sales_approx", "expected_vietnamese": true, "text": "Nguồn hiển thị hơn ba mươi nghìn lượt bán, là số tổng hợp gần đúng."}
+{"id": "review_approx", "expected_vietnamese": true, "text": "Số đánh giá tổng hợp không cho biết toàn bộ trải nghiệm của người mua."}
+{"id": "metric_scope", "expected_vietnamese": true, "text": "Điểm cửa hàng cần được phân biệt với đánh giá của sản phẩm."}
+{"id": "freshness", "expected_vietnamese": true, "text": "Ngày nhập trang không xác nhận thời điểm lưu trang gốc."}
+{"id": "freshness_unknown", "expected_vietnamese": true, "text": "Độ mới chưa xác định; cần đối chiếu trực tiếp."}
+{"id": "missing_company", "expected_vietnamese": true, "text": "Chưa có thông tin công ty, chứng nhận hay lịch sử hoạt động."}
+{"id": "partial", "expected_vietnamese": true, "text": "Bằng chứng chỉ có một phần, không đủ để đánh giá toàn diện."}
+{"id": "sample_compare", "expected_vietnamese": true, "text": "So sánh mẫu thật với mô tả, kiểm tra độ dày và độ bền."}
+{"id": "sample_inspect", "expected_vietnamese": true, "text": "Kiểm tra bao bì, bề mặt giấy và kích thước trước khi đặt cọc."}
+{"id": "confirm_terms", "expected_vietnamese": true, "text": "Yêu cầu người bán xác nhận giá, thời hạn gửi hàng và chính sách đổi trả."}
+{"id": "verify_claim", "expected_vietnamese": true, "text": "Đối chiếu thông tin công bố qua nguồn độc lập trước khi đặt hàng."}
+{"id": "confidence_limited", "expected_vietnamese": true, "text": "Tôi chưa chắc chắn vì dữ liệu nguồn còn thiếu và chưa xác minh độc lập."}
+{"id": "confidence_interpretation", "expected_vietnamese": true, "text": "Mức chắc chắn này chỉ phản ánh cách diễn giải, chưa được hiệu chuẩn."}
+{"id": "confidence_not_safety", "expected_vietnamese": true, "text": "Diễn giải không xác nhận độ an toàn hay độ chính xác thực tế."}
+{"id": "clothing", "expected_vietnamese": true, "text": "Nguồn mô tả váy dài tay cổ chữ V, chất liệu dệt kim cho mùa thu đông."}
+{"id": "decomposed", "expected_vietnamese": true, "text": "Bao bì trơn nhẵn; chưa xác minh độc lập."}
+{"id": "english", "expected_vietnamese": false, "text": "The supplier is reliable."}
+{"id": "english_shipping", "expected_vietnamese": false, "text": "Shipping takes twenty hours and delivery is guaranteed."}
+{"id": "french", "expected_vietnamese": false, "text": "Le fournisseur est fiable."}
+{"id": "french_accents", "expected_vietnamese": false, "text": "La qualité du papier est très agréable."}
+{"id": "spanish", "expected_vietnamese": false, "text": "El proveedor garantiza la calidad del producto."}
+{"id": "german", "expected_vietnamese": false, "text": "Die Lieferung ist zuverlässig und schnell."}
+{"id": "portuguese", "expected_vietnamese": false, "text": "O fornecedor oferece produtos de boa qualidade."}
+{"id": "russian", "expected_vietnamese": false, "text": "Поставщик надёжный."}
+{"id": "chinese", "expected_vietnamese": false, "text": "供应商可靠。"}
+{"id": "japanese", "expected_vietnamese": false, "text": "サプライヤーは信頼できます。"}
+{"id": "korean", "expected_vietnamese": false, "text": "공급업체는 믿을 만합니다."}
+{"id": "thai", "expected_vietnamese": false, "text": "ผู้ขายเชื่อถือได้"}
+{"id": "arabic", "expected_vietnamese": false, "text": "المورد موثوق"}
+{"id": "english_sentence", "expected_vietnamese": false, "text": "Nguồn hiển thị sản phẩm. The supplier is reliable."}
+{"id": "english_semicolon", "expected_vietnamese": false, "text": "Nguồn hiển thị sản phẩm; The supplier is reliable."}
+{"id": "french_sentence", "expected_vietnamese": false, "text": "Nguồn hiển thị sản phẩm. La qualité est très bonne."}
+{"id": "chinese_inline", "expected_vietnamese": false, "text": "Nguồn mô tả sản phẩm 供应商可靠."}
+{"id": "japanese_inline", "expected_vietnamese": false, "text": "Nguồn mô tả sản phẩm 信頼できます."}
+{"id": "korean_inline", "expected_vietnamese": false, "text": "Nguồn mô tả sản phẩm 믿을 만합니다."}
+{"id": "english_inline", "expected_vietnamese": false, "text": "Nguồn có thông tin sản phẩm và the supplier is reliable."}
+{"id": "latin_ambiguous", "expected_vietnamese": false, "text": "Cargo express premium verified quality."}
+{"id": "empty", "expected_vietnamese": false, "text": ""}
+{"id": "digits", "expected_vietnamese": false, "text": "18 12 2.01"}
+{"id": "unaccented", "expected_vietnamese": false, "text": "Nguon hien thi san pham."}

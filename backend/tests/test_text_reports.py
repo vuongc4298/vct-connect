@@ -523,10 +523,20 @@ def test_vietnamese_shipping_service_prose_with_versioned_validation(prose):
     store = MemoryStore()
     process_report_once(store, configured(), FakeProvider(json.dumps(data)))
     assert store.state == "READY"
-    assert store.metadata["validation_version"] == "vi-prose.v2"
+    assert store.metadata["validation_version"] == "vi-prose.v3"
     assert store.metadata["prompt_version"] == "vi-text.v5"
     for foreign in [" The supplier is reliable.", " \u4f9b\u5e94\u5546\u53ef\u9760", " Le fournisseur est fiable."]:
         assert not screen_vietnamese(prose + foreign)
     data["findings"][0]["citations"] = ["E99"]
     with pytest.raises(ValueError):
         validate_report(json.dumps(data), [{"id":"E1","value":"source"}])
+
+
+PROSE_CASES = [json.loads(line) for line in
+    (Path(__file__).parent / "fixtures/vietnamese_report_prose.jsonl").read_text(encoding="utf-8").splitlines()]
+
+
+@pytest.mark.parametrize("case", PROSE_CASES, ids=[case["id"] for case in PROSE_CASES])
+def test_offline_source_related_prose_corpus(case):
+    # Synthetic language examples; acceptance here does not verify a claim's truth.
+    assert screen_vietnamese(case["text"]) is case["expected_vietnamese"]

@@ -7,7 +7,7 @@ from pydantic import BaseModel, ConfigDict, Field, ValidationError
 PROMPT_VERSION = "vi-text.v5"
 SCHEMA_VERSION = "text-report.v2"
 PIPELINE_VERSION = "saved-evidence.v1"
-VALIDATION_VERSION = "vi-prose.v2"
+VALIDATION_VERSION = "vi-prose.v3"
 Text = Annotated[str, Field(min_length=1, max_length=1600)]
 Reference = Annotated[str, Field(pattern=r"^E[0-9]{1,3}$")]
 
@@ -92,6 +92,8 @@ def screen_vietnamese(text: str) -> bool:
     words_vi.update("tiêu đề khăn giấy ăn dạng rút lớp tờ đặc mềm mại da nhạy cảm trẻ em tham khảo nhân dân tệ miễn".split())
     # Retained diagnostic confirmed these ordinary shipping/service words were missing.
     words_vi.update("gửi trung bình giờ phản hồi khách giây do bố".split())
+    # Broader offline corpus exposed packaging descriptions outside the initial vocabulary.
+    words_vi.update("bề mặt bì trơn nhẵn sờ".split())
     foreign_words = {"the", "this", "that", "is", "are", "and", "with", "should", "supplier", "reliable", "before", "order"}
     sentences = re.split(r"[!?;\n]+|(?<!\d)\.|\.(?!\d)", text)
     checked = False
