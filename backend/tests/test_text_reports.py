@@ -418,7 +418,7 @@ def test_valid_confidence_is_application_labeled_and_prompt_versioned(score):
     assert store.state == "READY"
     assert store.report["self_reported_confidence"] == {
         **data["self_reported_confidence"], "provenance": "model_self_reported", "calibration": "uncalibrated"}
-    assert store.metadata["prompt_version"] == "vi-text.v4"
+    assert store.metadata["prompt_version"] == "vi-text.v5"
     assert store.metadata["schema_version"] == "text-report.v2"
     assert 'self_reported_confidence' in provider.calls[0][0][0]["content"]
 
