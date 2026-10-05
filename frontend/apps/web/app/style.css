@@ -402,3 +402,11 @@ button { cursor: pointer; }
   .artifact-chart { gap: .25rem; padding-inline: .5rem; }
   .quote-samples blockquote > p { font-size: .7rem; }
 }
+.text-report { display: block; }
+.text-report h3 { margin-top: 24px; }
+.text-report li { margin-bottom: 10px; }
+.text-report pre { white-space: pre-wrap; overflow-wrap: anywhere; }
+.text-report details { margin: 12px 0; padding: 12px; border: 1px solid #e2e8e6; border-radius: 8px; }
+.text-report details:target { outline: 2px solid #16836e; }
+.text-finding { border-bottom: 1px solid #e2e8e6; padding: 16px 0; }
+.text-citation { margin-right: 12px; text-decoration: underline; }

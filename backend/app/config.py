@@ -33,6 +33,11 @@ class Settings:
     admission_window_seconds: int = 86400
     public_browser_fallback: bool = False
 
+    @staticmethod
+    def report_config():
+        from .interpretation.provider import ReportConfig
+        return ReportConfig.from_env()
+
     def __post_init__(self) -> None:
         if not 1 <= self.processing_max_attempts <= 10:
             raise ValueError("PROCESSING_MAX_ATTEMPTS must be between 1 and 10")

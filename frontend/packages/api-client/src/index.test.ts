@@ -202,3 +202,15 @@ test("timeout remains active while the response body is parsed", async () => {
     globalThis.setTimeout = originalSetTimeout;
   }
 });
+
+test("completed extraction polling retains pending and persisted report data", async () => {
+  const originalFetch = globalThis.fetch;
+  const pending = { id: "owned", status: "COMPLETED", text_report: { state: "PROCESSING", report: null } };
+  const ready = { ...pending, text_report: { state: "READY", report: { summary: "Báo cáo đã lưu", findings: [] } } };
+  let calls = 0;
+  globalThis.fetch = async () => Response.json(calls++ === 0 ? pending : ready);
+  try {
+    assert.deepEqual(await getAnalysis("owned", { getToken: async () => "token" }), pending);
+    assert.deepEqual(await getAnalysis("owned", { getToken: async () => "token" }), ready);
+  } finally { globalThis.fetch = originalFetch; }
+});

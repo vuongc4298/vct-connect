@@ -72,16 +72,17 @@ def test_service_bus_namespace_uses_managed_identity(monkeypatch):
     assert captured["fully_qualified_namespace"] == "vct-connect-standard.servicebus.windows.net"
 
 
-def test_finite_job_receives_once_and_never_dispatches(monkeypatch):
+def test_finite_job_receives_once_drains_reports_and_never_dispatches_outbox(monkeypatch):
     calls = []
     monkeypatch.setattr(worker.Settings, "from_env", lambda: BASE)
     monkeypatch.setattr(worker, "Store", lambda *_: object())
     monkeypatch.setattr(worker, "AzureQueue", lambda *_args, **_kwargs: object())
     monkeypatch.setattr(worker, "process_azure_once", lambda *_: calls.append("receive") or False)
+    monkeypatch.setattr(worker, "process_report_once", lambda *_: calls.append("report") or True)
     monkeypatch.setattr(worker, "dispatch_outbox_once", lambda *_: pytest.fail("Job dispatched outbox"))
     monkeypatch.setenv("WORKER_MODE", "job")
     worker.main()
-    assert calls == ["receive"]
+    assert calls == ["receive", "report"]
 
 
 def test_finite_job_propagates_failure_for_platform_retry(monkeypatch):

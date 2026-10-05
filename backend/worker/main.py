@@ -10,6 +10,7 @@ from backend.app.fixture import FIXTURE_URL, fixture_result
 from backend.app.extraction import extract_1688, extract_taobao, extract_alibaba, source_platform
 from backend.app.queue import AzureQueue
 from backend.app.storage import LeaseLost, ResultConflict, Store
+from backend.app.interpretation.service import process_report_once
 
 log = logging.getLogger(__name__)
 
@@ -311,6 +312,9 @@ def _run_forever(store: Store, queue: AzureQueue | None, settings: Settings, mod
                 did_work = process_azure_once(store, queue, settings) or did_work
             else:
                 did_work = process_local_once(store, settings)
+            # The durable PostgreSQL report queue is drained by local and Azure
+            # combined/dispatcher workers, including synchronous imports/captures.
+            did_work = process_report_once(store) or did_work
             if not did_work:
                 time.sleep(1)
             retry_delay = 2
@@ -343,6 +347,7 @@ def main() -> None:
     if mode == "job":
         # The scaler may race with another execution. An empty receive still exits.
         process_azure_once(store, queue, settings)
+        process_report_once(store)
         return
     _run_forever(store, queue, settings, mode)
 

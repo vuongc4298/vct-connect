@@ -173,6 +173,10 @@ class Store:
                a.attempt_count, a.failure_code, a.next_retry_at,
                a.final_disposition, a.mode, a.actor_type, a.extraction_method,
                a.scoring_version, r.payload AS result,
+               (SELECT jsonb_build_object('state', tj.state, 'failure_code', tj.failure_code,
+                   'generated_at', tj.generated_at, 'report', tj.report)
+                FROM text_report_jobs tj WHERE tj.analysis_id = a.id
+                  AND a.user_id IS NOT NULL AND a.actor_type <> 'GUEST') AS text_report,
                s.id AS supplier_snapshot_id, s.normalized_data AS supplier_data,
                s.raw_payload AS raw_evidence,
                COALESCE((SELECT jsonb_agg(rv.payload ORDER BY rv.ordinal)
@@ -726,7 +730,87 @@ class Store:
             (analysis_id, token),
         )
         self._event(conn, analysis_id, "COMPLETED", row["attempt_count"])
+        # Report admission shares the extraction transaction. A crash cannot
+        # leave committed owned evidence without its independently settled job.
+        conn.execute(
+            """INSERT INTO text_report_jobs(analysis_id, snapshot_id, state, failure_code)
+               SELECT id, supplier_snapshot_id,
+                      CASE WHEN supplier_snapshot_id IS NULL THEN 'INSUFFICIENT' ELSE 'QUEUED' END,
+                      CASE WHEN supplier_snapshot_id IS NULL THEN 'NO_SNAPSHOT' ELSE NULL END
+               FROM analyses WHERE id = %s AND user_id IS NOT NULL AND actor_type <> 'GUEST'
+               ON CONFLICT (analysis_id) DO NOTHING""", (analysis_id,),
+        )
         return "completed"
+
+    def claim_text_report(self, lease_seconds: int) -> dict | None:
+        token = uuid4()
+        with self.connect() as conn:
+            with conn.transaction():
+                # A dispatch ledger entry means a paid request may have happened.
+                # Expired dispatched work is terminal until operator reconciliation.
+                conn.execute(
+                    """UPDATE text_report_jobs j SET state = 'UNCERTAIN',
+                              failure_code = 'DISPATCH_UNCERTAIN', lease_token = NULL, leased_until = NULL
+                       WHERE state = 'PROCESSING' AND leased_until < now()
+                         AND EXISTS (SELECT 1 FROM text_report_dispatches d WHERE d.analysis_id = j.analysis_id)"""
+                )
+                row = conn.execute(
+                    """SELECT analysis_id FROM text_report_jobs j
+                       WHERE (state = 'QUEUED' OR (state = 'PROCESSING' AND leased_until < now()))
+                         AND NOT EXISTS (SELECT 1 FROM text_report_dispatches d WHERE d.analysis_id = j.analysis_id)
+                       ORDER BY created_at FOR UPDATE SKIP LOCKED LIMIT 1"""
+                ).fetchone()
+                if row is None:
+                    return None
+                return conn.execute(
+                    """UPDATE text_report_jobs SET state = 'PROCESSING', lease_token = %s,
+                              leased_until = now() + %s * interval '1 second'
+                       WHERE analysis_id = %s RETURNING analysis_id, snapshot_id, lease_token""",
+                    (token, lease_seconds, row["analysis_id"]),
+                ).fetchone()
+
+    def dispatch_text_report(self, analysis_id, token, reserve, budget, ceiling, metadata):
+        dispatch = uuid4()
+        with self.connect() as conn:
+            with conn.transaction():
+                conn.execute("SELECT pg_advisory_xact_lock(1062026)")
+                current = conn.execute(
+                    """SELECT analysis_id FROM text_report_jobs WHERE analysis_id = %s
+                       AND state = 'PROCESSING' AND lease_token = %s AND leased_until > now()
+                       FOR UPDATE""", (analysis_id, token),
+                ).fetchone()
+                if current is None:
+                    raise LeaseLost("Report lease is no longer current")
+                spent = conn.execute(
+                    "SELECT COALESCE(sum(COALESCE(actual_usd, reserved_usd)), 0) AS spent FROM text_report_dispatches"
+                ).fetchone()["spent"]
+                if reserve <= 0 or reserve > ceiling or spent + reserve > budget:
+                    return None
+                conn.execute(
+                    """INSERT INTO text_report_dispatches(analysis_id, dispatch_id, reserved_usd, metadata)
+                       VALUES (%s, %s, %s, %s::jsonb)""",
+                    (analysis_id, dispatch, reserve, json.dumps(metadata)),
+                )
+        return dispatch
+
+    def settle_text_report(self, analysis_id, token, state, code, report, metadata):
+        with self.connect() as conn:
+            with conn.transaction():
+                changed = conn.execute(
+                    """UPDATE text_report_jobs SET state = %s, failure_code = %s, report = %s::jsonb,
+                              generated_at = CASE WHEN %s = 'READY' THEN now() ELSE NULL END,
+                              lease_token = NULL, leased_until = NULL
+                       WHERE analysis_id = %s AND state = 'PROCESSING' AND lease_token = %s
+                         AND leased_until > now() RETURNING analysis_id""",
+                    (state, code, json.dumps(report) if report is not None else None, state, analysis_id, token),
+                ).fetchone()
+                if changed is None:
+                    raise LeaseLost("Report lease is no longer current")
+                conn.execute(
+                    """UPDATE text_report_dispatches SET metadata = metadata || %s::jsonb,
+                              settled_at = now() WHERE analysis_id = %s""",
+                    (json.dumps(metadata), analysis_id),
+                )
 
     def record_processing_failure(
         self,

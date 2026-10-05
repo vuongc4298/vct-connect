@@ -40,7 +40,7 @@ export function extractionRecovery(status: ExtractionStatus | null, reason?: str
 }
 
 type StatusInput = Pick<Analysis, "status" | "attempt_count" | "failure_code"> &
-  Partial<Pick<Analysis, "result" | "extraction_method" | "source_url">> | null;
+  Partial<Pick<Analysis, "result" | "extraction_method" | "source_url" | "text_report">> | null;
 
 export function analysisPresentation(analysis: StatusInput) {
   const status = analysis?.status ?? "QUEUED";
@@ -62,7 +62,7 @@ export function analysisPresentation(analysis: StatusInput) {
     final,
     retrying,
     terminal: completedProcessing || final,
-    shouldPoll: !completedProcessing && !final,
+    shouldPoll: (!completedProcessing && !final) || reportPending(analysis?.text_report),
     orbClass: complete ? "complete" : final ? "failed" : "working",
     orbSymbol: complete ? "✓" : final ? "!" : "",
     pillTone: blocked || extractionStatus === "PARTIAL" || final || retrying ? "warning" : complete ? "good" : "neutral",
@@ -70,4 +70,8 @@ export function analysisPresentation(analysis: StatusInput) {
     headline: blocked ? `Chưa thể trích xuất trang ${source}` : complete && live ? "Bằng chứng đã được lưu" : complete ? "Báo cáo đã sẵn sàng" : final ? "Phân tích chưa thể hoàn tất" : retrying ? "Hệ thống sẽ thử lại" : processing ? live ? "Đang trích xuất bằng chứng" : "Đang xử lý dữ liệu demo" : "Đang chờ xử lý",
     detail: blocked ? `Trạng thái nguồn: ${extractionStatus ?? "UNKNOWN"}${reason ? ` · ${reason}` : ""}. Không có ảnh chụp bằng chứng cho URL này. ${recovery ?? "Bạn có thể tạo phân tích mới."}` : complete && live ? "Nguồn và độ phủ đã được ghi nhận; chưa có điểm rủi ro." : complete ? "Dữ liệu minh hoạ đã được tổng hợp." : final ? `Mã lỗi an toàn: ${analysis?.failure_code ?? "PROCESSING_ERROR"}. Bạn có thể tạo một phân tích mới.` : retrying ? `Lần thử ${analysis?.attempt_count ?? 1} chưa thành công. Hệ thống sẽ tự động thử lại.` : "Bạn có thể giữ trang này mở trong khi hệ thống xử lý.",
   } as const;
+}
+
+export function reportPending(report: Analysis["text_report"]) {
+  return report?.state === "QUEUED" || report?.state === "PROCESSING";
 }

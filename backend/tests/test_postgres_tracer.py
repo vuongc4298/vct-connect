@@ -334,6 +334,7 @@ def remove(store: Store, analysis_id: UUID):
         ).fetchone()
         conn.execute("DELETE FROM local_queue WHERE analysis_id = %s", (analysis_id,))
         conn.execute("DELETE FROM analysis_results WHERE analysis_id = %s", (analysis_id,))
+        conn.execute("DELETE FROM text_report_jobs WHERE analysis_id = %s", (analysis_id,))
         conn.execute("UPDATE analyses SET supplier_snapshot_id = NULL WHERE id = %s", (analysis_id,))
         conn.execute("DELETE FROM supplier_snapshots WHERE analysis_id = %s", (analysis_id,))
         conn.execute("DELETE FROM analyses WHERE id = %s", (analysis_id,))

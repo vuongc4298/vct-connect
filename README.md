@@ -73,3 +73,82 @@ To inspect the DLQ with Azure CLI, use `az servicebus queue show --resource-grou
 ## Checks
 
 Run `.venv/Scripts/python.exe -m pytest backend/tests`, `npm test --prefix frontend`, `npm run typecheck --prefix frontend`, `npm run build --prefix frontend`, and `docker compose config`. After the production build, run `.venv/Scripts/python.exe scripts/scan_frontend_secrets.py`; it compares configured server credentials without printing them and must report no matches. For PostgreSQL checks, set `VCT_TEST_DATABASE_URL` to a dedicated local test database URL. Migration tests create and remove an isolated schema per test; tracer tests remove their own analysis rows and users. To include the live Service Bus round trip, also set `VCT_TEST_AZURE=true` with Service Bus settings in the test shell; use a dedicated queue. Run `npx -y clerk@latest doctor` from `frontend/apps/web` after Clerk configuration changes.
+
+### Saved-evidence Vietnamese text reports (Oct 6)
+
+Migration `0010_text_reports` adds an independent snapshot-linked report queue and
+pre-dispatch spend ledger. Owned completed imports, browser captures, public
+extractions, and snapshot replays atomically enqueue a report. Existing owned
+completed analyses are backfilled when the migration is applied. Guests never
+receive a full report; fixture or blocked extraction has an insufficient state
+and incurs no model spend. Extraction status, evidence, admission quotas, and
+ownership checks remain authoritative and unchanged.
+
+Reports use the existing authenticated analysis polling endpoint (`text_report`)
+with QUEUED, PROCESSING, READY, UNAVAILABLE, INSUFFICIENT, FAILED, or UNCERTAIN
+states. The buyer screen continues polling after extraction completes, displays
+Vietnamese findings with inspectable evidence IDs, separates observations from
+inferences, and shows limitations and pre-order actions. Extraction evidence is
+always available as the fallback. Demo scores remain explicitly illustrative
+and never enter real interpretation.
+
+**Activation is separate from implementation.** Leave `TEXT_REPORT_ENABLED=false`
+until the YEScale chat-completions endpoint, backend-only API key, exact model ID
+and model version, contractual conservative input/output USD rates, lifetime
+budget, and per-call ceiling are configured. The endpoint must be HTTPS and
+accept the OpenAI-compatible chat-completions JSON contract (`messages`, `model`,
+`max_tokens`, `response_format`). The returned model must exactly match the
+configured ID; an alias that changes its returned model is rejected. Configure
+an immutable provider model identifier; the configured version is retained as
+operator-provided provenance, not independent proof of provider version.
+All missing, malformed, zero, or non-finite cost configuration fails closed.
+See `.env.example` for the complete variables. No live activation is performed
+by migration or by the tests.
+
+Input is selected normalized business text, bounded to 24,000 serialized UTF-8
+bytes by default. Raw HTML, account IDs, supplier identifiers, reviewer names,
+contact fields, and URLs are excluded from model input; contact-like text is
+redacted. Free text cannot be guaranteed free of every form of personal data.
+The prompt treats evidence as untrusted and requires Vietnamese structured JSON.
+Output is capped at 2,400 tokens and 48,000 response bytes; requests have a
+45-second settlement deadline by default. A late provider response is discarded
+and marked uncertain. The underlying HTTP call may finish later; it cannot write
+to the database or cause an automatic retry.
+
+Reservations conservatively bound input by UTF-8 bytes plus protocol overhead,
+and output by the configured token limit and conservative contractual rates.
+Concurrent workers reserve under a PostgreSQL advisory transaction lock against
+the total lifetime database budget. Unknown and uncertain costs keep the full
+reservation; deleting an analysis does not release that spend ledger entry.
+Returned usage may provide a labeled estimate, but actual cost remains null
+until independently reconciled: no invoice cost is inferred from usage. Model,
+model version, prompt/schema/pipeline versions, returned model, usage, latency,
+request ID, and cost provenance are persisted for completed dispatches.
+
+Local and Azure combined/dispatcher loops drain the database report queue;
+Azure finite jobs additionally attempt one report before exiting. In Azure,
+keep the existing dispatcher active to process report-only imports/captures,
+which do not create Service Bus extraction messages. No Azure infrastructure
+or deployment is changed by this feature.
+
+A committed READY report is reused. An expired lease before dispatch is safe to
+reclaim; an expired lease after the dispatch ledger is committed becomes
+UNCERTAIN. Stale settlements are fenced. There is no paid-call replay and no
+exactly-once billing claim. For reconciliation, inspect the dispatch ID, provider
+request ID, timestamps and usage against provider records; do not reset uncertain
+jobs blindly. Requeue an UNAVAILABLE job only after configuration is corrected
+and you verify it has no dispatch ledger entry. Actual invoice costs can be
+reconciled into `actual_usd` by an operator after confirming their provenance;
+do not replace unknown costs with zero.
+
+Offline verification: `python -m pytest backend/tests/test_text_reports.py`;
+PostgreSQL verification: set `VCT_TEST_DATABASE_URL` to a disposable database and
+run `python -m pytest backend/tests/test_postgres_text_reports.py
+backend/tests/test_migrations.py backend/tests/test_postgres_tracer.py`.
+The tests create disposable isolated schemas and use a fake provider. Run
+`npm test`, `npm run typecheck`, and `npm run build` from `frontend`.
+Extension compilation also needs a Clerk publishable key; a test-only placeholder
+verifies compilation but cannot verify authentication. Live quality, factual
+support of model prose, latency/cost, provider model-version guarantees, and
+Azure acceptance require credentials, model pin, approved budget, and a separately
+authorized release.

@@ -7,6 +7,7 @@ import { ApiError, getAnalysis, getGuestAnalysis, submitGuestAnalysis } from "@v
 import { submitSelectedAnalysis } from "./analysis-request";
 import { analysisPresentation } from "./analysis-status";
 import { ExtractionEvidence, isFixtureResult } from "./extraction-evidence";
+import { TextReport } from "./text-report";
 
 const DEMO_SIGNALS = [
   { tone: "risk", title: "Thông tin pháp nhân chưa đầy đủ", body: "Kịch bản demo chưa có mã đăng ký kinh doanh để đối chiếu chéo." },
@@ -566,7 +567,7 @@ export default function Page() {
         {error && <div role="alert" className="error-banner"><span>!</span><div><strong>Không thể tiếp tục</strong><p>{error === "Analysis not found" ? "Không tìm thấy phân tích. Vui lòng gửi lại dữ liệu demo." : error}</p></div></div>}
         {id && <ProgressCard analysis={analysis} delayed={delayed} requestedMethod={requestedMethod} />}
         {id && analysis?.status === "COMPLETED" && isFixtureResult(analysis.result) && <DemoReport analysisId={id} sourceUrl={analysis.result.source_url} />}
-        {id && analysis?.status === "COMPLETED" && !isFixtureResult(analysis.result) && <ExtractionEvidence analysis={analysis} />}
+        {id && analysis?.status === "COMPLETED" && !isFixtureResult(analysis.result) && <><TextReport analysis={analysis} /><ExtractionEvidence analysis={analysis} /></>}
         {!id && <section className="empty-guide"><div className="guide-icon">◎</div><h2>Một URL, bằng chứng rõ nguồn</h2><p>URL 1688, Taobao và Alibaba công khai được trích xuất khi truy cập được; URL mẫu chạy báo cáo fixture minh họa. Trang bị chặn sẽ hiển thị trạng thái rõ ràng.</p><div><span>1</span>Gửi URL<i /><span>2</span>Chờ xử lý<i /><span>3</span>Xem kết quả</div></section>}
       </main>}
     </div>

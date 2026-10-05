@@ -73,6 +73,7 @@ export type ExtractionResult = {
   reason?: string;
 };
 export type Analysis = {
+  text_report?: TextReportState | null;
   id: string;
   source_url: string;
   status: AnalysisStatus;
@@ -103,4 +104,26 @@ export type Analysis = {
         omitted_review_count?: number; omitted_product_count?: number }
   ) | null;
   reviews: Array<Record<string, unknown>>;
+};
+
+export type TextReport = {
+  summary: string;
+  findings: Array<{ kind: "observation" | "inference"; text: string; citations: string[] }>;
+  limitations: string[];
+  actions: string[];
+  evidence: Array<{ id: string; path: string; value: unknown }>;
+  source_url: string;
+  snapshot_id: string;
+  extracted_at: string;
+  capture_freshness: "unknown";
+  source_provenance?: Record<string, unknown>;
+  metadata: { model: string; model_version: string; prompt_version: string; schema_version: string;
+    pipeline_version: string; returned_model?: string; usage?: Record<string, number> | null;
+    latency_ms?: number; request_id?: string | null; actual_cost_usd: null; cost_provenance: "unknown" };
+};
+export type TextReportState = {
+  state: "QUEUED" | "PROCESSING" | "READY" | "UNAVAILABLE" | "INSUFFICIENT" | "FAILED" | "UNCERTAIN";
+  failure_code: string | null;
+  generated_at: string | null;
+  report: TextReport | null;
 };
