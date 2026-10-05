@@ -447,7 +447,7 @@ export default function Page() {
       setError("Mã phân tích không hợp lệ");
       return;
     }
-    setRequestedMethod("EXTENSION_DOM");
+    setRequestedMethod(null);
     setId(analysisId);
     setView("analysis");
   }, [userId]);
@@ -472,6 +472,7 @@ export default function Page() {
   useEffect(() => {
     if (!id || !isSignedIn) return;
     let active = true;
+    let sourceLoaded = false;
     let timer: number | undefined;
     const delayTimer = window.setTimeout(() => { if (active) setDelayed(true); }, 15000);
     async function poll() {
@@ -479,7 +480,11 @@ export default function Page() {
         const current = await getAnalysis(id!, { getToken });
         if (active) {
           setAnalysis(current); setError("");
-          if (current.extraction_method === "EXTENSION_DOM") setUrl(current.source_url);
+          if (!sourceLoaded) {
+            setUrl(current.source_url);
+            setRequestedMethod(current.extraction_method ?? null);
+            sourceLoaded = true;
+          }
         }
         if (!analysisPresentation(current).shouldPoll) return;
       } catch (cause) {

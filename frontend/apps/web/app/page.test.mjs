@@ -8,7 +8,8 @@ import React, { act } from "react";
 import { JSDOM } from "jsdom";
 import { build } from "esbuild";
 
-test("mounted buyer Page loads owned READY report, citations and extraction fallback", async () => {
+for (const method of ["USER_UPLOAD", "PUBLIC_HTTP", "EXTENSION_DOM"]) {
+test(`mounted buyer Page reopens ${method} report with its source, citations and extraction fallback`, async () => {
   const directory = dirname(fileURLToPath(import.meta.url));
   const temporary = await mkdtemp(join(resolve(directory, "../../../node_modules"), ".page-test-"));
   const bundle = join(temporary, "page.cjs");
@@ -47,11 +48,11 @@ test("mounted buyer Page loads owned READY report, citations and extraction fall
       assert.equal(new Headers(init.headers).get("authorization"), "Bearer owned-token");
       return Response.json({
         id, source_url: source, status: "COMPLETED", actor_type: "CUSTOMER", attempt_count: 1,
-        extraction_method: "EXTENSION_DOM", result: { source_url: source, extraction_status: "PARTIAL" },
+        extraction_method: method, result: { source_url: source, extraction_status: "PARTIAL" },
         supplier_data: { supplier_name: "Owned supplier evidence", source_url: source, platform: "1688",
           products: [{ title: "Original source product" }], completeness: 0.25,
           completeness_denominator: ["supplier_name", "products", "rating", "reviews"], missing_fields: ["rating"],
-          extracted_at: "2026-10-05T00:00:00Z", extraction_method: "EXTENSION_DOM", extractor_version: "test.v1" },
+          extracted_at: "2026-10-05T00:00:00Z", extraction_method: method, extractor_version: "test.v1" },
         raw_evidence: null, reviews: [],
         text_report: { state: "READY", failure_code: null, generated_at: "2026-10-05T01:00:00Z", report: {
           summary: "Báo cáo đã lưu cho người mua.",
@@ -70,6 +71,8 @@ test("mounted buyer Page loads owned READY report, citations and extraction fall
     root = createRoot(container);
     await act(async () => { root.render(React.createElement(Page)); });
     assert.ok(requests.length >= 1, "Page must poll the owned analysis itself");
+    assert.equal(container.querySelector('#source-url').value, source);
+    assert.ok(!container.querySelector('#url-help').textContent.includes('Dữ liệu fixture'));
     assert.ok(container.textContent.includes("Báo cáo đã lưu cho người mua."));
     const citation = container.querySelector(`a[href="#report-${id}-E1"]`);
     assert.equal(citation?.textContent, "E1");
@@ -89,3 +92,4 @@ test("mounted buyer Page loads owned READY report, citations and extraction fall
     await rm(temporary, { recursive: true, force: true });
   }
 });
+}
