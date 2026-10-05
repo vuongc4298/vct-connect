@@ -2,6 +2,8 @@
 
 Status: pending explicit operator approval. No diagnostic request, capture or new spending fence has run. The previous approval authorized the completed cloud acceptance only.
 
+Completion update: the operator subsequently approved this exact proposal. One local request ran and returned READY; no rejected prose was retained. Authorization is consumed. The original pending text above records proposal-time state. See story31-language-v4-diagnostic-result.md for the outcome, retained spending, substantive gaps and next offline scope.
+
 Run one fresh local provider diagnostic, capped at $0.01, using the sanitized authentic Taobao fixture and current evidence projection, vi-text.v7 prompt, text-report.v2 schema and vi-prose.v4 validator. Preserve configured deepseek-v4.1-flash and expected returned deepseek-v4-1-flash-260910, thinking disabled, 120-second deadline, 2,400-token output limit, and no retry. Do not replay a failed cloud job or automatically run another acceptance.
 
 Retain only the first rejected findings.text, redacted, at most 1,600 characters and 8,000 UTF-8 bytes, in tmp/story31-resolution-call-language-v4.private.json. This exact path is Git ignored and currently absent. Retain no entire response, headers, credentials, HTML, account/reviewer identifiers, URLs or contact fields. Keep rejected cloud prose discarded. If rejection is in another field, schema/credential validation fails, or safe redaction cannot be established, save safe metadata only and no prose. A successful response requires no rejected-prose capture.
