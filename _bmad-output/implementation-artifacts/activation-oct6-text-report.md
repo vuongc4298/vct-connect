@@ -2,8 +2,9 @@
 
 Implementation: local commit `541d99e`, branch `codex/oct6-text-report`.
 Azure activation completed on 2026-10-05 after migration and queue audit.
-Owned Clerk browser acceptance remains pending. Earlier disabled states below
-describe the historical rehearsal stages.
+Owned Clerk browser acceptance passed on 2026-10-05 after the quotation
+validation correction. Chinese-to-Vietnamese translation quality remains
+unverified. Earlier disabled and pending states below describe historical stages.
 
 ## Verified target
 
@@ -239,3 +240,56 @@ saved report and extraction fallback if gateway availability varies.
   dependency. Dependency upgrade is separate follow-up; the web flow does not
   use the extension bundle or compile user-supplied CSS. This rollout did not
   claim a clean dependency audit.
+
+## Signed-in cloud acceptance: 2026-10-05
+
+The first signed-in import reached FAILED/INVALID_OUTPUT (analysis
+`495a48f2-71b0-442d-a79b-ca2904d6ae3c`, gateway request
+`202610051407221739475PCEzoZLt`). A separate, deliberate local diagnostic
+reproduced a language-screen false positive on a single-quoted English source
+title inside Vietnamese prose. This establishes the diagnostic cause, not the
+unretained contents of the first cloud response. Both failed analyses remain
+failed; neither was replayed or relabeled.
+
+Correction commit `ec8c44a` exempts only exact single-quoted supplied evidence
+strings, using one deterministic replacement pass after the unsupported-score
+guard. Independent review findings about apostrophes, swallowed surrounding
+English and replacement ordering were resolved. All 109 focused report tests
+passed locally and in the final backend image. Final deployed backend digest:
+`sha256:eebc31de07fd7e9982b2c83cb648f01edf2b93e414429ae89d6e1e3462afbca0`.
+Dispatcher revision `vct-connect-dev-dispatcher--0000019` and API revision
+`vct-connect-dev-api--0000010` were running; analysis and migration jobs use
+the same backend image. The web image and approved report bounds are unchanged.
+
+Fresh signed-in saved-page import completed with report READY:
+
+- [Owned saved report](https://vct-connect-dev-web.blackdesert-0144dda1.southeastasia.azurecontainerapps.io/?analysis=36677413-84b7-45b5-8255-828fbe4cd0c8).
+- Analysis `36677413-84b7-45b5-8255-828fbe4cd0c8`; immutable snapshot
+  `4f100d5e-6297-4578-9611-c24f28876115`.
+- Gateway request `20261005143154813333689YMoi4x5w`; returned exact expected
+  model `deepseek-v4-1-flash-260910`, thinking disabled, 860 input / 1329 output
+  tokens; app latency 23388ms. Generated at `2026-10-05T07:32:18.124654+00:00`.
+- Browser showed Vietnamese summary, four source observations, two labeled
+  inferences, limitations, pre-order actions and E1–E4 citations. E2 opened the
+  saved price evidence: minimum 37.00, maximum 39.00, MOQ 1.
+- A fresh navigation through the owned analysis link reopened the exact same
+  report section text. Read-only private acceptance execution
+  `vct-connect-dev-migrate-pbbct7t` also verified owner-scoped retrieval,
+  COMPLETED/READY state, matching immutable snapshot and exactly one dispatch.
+  Persisted report SHA-256:
+  `40eac95bad4f7610fc725cfd359bd96815b0214fb08d8c21f1ab83f2f9d3d482`.
+- The earlier cloud failure remained intact with its one dispatch. Cloud ledger
+  has two dispatches and total retained reservations $0.0040584. Successful
+  call reservation is $0.0020292; configured-rate usage estimate is $0.0009264.
+  Actual product-ledger cost remains unknown/null.
+- YEScale detail displays a $0.0008 charge and balance after $0.0927; its log
+  table displays $0.0009 for the same request. These are rounded dashboard
+  displays, not an exact invoice reconciliation. No top-up or automatic paid
+  replay occurred.
+
+Operational evidence is retained in `tmp/cloud-report-acceptance-logs.json`,
+`tmp/azure-report-quote-fix-deployment.json` and
+`tmp/owned-cloud-report-ready.jpg`. The projected product title is English;
+this acceptance demonstrates Vietnamese interpretation of the saved evidence,
+not Chinese-title translation quality. Source freshness remains unknown and
+no computed risk or confidence score is presented.
