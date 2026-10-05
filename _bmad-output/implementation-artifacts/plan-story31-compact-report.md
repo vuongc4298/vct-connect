@@ -23,3 +23,5 @@ Prompt-only change under 100 lines; oneshot route. Bump prompt provenance to vi-
 Run the existing focused report regressions (including finish_reason=length rejection/no retries, immutable source citations, strict confidence and language guards). Independently review the diff. Build and verify the non-root image without networking. Release by digest, verify healthy revisions and retained ledgers, fence exactly one UI submission. Live success requires READY, substantive fixture-grounded Vietnamese interpretation and owner-scoped identical reopen. Stop honestly if the single request fails.
 
 Independent quick review found no concrete bugs or unmet implementation intent. All 147 focused tests passed locally and in the non-root built image with networking disabled. Live completion is unverified until the separately approved single acceptance request.
+
+Dev release and single paid test completed. Response ended at 991 output tokens, but NON_VIETNAMESE_PROSE/findings.text blocked acceptance. No rejected prose retained; no retry. Full outcome: story31-compact-report-result.md. Built status represents implementation/review only, not Story 3.1 live acceptance.
