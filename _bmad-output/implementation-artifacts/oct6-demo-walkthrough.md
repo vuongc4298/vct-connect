@@ -41,5 +41,11 @@ provider request returned an upstream 503 at the 120-second deadline. Translatio
 is still unverified. Do not present it as a completed report or retry it blindly.
 [Retained Chinese evidence](https://vct-connect-dev-web.blackdesert-0144dda1.southeastasia.azurecontainerapps.io/?analysis=c40adda8-aba1-42c2-8306-12f8604f1abc).
 
+One operator-approved fresh attempt returned in 49.4 seconds but failed output
+validation. [Fresh failed result](https://vct-connect-dev-web.blackdesert-0144dda1.southeastasia.azurecontainerapps.io/?analysis=5d86a995-5687-4b60-9e18-b31c87216d7e).
+Chinese translation remains unverified. Freeze the current implementation and
+present the verified saved report above; do not describe the Chinese attempt as
+a completed report. Further diagnosis is after-demo work unless reprioritized.
+
 Full scoring, review clustering, image/video analysis, production history,
 Watchlist, human evaluation and formal pilot validation remain after-demo work.

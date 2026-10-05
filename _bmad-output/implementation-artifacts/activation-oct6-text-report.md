@@ -343,3 +343,27 @@ an additional application dispatch. No application replay, relabeling or reserve
 deletion occurred. Chinese translation acceptance remains unverified because
 no report returned. Use the already verified saved Vietnamese report for the
 demo; the Chinese extraction is retained as a second evidence example.
+
+## Approved fresh Chinese rehearsal: 2026-10-05
+
+Operator approved exactly one fresh analysis using the same sanitized source.
+Analysis `5d86a995-5687-4b60-9e18-b31c87216d7e`, snapshot
+`ade086ca-b813-490d-8c39-9995addcf97f`: extraction COMPLETED/PARTIAL,
+report FAILED/INVALID_OUTPUT. The provider returned the exact expected model
+`deepseek-v4-1-flash-260910` in 49377ms with 1052 input / 1888 output tokens.
+Gateway request `20261005151358649211743YKVYBLua`. No validated report was saved;
+the precise validation cause cannot be determined because production did not
+retain the rejected content or individual validation reason.
+
+Private read-only execution `vct-connect-dev-migrate-pinoekw` confirmed one
+dispatch `364ef927-0f7d-4bde-b79f-3fbe78429014`, retained reservation $0.0021396,
+configured-rate usage estimate $0.0012906 and actual cost unknown/null. Evidence:
+`tmp/cloud-chinese-fresh-inspect-logs.json`. YEScale detail confirms successful
+gateway completion, 49194ms, displayed billing charge $0.0011 and balance after
+$0.092 at 2026-10-05 15:14:47 Asia/Bangkok. These are dashboard precision,
+not unrounded invoice amounts. The earlier timeout remains unchanged.
+
+The agreed failure fallback now applies: freeze demo implementation at backend
+`ec8c44a` and frontend `8799ac8`, use the verified saved Vietnamese report,
+and explicitly mark Chinese translation unverified. No additional generation,
+paid diagnostic, model change or validation relaxation was performed.
