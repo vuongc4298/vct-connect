@@ -100,3 +100,9 @@ The subsequent approved one-call local language diagnostic failed
 SCHEMA_INVALID/findings before language validation and retained no rejected
 prose. See `story31-language-diagnostic-result.md`; a safe schema-subtype helper
 is prepared offline, but its distinct paid followup remains unapproved.
+
+That followup was subsequently approved and ran once: schema validation passed,
+but summary failed the language screen. No sample was saved under the earlier
+findings-only policy. See `story31-schema-followup-result.md`. Broader first-prose
+capture and a three-request resolution batch are proposed in
+`story31-bounded-resolution-proposal.md`; neither is approved or executed yet.
