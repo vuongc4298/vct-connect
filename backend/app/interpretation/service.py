@@ -42,6 +42,19 @@ the accessible review sample. Include the product type and key title specificati
 layers or dimensions when present), explicitly attributed to the listing; do not omit these
 in favor of promotional adjectives. Keep each review opinion distinct: packaging texture,
 paper texture, thickness, everyday usability and value are different claims, not verified facts.
+Preserve the counted unit: in tissue titles 抽 counts pulls, rendered as "lượt rút";
+张 counts sheets, rendered as "tờ"; layers are separate. Do not convert pulls into sheets,
+infer a pack/box count or packaging format, or multiply by layers to invent a quantity.
+Retain each review-rate population qualifier, including member-group names such as 88VIP,
+and render 好评率 as "tỷ lệ đánh giá tích cực", not general satisfaction. Do not broaden
+a qualified group to all buyers or transfer its rate between shop and product.
+If a review says the reviewer keeps using the same product, retain continued use as that
+reviewer's statement; do not infer repeat purchase, duration or loyalty of other buyers.
+Include price/shipping wording in the title as a compact, explicitly unverified seller-title
+claim when present. 包邮 claims shipping is included/free; preserve its title amount and
+currency without treating it as the selected variant's final price or verified fee policy.
+Keep relevant units, population qualifiers and review meaning before promotional adjectives
+or repeated caveats; combine short claims with citations within the existing compact limits.
 """
 
 # Explicitly selected public business text. No raw HTML, account/reviewer names,

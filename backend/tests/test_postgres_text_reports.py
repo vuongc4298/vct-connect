@@ -213,14 +213,24 @@ def test_authentic_chinese_projection_persistence_and_owner_reopen_offline(repor
     data = json.loads(content())
     data["findings"] = [
         {"kind": "observation", "text": "Nguồn hiển thị sản phẩm “洁柔抽纸Face粉软柔韧100抽3层抽实惠亲肤细腻宝宝可用2元包邮”.", "citations": ["E1"]},
-        {"kind": "observation", "text": "Nguồn hiển thị giá 2.01 và 3.35.", "citations": ["E2"]},
+        {"kind": "observation", "text": "Giá trước ưu đãi từ 3.35 tệ, sau ưu đãi cửa hàng từ 2.01 tệ; phí cuối cùng chưa xác định.", "citations": ["E2"]},
+        {"kind": "observation", "text": "Tiêu đề ghi giấy 100 lượt rút, 3 lớp và 2 tệ miễn phí gửi hàng; đây là quảng cáo chưa xác minh.", "citations": ["E1"]},
+        {"kind": "observation", "text": "Cửa hàng hiển thị tỷ lệ đánh giá tích cực của nhóm 88VIP là 97%; chưa xác minh độc lập.", "citations": ["E3"]},
+        {"kind": "observation", "text": "Người mua khen chất lượng và nói vẫn dùng loại giấy này; đây là ý kiến người mua.", "citations": ["E5"]},
+        {"kind": "observation", "text": "Người mua khác nói bao bì trơn nhẵn, giấy hơi xốp, độ dày trung bình và đủ dùng hằng ngày với giá tốt.", "citations": ["E6"]},
     ]
     provider = FakeProvider(json.dumps(data, ensure_ascii=False))
     assert process_report_once(store, configured(), provider)
     reopened = Store(store.database_url).get_for_user(analysis_id, owner["id"])
     assert reopened["text_report"]["state"] == "READY"
     report = reopened["text_report"]["report"]
+    assert report["findings"] == data["findings"]
+    assert report["metadata"]["prompt_version"] == "vi-text.v8"
+    assert report["self_reported_confidence"]["provenance"] == "model_self_reported"
+    assert report["self_reported_confidence"]["calibration"] == "uncalibrated"
     evidence = report["evidence"]
+    refs = {entry["id"] for entry in evidence}
+    assert all(ref in refs for finding in report["findings"] for ref in finding["citations"])
     assert evidence[0]["path"] == "products" and "洁柔抽纸" in evidence[0]["value"][0]["title"]
     assert evidence[1]["path"] == "price_information"
     assert evidence[2]["scope"] == {"positive_review_rate_display_text": "product", "shop_metrics_display_text": "shop"}
@@ -236,6 +246,8 @@ def test_authentic_chinese_projection_persistence_and_owner_reopen_offline(repor
     for field in ("supplier_data", "reviews", "raw_evidence", "supplier_snapshot_id", "result"):
         assert reopened[field] == original[field]
     assert not process_report_once(store, configured(), provider) and len(provider.calls) == 1
+    with store.connect() as conn:
+        assert conn.execute("SELECT count(*) AS n FROM text_report_dispatches WHERE analysis_id = %s", (analysis_id,)).fetchone()["n"] == 1
 
 
 def test_safe_diagnostic_persisted_in_dispatch_metadata_without_rejected_payload(report_store):

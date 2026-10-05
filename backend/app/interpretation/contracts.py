@@ -4,7 +4,7 @@ import unicodedata
 
 from pydantic import BaseModel, ConfigDict, Field, ValidationError
 
-PROMPT_VERSION = "vi-text.v7"
+PROMPT_VERSION = "vi-text.v8"
 SCHEMA_VERSION = "text-report.v2"
 PIPELINE_VERSION = "saved-evidence.v1"
 VALIDATION_VERSION = "vi-prose.v4"

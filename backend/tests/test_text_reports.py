@@ -433,7 +433,7 @@ def test_valid_confidence_is_application_labeled_and_prompt_versioned(score):
     assert store.state == "READY"
     assert store.report["self_reported_confidence"] == {
         **data["self_reported_confidence"], "provenance": "model_self_reported", "calibration": "uncalibrated"}
-    assert store.metadata["prompt_version"] == "vi-text.v7"
+    assert store.metadata["prompt_version"] == "vi-text.v8"
     assert store.metadata["schema_version"] == "text-report.v2"
     assert 'self_reported_confidence' in provider.calls[0][0][0]["content"]
 
@@ -521,7 +521,7 @@ def test_qualitative_confidence_basis_with_source_numbers_settles_ready(basis):
     assert store.state == "READY"
     assert store.report["self_reported_confidence"] == {
         "score": 0.65, "basis": basis, "provenance": "model_self_reported", "calibration": "uncalibrated"}
-    assert store.metadata["prompt_version"] == "vi-text.v7"
+    assert store.metadata["prompt_version"] == "vi-text.v8"
     assert not process_report_once(store, configured(), provider) and len(provider.calls) == 1
 
 
@@ -578,7 +578,7 @@ def test_vietnamese_shipping_service_prose_with_versioned_validation(prose):
     process_report_once(store, configured(), FakeProvider(json.dumps(data)))
     assert store.state == "READY"
     assert store.metadata["validation_version"] == "vi-prose.v4"
-    assert store.metadata["prompt_version"] == "vi-text.v7"
+    assert store.metadata["prompt_version"] == "vi-text.v8"
     for foreign in [" The supplier is reliable.", " \u4f9b\u5e94\u5546\u53ef\u9760", " Le fournisseur est fiable."]:
         assert not screen_vietnamese(prose + foreign)
     data["findings"][0]["citations"] = ["E99"]
@@ -640,11 +640,12 @@ def test_authentic_taobao_grounding_projection_and_vietnamese_settlement():
     # Hand-authored output verifies compatibility and settlement, not live model semantics.
     data = json.loads(content())
     texts = [
-        ("Theo tiêu đề, sản phẩm là khăn giấy rút 100 lượt, 3 lớp; chưa xác minh độc lập.", ["E1"]),
+        ("Tiêu đề ghi khăn giấy 100 lượt rút, 3 lớp, mềm mại, dùng cho trẻ nhỏ và 2 tệ miễn phí gửi hàng; đây là quảng cáo chưa xác minh.", ["E1"]),
         ("Giá hiển thị trước ưu đãi từ 3.35 tệ, sau ưu đãi từ 2.01 tệ; phí chưa xác định.", ["E2"]),
-        ("Nguồn hiển thị tỷ lệ đánh giá tích cực sản phẩm 100% trong 3 tháng; cửa hàng có tỷ lệ 97% cho người mua thành viên.", ["E3"]),
-        ("Cửa hàng công bố thời gian gửi hàng trung bình 23 giờ; chưa xác minh độc lập.", ["E4"]),
-        ("Một người mua khen chất lượng; người khác cho biết giấy hơi xốp, độ dày trung bình và đủ dùng hằng ngày.", ["E5", "E6"]),
+        ("Nguồn hiển thị 3 vạn+ lượt bán, 2 vạn+ đánh giá và tỷ lệ đánh giá tích cực sản phẩm 100% trong 3 tháng; chưa xác minh.", ["E3"]),
+        ("Cửa hàng hiển thị điểm 4.9, tỷ lệ đánh giá tích cực 88VIP 97%, gửi hàng trung bình 23 giờ và phản hồi 14 giây; chưa xác minh.", ["E3", "E4"]),
+        ("Một người mua khen chất lượng và nói vẫn dùng sản phẩm này; đây là ý kiến người mua.", ["E5"]),
+        ("Người mua khác nói bao bì trơn nhẵn, giấy hơi xốp, độ dày trung bình, đủ dùng hằng ngày và giá tốt; đây là ý kiến người mua.", ["E6"]),
     ]
     data["findings"] = [{"kind": "observation", "text": text, "citations": refs} for text, refs in texts]
     provider = FakeProvider(json.dumps(data, ensure_ascii=False))
@@ -654,14 +655,34 @@ def test_authentic_taobao_grounding_projection_and_vietnamese_settlement():
     assert evidence[2]["scope"] == {"positive_review_rate_display_text": "product", "shop_metrics_display_text": "shop"}
     assert evidence[1]["value"]["price"]["priceDesc"] == evidence[1]["value"]["extraPrice"]["priceDesc"] == "起"
     assert evidence[3]["value"]["shop_shipping_display_text"] == ["平均23小时发货"]
+    assert "100抽3层" in evidence[0]["value"][0]["title"]
+    assert "2元包邮" in evidence[0]["value"][0]["title"]
+    assert "88VIP好评率97%" in evidence[2]["value"]["shop_metrics_display_text"]
+    assert evidence[4]["value"] == "质量特别好，一直都用的这款抽纸"
+    assert "厚度一般" in evidence[5]["value"]
+    assert store.report["findings"] == data["findings"]
     exported = provider.calls[0][0][1]["content"]
     assert json.loads(exported)["evidence"] == evidence
     for private in ("心相印维达生活馆", "159450000", "2895982467", "1076425861755", "<html>", source):
         assert private not in exported
     assert json.dumps(store.row["supplier_data"], ensure_ascii=False, sort_keys=True) == original
-    assert store.metadata["prompt_version"] == "vi-text.v7"
+    assert store.metadata["prompt_version"] == "vi-text.v8"
     assert store.report["self_reported_confidence"]["calibration"] == "uncalibrated"
     assert not process_report_once(store, configured(), provider) and len(provider.calls) == 1
+
+
+@pytest.mark.parametrize("text", [
+    "Tiêu đề ghi giấy có 80 lượt rút và 4 lớp; chưa xác minh độc lập.",
+    "Theo nguồn, tỷ lệ đánh giá tích cực của nhóm thành viên 88VIP là 96%; cần kiểm tra.",
+    "Người mua nói vẫn tiếp tục dùng loại giấy này; chưa xác minh độc lập.",
+    "Tiêu đề quảng cáo giá 5 tệ gồm phí gửi hàng; giá cuối cùng cần xác nhận với người bán.",
+])
+def test_qualified_grounding_clauses_are_compatible_with_full_report_validation(text):
+    # Independent wording/numbers probe compatibility, not factual entailment or model adherence.
+    data = json.loads(content())
+    data["findings"][0]["text"] = text
+    report = validate_report(json.dumps(data, ensure_ascii=False), [{"id": "E1", "value": "source"}])
+    assert report["findings"][0]["text"] == text
 
 
 @pytest.mark.parametrize("version", ["taobao-http.v1", "taobao-upload.v1", "public-browser.v1", "taobao-raw.v2"])
