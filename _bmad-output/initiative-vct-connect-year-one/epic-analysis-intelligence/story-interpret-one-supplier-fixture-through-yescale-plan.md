@@ -99,7 +99,7 @@ operational evidence is retained and excluded from staging.
   and its basis separately; preserve v1 report rendering and fixture/guest exclusion.
 - [x] Backend/frontend tests -- cover matrix, diagnostic secret injection, Chinese
   evidence projection and score/prose boundaries with actual report persistence.
-- [ ] README and implementation evidence -- explain confidence meaning, safe
+- [x] README and implementation evidence -- explain confidence meaning, safe
   diagnostics, legacy behavior, live limits and observed acceptance.
 
 **Acceptance Criteria:**
@@ -173,6 +173,14 @@ tests and typecheck. The web production build passed for the unchanged frontend.
 The implementation plan is built; Story 3.1 remains unaccepted until the separate
 live Chinese gate below is observed. No calibration or factual-support guarantee
 is claimed. Semantic supplier assurances remain a deferred evaluation limitation.
+
+Released reviewed implementation `21fed98` by immutable image digest. The one
+approved live Chinese rehearsal failed NON_VIETNAMESE_PROSE/findings.text after
+29321ms (1304 input/2109 output). One dispatch, no replay; rejected text remains
+unretained. The saved v1 demo reopened unchanged. Detailed evidence is recorded
+in ../../implementation-artifacts/story31-v2-release-acceptance.md. Story 3.1's
+live criterion remains unmet; an explicit bounded/redacted diagnostic policy
+is proposed separately and awaits approval before any further paid experiment.
 
 ## Design Notes
 

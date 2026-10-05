@@ -27,7 +27,7 @@ report/API contracts. Do not build a second gateway or duplicate dispatch ledger
 
 | Story | Existing contribution | Remaining original acceptance |
 | --- | --- | --- |
-| 3.1 YEScale supplier interpretation | Adapter, structured Vietnamese text report, versions/settings/usage/latency/reservation and backend-only credentials exist. | Chinese interpretation has not passed. Invalid-output diagnostics are coarse; rejected response/output needed for evaluation is not retained. Original confidence output needs a distinct contract and meaning; do not substitute a model's self-rating for calibrated assessment confidence. Actual cost is unknown where no trustworthy billing value is supplied. |
+| 3.1 YEScale supplier interpretation | Adapter, Vietnamese reports, versions/settings/usage/latency/reservation and backend-only credentials exist. The v2 release adds safe categorized diagnostics and explicitly uncalibrated model self-reported confidence, with persisted labels and legacy-compatible UI. | Live Chinese interpretation still has not passed: the v2 rehearsal identifies NON_VIETNAMESE_PROSE in findings.text. Distinguishing untranslated text from a validator false positive requires an approved bounded/redacted diagnostic policy. Confidence remains separate from calibrated assessment confidence. Actual cost stays unknown without trustworthy billing data. |
 | 3.2 Deterministic review signals | Selected review bodies can reach interpretation; extracted evidence IDs/provenance exist. | Complaint grouping, duplicate/timing/rating-text/volume signals and review reliability are not implemented. Missing dates/ratings must remain unknown. |
 | 3.3 Semantic/structured review interpretation | Provider, evidence projection and run metadata can be reused. | Embeddings, near-duplicate clustering, complaint category/severity and manipulation/reliability outputs are pending; original dependencies on 3.1 and 3.2 remain. |
 | 3.4 Factory/trader evidence | Existing extraction provenance and provider interfaces are reusable. | Direction/strength/reliability aggregation, contradictory/self-claim handling, likelihood/confidence and uncertainty are pending. Trader status alone must not add risk. |
@@ -90,3 +90,8 @@ original checkout's edited priority documents and untracked operational artifact
 are preserved. This handoff records contributions without rewriting ticket truth.
 Detailed evidence: `activation-oct6-text-report.md`; presentation fallback:
 `oct6-demo-walkthrough.md`.
+
+Continuation implementation/release evidence: `story31-v2-release-acceptance.md`.
+Implementation and regression review are complete; the live Chinese gate remains
+open. Earlier preparation-only and demo freeze notes above are historical; the
+latest approved v2 release preserves the saved v1 fallback and prior dispatches.
