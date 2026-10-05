@@ -151,3 +151,7 @@ These entries process the ten held first-instance review deferrals once. Later c
 - source_plan: `_bmad-output/implementation-artifacts/plan-extraction-retrospective-actions.md`
   summary: Unverified medium: synchronous worker process-start-time reads may exceed the attempt budget under a reachable kernel stall.
   evidence: Final edge review identifies browser.py profile-name /proc stat read before supervised launch; settle with actual kernel-delayed read and deadline measurement. Ordinary pseudo-file access and a substituted sleeping function do not establish production reachability.
+
+- source_plan: `_bmad-output/implementation-artifacts/plan-story31-confidence-basis-guidance.md`
+  summary: Existing unsupported-score regex can reject qualitative confidence explanations that mention evidence quantities or ordinary number words.
+  evidence: Offline synthetic confidence-basis probes using a confidence-label phrase followed by 2 reviews or một phần trigger UNSUPPORTED_SCORE without asserting a numeric score. Prompt guidance v6 avoids the ambiguous construction, but the guard itself remains conservative. A broader validated score-assertion design is separate; missing rejected cloud prose cannot establish historical causes.

@@ -418,7 +418,7 @@ def test_valid_confidence_is_application_labeled_and_prompt_versioned(score):
     assert store.state == "READY"
     assert store.report["self_reported_confidence"] == {
         **data["self_reported_confidence"], "provenance": "model_self_reported", "calibration": "uncalibrated"}
-    assert store.metadata["prompt_version"] == "vi-text.v5"
+    assert store.metadata["prompt_version"] == "vi-text.v6"
     assert store.metadata["schema_version"] == "text-report.v2"
     assert 'self_reported_confidence' in provider.calls[0][0][0]["content"]
 
@@ -491,6 +491,45 @@ def test_natural_vietnamese_confidence_basis_is_accepted():
     assert store.state == "READY"
 
 
+@pytest.mark.parametrize("basis", [
+    "Diễn giải dựa trên 2 đánh giá; chưa xác minh độc lập.",
+    "Nguồn hiển thị giá 2.01; chưa xác minh độc lập.",
+    "Diễn giải dựa trên hai đánh giá; cần kiểm tra mẫu.",
+    "Dữ liệu nguồn chỉ có một phần; cần xác minh độc lập.",
+    "Nội dung nguồn nhất quán; chưa xác minh độc lập.",
+])
+def test_qualitative_confidence_basis_with_source_numbers_settles_ready(basis):
+    data = json.loads(content())
+    data["self_reported_confidence"]["basis"] = basis
+    store, provider = MemoryStore(), FakeProvider(json.dumps(data, ensure_ascii=False))
+    process_report_once(store, configured(), provider)
+    assert store.state == "READY"
+    assert store.report["self_reported_confidence"] == {
+        "score": 0.65, "basis": basis, "provenance": "model_self_reported", "calibration": "uncalibrated"}
+    assert store.metadata["prompt_version"] == "vi-text.v6"
+    assert not process_report_once(store, configured(), provider) and len(provider.calls) == 1
+
+
+@pytest.mark.parametrize("prose", [
+    "Độ tin cậy là 65%.", "Điểm tin cậy là 0.65.", "Điểm tự báo cáo là hai phần ba.",
+    "Điểm rủi ro là bảy mươi hai.", "Độ tin cậy là 65/100.",
+])
+@pytest.mark.parametrize("field", ["summary", "findings", "limitations", "actions", "self_reported_confidence"])
+def test_numeric_and_number_word_scores_fail_safely_in_every_prose_field(prose, field):
+    data = json.loads(content())
+    if field == "findings": data[field][0]["text"] = prose
+    elif field == "self_reported_confidence": data[field]["basis"] = prose
+    elif field in {"limitations", "actions"}: data[field] = [prose]
+    else: data[field] = prose
+    location = {"findings": "findings.text", "self_reported_confidence": "self_reported_confidence.basis"}.get(field, field)
+    store, provider = MemoryStore(), FakeProvider(json.dumps(data, ensure_ascii=False))
+    process_report_once(store, configured(), provider)
+    assert store.state == "FAILED" and store.report is None
+    assert (store.metadata["validation_reason"], store.metadata["validation_location"]) == ("UNSUPPORTED_SCORE", location)
+    assert prose not in json.dumps(store.metadata, ensure_ascii=False)
+    assert not process_report_once(store, configured(), provider) and len(provider.calls) == 1
+
+
 def test_embedded_foreign_brand_requires_vietnamese_rendering():
     from backend.app.interpretation.contracts import ReportValidationError
     data = json.loads(content())
@@ -524,7 +563,7 @@ def test_vietnamese_shipping_service_prose_with_versioned_validation(prose):
     process_report_once(store, configured(), FakeProvider(json.dumps(data)))
     assert store.state == "READY"
     assert store.metadata["validation_version"] == "vi-prose.v3"
-    assert store.metadata["prompt_version"] == "vi-text.v5"
+    assert store.metadata["prompt_version"] == "vi-text.v6"
     for foreign in [" The supplier is reliable.", " \u4f9b\u5e94\u5546\u53ef\u9760", " Le fournisseur est fiable."]:
         assert not screen_vietnamese(prose + foreign)
     data["findings"][0]["citations"] = ["E99"]

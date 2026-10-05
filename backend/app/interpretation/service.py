@@ -21,6 +21,14 @@ Riêng self_reported_confidence phải có score từ 0 đến 1 và basis bằn
 đây là độ tin cậy do mô hình tự báo cáo về diễn giải, chưa được hiệu chuẩn,
 không phải độ an toàn nhà cung cấp, độ chính xác thực tế hay độ tin cậy đánh giá.
 Không đưa điểm số này vào các phần văn bản khác. Không tự khai provenance hay calibration.
+Numeric interpretation confidence belongs only in self_reported_confidence.score, never in
+self_reported_confidence.basis. Write basis as one short qualitative Vietnamese explanation
+of what the supplied evidence supports and what limits the interpretation. Avoid score labels
+such as "độ tin cậy", "điểm tin cậy", "điểm tự báo cáo" or "điểm rủi ro" in basis; do not
+repeat the score as digits, percentages, fractions or number words. Any source quantity or
+price mentioned must clearly describe source evidence, never interpretation confidence.
+When supplied evidence is incomplete, a suitable basis is "Dữ liệu nguồn còn thiếu; cần xác minh
+độc lập." Adapt the explanation to the actual evidence; do not invent missingness or consistency.
 """
 
 # Explicitly selected public business text. No raw HTML, account/reviewer names,
