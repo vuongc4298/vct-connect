@@ -1,0 +1,73 @@
+---
+title: 'Accept configured DeepSeek returned version and bound thinking'
+type: 'bugfix'
+ticket: ''
+created: '2026-10-05'
+status: 'built'
+route: 'oneshot'
+route_source: 'auto'
+review: 'quick'
+review_source: 'auto'
+lenses_ran: ['quick']
+review_loop_iteration: 0
+context: []
+baseline_revision: '541d99e827f31b7cd9e4a8ecb1378ed25d6ed7ca'
+---
+
+<frozen-after-approval reason="human-owned intent — do not modify unless human renegotiates">
+
+## Intent
+
+**Problem:** The approved DeepSeek V4.1 Flash rehearsal requested
+`deepseek-v4.1-flash` but YEScale returned `deepseek-v4-1-flash-260910`; the
+existing exact equality guard rejected it. The request consumed all 2400 output
+tokens in 58 seconds. DeepSeek documents default high-effort thinking, although
+the first call's retained trace does not establish its exact finish reason.
+
+**Approach:** Add an optional exact expected returned model ID, retaining strict
+equality to that configured ID and defaulting to the requested ID for existing
+configurations. Add an optional explicitly validated thinking setting; disable
+thinking for the deliberate second DeepSeek rehearsal. Preserve requested and
+expected/actual returned IDs plus thinking configuration in backend provenance.
+Test accepted mapping, rejected alternatives, unchanged default requests,
+invalid thinking configuration and report service validation. Preserve all
+budget, evidence, citation, output, deadline and no-retry controls. Use a new
+analysis for any approved live verification; never requeue the first dispatch.
+User approved this fix in the existing worktree while preserving rehearsal files.
+
+</frozen-after-approval>
+
+## Implementation Notes
+
+One-shot route: about 25–35 implementation lines and 40–60 test lines across
+provider.py, service.py and test_text_reports.py. Backend settings only;
+deployment configuration and Azure activation remain subsequent work. Existing
+API/model metadata stays backward compatible. No prefix matching, automatic
+alias discovery or acceptance of arbitrary returned models. The named returned
+version is provenance, not proof of immutable vendor routing.
+
+Added YESCALE_EXPECTED_RETURNED_MODEL and YESCALE_THINKING with strict enum
+validation. Service and adapter share exact returned_model_matches guard.
+Default request omits thinking; explicit disabled emits DeepSeek's documented
+body shape. 86 focused tests passed. Quick reviewer launched with inherited
+parent model; all retained untracked operational evidence included in review diff.
+
+## Plan Change Log
+
+## Review Triage Log
+
+Quick review: no actionable bugs, rule violations or unmet implementation intent.
+Reviewer correctly notes that post-fix live acceptance remains pending; it is
+recorded as operational verification rather than claimed from automated tests.
+No deferred findings. All 86 focused tests and 10 isolated PostgreSQL tests pass;
+git diff --check passes. One existing Starlette/httpx deprecation warning.
+
+## Verification
+
+- Run backend/tests/test_text_reports.py: all provider and service cases pass.
+- Run backend/tests/test_postgres_text_reports.py against disposable PostgreSQL
+  with an isolated pytest temp directory: defaults/persistence remain valid.
+- Review a diff against the canonical baseline with a context-free quick reviewer.
+- A deliberate live call uses 90s, $0.10 per-call, $0.10 available-balance cap;
+  preserve the earlier $0.0016 charge in total accounting. Retain the new ledger,
+  inspect schema/citation/Vietnamese quality and reconcile dashboard billing.

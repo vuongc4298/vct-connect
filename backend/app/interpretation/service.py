@@ -101,6 +101,8 @@ def process_report_once(store, config=None, provider=None):
         return False
     analysis_id, token = claim["analysis_id"], claim["lease_token"]
     metadata = {"model": config.model, "model_version": config.model_version,
+                "expected_returned_model": config.expected_returned_model or config.model,
+                "thinking": config.thinking or "provider_default",
                 "prompt_version": PROMPT_VERSION, "schema_version": SCHEMA_VERSION,
                 "pipeline_version": PIPELINE_VERSION, "actual_cost_usd": None, "cost_provenance": "unknown"}
     def finish(state, code=None, report=None):
@@ -147,7 +149,7 @@ def process_report_once(store, config=None, provider=None):
             metadata["usage_estimate_usd"] = str((usage["prompt_tokens"] * config.input_usd_per_million
                                                  + usage["completion_tokens"] * config.output_usd_per_million) / 1000000)
             metadata["usage_estimate_provenance"] = "configured_rates_times_returned_usage_not_invoice"
-        if response.get("returned_model") != config.model:
+        if not config.returned_model_matches(response.get("returned_model")):
             raise ProviderError("UNEXPECTED_MODEL")
         if config.api_key in response["content"]:
             raise ProviderError("INVALID_OUTPUT")

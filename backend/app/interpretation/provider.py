@@ -17,6 +17,8 @@ class ReportConfig:
     api_key: str = ""
     model: str = ""
     model_version: str = ""
+    expected_returned_model: str = ""
+    thinking: str = ""  # Empty preserves the provider default.
     budget_usd: Decimal = Decimal("0")
     call_ceiling_usd: Decimal = Decimal("0")
     # Required conservative contractual upper bound; not an observed cost.
@@ -34,6 +36,8 @@ class ReportConfig:
                 enabled=os.getenv("TEXT_REPORT_ENABLED", "false").lower() == "true",
                 endpoint=os.getenv("YESCALE_CHAT_ENDPOINT", ""), api_key=os.getenv("YESCALE_API_KEY", ""),
                 model=os.getenv("YESCALE_MODEL", ""), model_version=os.getenv("YESCALE_MODEL_VERSION", ""),
+                expected_returned_model=os.getenv("YESCALE_EXPECTED_RETURNED_MODEL", ""),
+                thinking=os.getenv("YESCALE_THINKING", ""),
                 budget_usd=Decimal(os.getenv("TEXT_REPORT_BUDGET_USD", "0")),
                 call_ceiling_usd=Decimal(os.getenv("TEXT_REPORT_CALL_CEILING_USD", "0")),
                 input_usd_per_million=Decimal(os.getenv("YESCALE_INPUT_USD_PER_MILLION", "0")),
@@ -52,6 +56,7 @@ class ReportConfig:
             return False
         numbers = (self.budget_usd, self.call_ceiling_usd, self.input_usd_per_million, self.output_usd_per_million)
         return bool(self.enabled and self.api_key and self.model and self.model_version
+                    and self.thinking in {"", "enabled", "disabled"}
                     and endpoint.scheme == "https" and endpoint.hostname and not endpoint.username
                     and not endpoint.password and not endpoint.query and not endpoint.fragment
                     and all(n.is_finite() and n > 0 for n in numbers)
@@ -63,6 +68,9 @@ class ReportConfig:
         # UTF-8 bytes conservatively bound text tokens, plus protocol overhead.
         return ((Decimal(input_bytes + 1024) * self.input_usd_per_million
                  + Decimal(self.max_output_tokens) * self.output_usd_per_million) / Decimal(1000000))
+
+    def returned_model_matches(self, model):
+        return model == (self.expected_returned_model or self.model)
 
 
 class ProviderError(RuntimeError):
@@ -88,12 +96,17 @@ class YEScaleProvider:
             return value if value and config.api_key not in value else None
         client = self.client or httpx.Client(timeout=config.deadline_seconds, follow_redirects=False)
         try:
+            if config.thinking not in {"", "enabled", "disabled"}:
+                raise ProviderError("INVALID_CONFIG")
+            body_params = {"model": config.model, "messages": messages,
+                           "max_tokens": config.max_output_tokens,
+                           "response_format": {"type": "json_object"}}
+            if config.thinking:
+                body_params["thinking"] = {"type": config.thinking}
             # No retry transport; request ID is traceability, not a billing guarantee.
             with client.stream("POST", config.endpoint,
                                headers={"Authorization": f"Bearer {config.api_key}", "X-Request-ID": dispatch_id},
-                               json={"model": config.model, "messages": messages,
-                                     "max_tokens": config.max_output_tokens,
-                                     "response_format": {"type": "json_object"}},
+                               json=body_params,
                                timeout=config.deadline_seconds) as response:
                 trace["request_id"] = safe_id(response.headers.get("x-request-id"))
                 if response.status_code != 200:
@@ -116,7 +129,7 @@ class YEScaleProvider:
                     trace["usage"] = {key: value for key, value in returned_usage.items()
                                       if key in {"prompt_tokens", "completion_tokens", "total_tokens"}
                                       and type(value) is int and value >= 0}
-                if result.get("model") != config.model:
+                if not config.returned_model_matches(result.get("model")):
                     raise ProviderError("UNEXPECTED_MODEL", metadata=trace)
                 choices = result.get("choices")
                 if not isinstance(choices, list) or not choices or not isinstance(choices[0], dict):

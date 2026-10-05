@@ -216,9 +216,58 @@ def test_provider_request_pin_limits_usage_and_unknown_cost():
         result = YEScaleProvider(client).generate([{"role": "user", "content": "中国商品"}], configured(), "dispatch")
     body = json.loads(requests[0].content)
     assert body["model"] == "pinned-model" and body["max_tokens"] == 2400
+    assert "thinking" not in body
     assert requests[0].headers["x-request-id"] == "dispatch"
     assert result["usage"]["completion_tokens"] == 20 and result["request_id"] == "provider-request"
     assert result["actual_cost_usd"] is None and result["cost_provenance"] == "unknown"
+
+
+@pytest.mark.parametrize("returned,accepted", [("deepseek-v4-1-flash-260910", True),
+    ("deepseek-v4.1-flash", False), ("deepseek-v4-1-flash-261001", False), (None, False)])
+def test_explicit_returned_version_and_thinking_request(returned, accepted):
+    requests = []
+    config = configured(model="deepseek-v4.1-flash",
+        expected_returned_model="deepseek-v4-1-flash-260910", thinking="disabled")
+    def handler(request):
+        requests.append(request)
+        return httpx.Response(200, json={"model": returned,
+            "choices": [{"finish_reason": "stop", "message": {"content": content()}}]})
+    with httpx.Client(transport=httpx.MockTransport(handler)) as client:
+        if accepted:
+            assert YEScaleProvider(client).generate([], config, "dispatch")["returned_model"] == returned
+        else:
+            with pytest.raises(ProviderError, match="UNEXPECTED_MODEL"):
+                YEScaleProvider(client).generate([], config, "dispatch")
+    body = json.loads(requests[0].content)
+    assert body["model"] == "deepseek-v4.1-flash"
+    assert body["thinking"] == {"type": "disabled"} and len(requests) == 1
+
+
+@pytest.mark.parametrize("returned,expected", [("deepseek-v4-1-flash-260910", "READY"),
+                                            ("deepseek-v4.1-flash", "FAILED")])
+def test_service_checks_configured_returned_version_and_preserves_provenance(returned, expected):
+    class VersionProvider(FakeProvider):
+        def generate(self, *args):
+            return {**super().generate(*args), "returned_model": returned}
+    store = MemoryStore()
+    config = configured(model="deepseek-v4.1-flash",
+        expected_returned_model="deepseek-v4-1-flash-260910", thinking="disabled")
+    process_report_once(store, config, VersionProvider())
+    assert store.state == expected
+    assert store.metadata["model"] == config.model
+    assert store.metadata["expected_returned_model"] == config.expected_returned_model
+    assert store.metadata["returned_model"] == returned and store.metadata["thinking"] == "disabled"
+
+
+def test_returned_version_and_thinking_environment_settings(monkeypatch):
+    monkeypatch.setenv("YESCALE_EXPECTED_RETURNED_MODEL", "dated-version")
+    monkeypatch.setenv("YESCALE_THINKING", "disabled")
+    config = ReportConfig.from_env()
+    assert config.expected_returned_model == "dated-version" and config.thinking == "disabled"
+    assert not configured(thinking="typo").available()
+    store, provider = MemoryStore(), FakeProvider()
+    process_report_once(store, configured(thinking="typo"), provider)
+    assert store.state == "UNAVAILABLE" and not provider.calls and not store.reservations
 
 
 @pytest.mark.parametrize("choices", [[None], None, {}, [], [{"finish_reason": "stop", "message": None}],
