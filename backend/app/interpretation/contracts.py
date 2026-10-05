@@ -41,6 +41,13 @@ def screen_vietnamese(text: str) -> bool:
                    "đánh tích cực tỷ lệ điểm cửa chất mức rủi ro độ cậy hệ thống tính khoảng "
                    "thời gian ngày tháng năm hoạt động doanh nghiệp chứng nhận mua bán người "
                    "vẫn còn phải đối chiếu bao gồm kết quả bảo đảm cam chất lượng uy tín".split())
+    # Common product descriptions and purchasing terms must not be mistaken for
+    # foreign prose merely because they are outside the initial small lexicon.
+    words_vi.update("liệt kê váy dài tay cổ liệu dệt kim phong cách thanh lịch nữ mùa thu đông "
+                    "trích xuất ở trạng thái nhiều trường bị rõ thập chính sách đổi trả bảo hành "
+                    "hoặc xử lý khiếu nại báo thức phí thuế nền tảng điều kiện thanh toán thống nhất "
+                    "khoản hoàn tiền tranh chấp văn bản kích thước màu sắc thử nghiệm phù hợp "
+                    "chi thực tế năng lực sản xuất kiểm soát khả đáp ứng bất kỳ tổng hợp".split())
     foreign_words = {"the", "this", "that", "is", "are", "and", "with", "should", "supplier", "reliable", "before", "order"}
     sentences = re.split(r"[!?;\n]+|(?<!\d)\.|\.(?!\d)", text)
     checked = False

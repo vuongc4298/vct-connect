@@ -8,6 +8,7 @@ import httpx
 import pytest
 
 from backend.app.interpretation.contracts import validate_report
+from backend.app.interpretation.contracts import screen_vietnamese
 from backend.app.interpretation.provider import ReportConfig, YEScaleProvider, ProviderError
 from backend.app.interpretation.service import process_report_once, prepare_evidence, bounded_generate
 from backend.app.interpretation.service import minimize
@@ -268,6 +269,18 @@ def test_returned_version_and_thinking_environment_settings(monkeypatch):
     store, provider = MemoryStore(), FakeProvider()
     process_report_once(store, configured(thinking="typo"), provider)
     assert store.state == "UNAVAILABLE" and not provider.calls and not store.reservations
+
+
+@pytest.mark.parametrize("prose", [
+    "Nguồn liệt kê một sản phẩm váy dài tay, cổ V, chất liệu dệt kim, phong cách retro thanh lịch cho nữ mùa thu đông.",
+    "Dữ liệu trích xuất ở trạng thái PARTIAL; nhiều trường bị thiếu.",
+    "Không rõ thời điểm thu thập dữ liệu (capture_freshness: unknown).",
+    "Không có thông tin về chính sách đổi trả, bảo hành, hoặc xử lý khiếu nại.",
+    "Yêu cầu báo giá chính thức bao gồm phí vận chuyển, thuế, phí nền tảng và điều kiện thanh toán.",
+    "Thống nhất điều khoản đặt cọc, hoàn tiền và xử lý tranh chấp bằng văn bản trước khi thanh toán.",
+])
+def test_valid_vietnamese_purchasing_prose_is_not_rejected(prose):
+    assert screen_vietnamese(prose)
 
 
 @pytest.mark.parametrize("choices", [[None], None, {}, [], [{"finish_reason": "stop", "message": None}],

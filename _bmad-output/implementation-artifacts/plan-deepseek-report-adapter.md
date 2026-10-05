@@ -62,6 +62,15 @@ recorded as operational verification rather than claimed from automated tests.
 No deferred findings. All 86 focused tests and 10 isolated PostgreSQL tests pass;
 git diff --check passes. One existing Starlette/httpx deprecation warning.
 
+Post-build live verification exposed a reachable validator false positive:
+valid Vietnamese descriptions of fabric, returns, payment and disputes failed
+NON_VIETNAMESE_PROSE because the lexicon lacked ordinary purchasing vocabulary.
+Verdict medium, route patch: extend the lexicon without changing foreign-script,
+English-word, per-sentence cue, citation, score or schema guards. Six regressions
+cover the observed rejected phrases. 92 focused tests pass. The retained paid
+diagnostic response now passes validation offline; failed database jobs were
+not changed and no additional paid request was needed for this verification.
+
 ## Verification
 
 - Run backend/tests/test_text_reports.py: all provider and service cases pass.
