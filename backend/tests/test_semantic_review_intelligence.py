@@ -213,7 +213,7 @@ def test_yescale_embeddings_adapter_uses_endpoint_and_preserves_provenance():
 @pytest.mark.parametrize("payload", [
     {"model": "x", "data": [{"index": 0, "embedding": [1, 0]}]},
     {"model": "x", "data": [
-        {"index": 0, "embedding": [float("nan"), 0]},
+        {"index": 0, "embedding": ["NaN", 0]},
         {"index": 1, "embedding": [0, 1]},
     ]},
 ])
