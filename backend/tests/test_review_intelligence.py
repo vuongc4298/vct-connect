@@ -35,7 +35,7 @@ def mixed_fixture():
             "evidence_id": "r5",
             "text": "Seller ignored me and no response after I asked for a return.",
             "rating": 2,
-            "created_at": "2026-10-04T09:00:00+00:00",
+            "created_at": "2026-10-01T10:00:00+00:00",
         },
         {
             "evidence_id": "r6",
@@ -69,7 +69,7 @@ def test_mixed_fixture_exposes_recurring_topics_and_statistical_patterns():
 
     patterns = {pattern.kind: pattern for pattern in result.suspicious_patterns}
     assert patterns["EXACT_DUPLICATE_TEXT"].evidence_ids == ["r1", "r2", "r3", "r4", "r5", "r6"]
-    assert patterns["TIMING_BURST"].evidence_ids == ["r1", "r2", "r3", "r4"]
+    assert patterns["TIMING_BURST"].evidence_ids == ["r1", "r2", "r3", "r4", "r5"]
     assert patterns["RATING_TEXT_MISMATCH"].evidence_ids == ["r1", "r2", "r3", "r4"]
     assert "REVIEW_VOLUME_INCONSISTENCY" not in patterns
     assert result.missing_inputs == []
