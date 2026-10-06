@@ -845,7 +845,7 @@ def test_core_rollback_preserves_tracer_drops_columns_and_reapplies(isolated_dat
             (user_id, snapshot_id, completed_id),
         )
 
-    with pytest.raises(RuntimeError, match="0009_allow_snapshot_replay"):
+    with pytest.raises(RuntimeError, match="0010_llm_review_runs"):
         rollback_core_migration(isolated_database_url)
     _rollback_post_core_revisions(isolated_database_url)
     assert rollback_core_migration(isolated_database_url)
