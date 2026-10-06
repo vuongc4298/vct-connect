@@ -12,6 +12,13 @@ verification. This accepts the interpretation foundation, not a human benchmark,
 cloud rollout, full assessment engine or general translation guarantee. Historical
 failed runs below remain unchanged. Original 3.2 is the next implementation.
 
+Subsequent approved push/release, 2026-10-06: implementation commit
+`f42499cff894e7587bafa019eb2b91d4d21dc7f2` is pushed. Its tested backend image
+is released to healthy dev API20/dispatcher29 and matching analysis/migrate jobs;
+web11 is preserved. Runtime vi-prose.v5, private API health, all saved-report hashes
+and the cloud ledger were verified without new paid requests. See
+`story31-completion-release.md`. No fresh cloud semantic acceptance was run.
+
 ## What the demo already delivered
 
 - Backend `LLMProvider` protocol and YEScale adapter, bounded structured output,
@@ -35,7 +42,7 @@ report/API contracts. Do not build a second gateway or duplicate dispatch ledger
 
 | Story | Existing contribution | Remaining original acceptance |
 | --- | --- | --- |
-| 3.1 YEScale supplier interpretation | Adapter, safe diagnostics, Vietnamese reports, explicitly uncalibrated model confidence, complete run provenance and backend-only credentials are implemented. Actual Chinese-fixture run 2 passed substantive comparison, persistence and ownership checks; final vi-prose.v5 corrections are tested. | Fixture foundation accepted; release to cloud is separate. Production model selection, calibration and broader language/entailment evaluation remain later work. Invoice cost stays explicitly unknown without trustworthy billing data. |
+| 3.1 YEScale supplier interpretation | Adapter, safe diagnostics, Vietnamese reports, explicitly uncalibrated model confidence, complete run provenance and backend-only credentials are implemented. Actual Chinese-fixture run 2 passed substantive comparison, persistence and ownership checks; final vi-prose.v5 corrections are tested, pushed and released to Azure dev. | Fixture foundation accepted and dev release verified; fresh cloud semantic acceptance remains separate. Production model selection, calibration and broader language/entailment evaluation remain later work. Invoice cost stays explicitly unknown without trustworthy billing data. |
 | 3.2 Deterministic review signals | Selected review bodies can reach interpretation; extracted evidence IDs/provenance exist. | Complaint grouping, duplicate/timing/rating-text/volume signals and review reliability are not implemented. Missing dates/ratings must remain unknown. |
 | 3.3 Semantic/structured review interpretation | Provider, evidence projection and run metadata can be reused. | Embeddings, near-duplicate clustering, complaint category/severity and manipulation/reliability outputs are pending; original dependencies on 3.1 and 3.2 remain. |
 | 3.4 Factory/trader evidence | Existing extraction provenance and provider interfaces are reusable. | Direction/strength/reliability aggregation, contradictory/self-claim handling, likelihood/confidence and uncertainty are pending. Trader status alone must not add risk. |

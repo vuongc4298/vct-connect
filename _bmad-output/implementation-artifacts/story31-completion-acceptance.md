@@ -105,5 +105,7 @@ Operational artifacts remain under Git-excluded tmp: diagnostic result/fence
 files, payload audit, owned inspection and revalidation helper. The report is in
 the retained diagnostic schema `story31_grounding_v8_diag_20261006_call2` in the
 local diagnostic database, not the localhost demo database or Azure application.
-Local demo paid generation remains disabled. Deploying the corrected backend or
-running a cloud acceptance is a separate release operation.
+Local demo paid generation remains disabled. The subsequently approved Azure dev
+release is complete; health, runtime and saved-report preservation checks passed
+without new paid requests. See `story31-completion-release.md`. A fresh cloud
+semantic acceptance remains separate from this release and the accepted local fixture.
