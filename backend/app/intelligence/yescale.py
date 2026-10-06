@@ -1,14 +1,15 @@
-"""YEScale OpenAI-compatible Chat Completions adapter."""
+"""YEScale OpenAI-compatible chat and embedding adapter."""
 from __future__ import annotations
 
 from decimal import Decimal, InvalidOperation
 import json
+import math
 import time
-from typing import Mapping
+from typing import Mapping, Sequence
 
 import httpx
 
-from .provider import ProviderResponse, ProviderUsage
+from .provider import EmbeddingResponse, ProviderResponse, ProviderUsage
 
 
 YESCALE_BASE_URL = "https://api.yescale.io/v1"
@@ -46,6 +47,27 @@ def _cost(payload: dict, response: httpx.Response) -> Decimal | None:
         if parsed >= 0:
             return parsed
     return None
+
+
+def _request_id(response: httpx.Response) -> str | None:
+    return response.headers.get("x-request-id") or response.headers.get("x-yescale-request-id")
+
+
+def _metadata_headers(api_key: str, metadata: Mapping[str, str] | None) -> dict[str, str]:
+    headers = {
+        "Authorization": f"Bearer {api_key}",
+        "Content-Type": "application/json",
+    }
+    if metadata:
+        safe_metadata = {str(key): str(value) for key, value in metadata.items() if value is not None}
+        if len(safe_metadata) > 5:
+            raise ValueError("YEScale metadata supports at most five fields")
+        if any(not key or len(key) > 64 or len(value) > 256 for key, value in safe_metadata.items()):
+            raise ValueError("YEScale metadata keys or values exceed the application bound")
+        headers["X-YEScale-Metadata"] = json.dumps(
+            safe_metadata, ensure_ascii=True, sort_keys=True, separators=(",", ":")
+        )
+    return headers
 
 
 class YEScaleProvider:
@@ -86,6 +108,25 @@ class YEScaleProvider:
     def __exit__(self, *_exc):
         self.close()
 
+    def _post(self, path: str, *, body: dict, metadata: Mapping[str, str] | None) -> tuple[httpx.Response, int]:
+        started = self._clock()
+        try:
+            response = self._client.post(
+                f"{self._base_url}{path}",
+                headers=_metadata_headers(self._api_key, metadata),
+                json=body,
+            )
+        except (httpx.TimeoutException, httpx.NetworkError) as exc:
+            raise ProviderError("YEScale request failed before a valid response") from exc
+        latency_ms = max(0, int((self._clock() - started) * 1000))
+        if response.status_code >= 400:
+            raise ProviderError(
+                f"YEScale request returned HTTP {response.status_code}",
+                status_code=response.status_code,
+                request_id=_request_id(response),
+            )
+        return response, latency_ms
+
     def generate_json(
         self,
         *,
@@ -103,50 +144,25 @@ class YEScaleProvider:
         if not 1 <= max_tokens <= 8192:
             raise ValueError("max_tokens must be between 1 and 8192")
 
-        headers = {
-            "Authorization": f"Bearer {self._api_key}",
-            "Content-Type": "application/json",
-        }
-        if metadata:
-            safe_metadata = {str(key): str(value) for key, value in metadata.items() if value is not None}
-            if len(safe_metadata) > 5:
-                raise ValueError("YEScale metadata supports at most five fields")
-            if any(not key or len(key) > 64 or len(value) > 256 for key, value in safe_metadata.items()):
-                raise ValueError("YEScale metadata keys or values exceed the application bound")
-            headers["X-YEScale-Metadata"] = json.dumps(
-                safe_metadata, ensure_ascii=True, sort_keys=True, separators=(",", ":")
-            )
-
         request_settings = {
             "temperature": temperature,
             "max_tokens": max_tokens,
             "stream": False,
             "response_format": {"type": "json_object"},
         }
-        started = self._clock()
-        try:
-            response = self._client.post(
-                f"{self._base_url}/chat/completions",
-                headers=headers,
-                json={
-                    "model": model,
-                    "messages": [
-                        {"role": "system", "content": system_prompt},
-                        {"role": "user", "content": user_prompt},
-                    ],
-                    **request_settings,
-                },
-            )
-        except (httpx.TimeoutException, httpx.NetworkError) as exc:
-            raise ProviderError("YEScale request failed before a valid response") from exc
-        latency_ms = max(0, int((self._clock() - started) * 1000))
-        request_id = response.headers.get("x-request-id") or response.headers.get("x-yescale-request-id")
-        if response.status_code >= 400:
-            raise ProviderError(
-                f"YEScale request returned HTTP {response.status_code}",
-                status_code=response.status_code,
-                request_id=request_id,
-            )
+        response, latency_ms = self._post(
+            "/chat/completions",
+            metadata=metadata,
+            body={
+                "model": model,
+                "messages": [
+                    {"role": "system", "content": system_prompt},
+                    {"role": "user", "content": user_prompt},
+                ],
+                **request_settings,
+            },
+        )
+        request_id = _request_id(response)
         try:
             payload = response.json()
             choices = payload["choices"]
@@ -179,3 +195,60 @@ class YEScaleProvider:
             settings=request_settings,
         )
 
+    def embed_texts(
+        self,
+        *,
+        model: str,
+        texts: Sequence[str],
+        metadata: Mapping[str, str] | None = None,
+    ) -> EmbeddingResponse:
+        if not model.strip():
+            raise ValueError("YEScale embedding model is required")
+        if not texts or len(texts) > 64:
+            raise ValueError("embedding requests require between 1 and 64 texts")
+        normalized = [text.strip() for text in texts]
+        if any(not text or len(text) > 4000 for text in normalized):
+            raise ValueError("embedding inputs must contain 1-4000 characters each")
+        if sum(len(text.encode("utf-8")) for text in normalized) > 65_536:
+            raise ValueError("embedding request exceeds the application input budget")
+
+        settings = {"encoding_format": "float"}
+        response, latency_ms = self._post(
+            "/embeddings",
+            metadata=metadata,
+            body={"model": model, "input": normalized, **settings},
+        )
+        request_id = _request_id(response)
+        try:
+            payload = response.json()
+            rows = sorted(payload["data"], key=lambda row: int(row["index"]))
+            vectors = tuple(tuple(float(value) for value in row["embedding"]) for row in rows)
+        except (ValueError, KeyError, TypeError) as exc:
+            raise ProviderError("YEScale response did not match the embeddings contract", request_id=request_id) from exc
+        if len(vectors) != len(normalized) or not vectors or any(not vector for vector in vectors):
+            raise ProviderError("YEScale returned an incomplete embeddings response", request_id=request_id)
+        dimension = len(vectors[0])
+        if any(len(vector) != dimension for vector in vectors):
+            raise ProviderError("YEScale returned inconsistent embedding dimensions", request_id=request_id)
+        if any(not math.isfinite(value) for vector in vectors for value in vector):
+            raise ProviderError("YEScale returned a non-finite embedding value", request_id=request_id)
+
+        raw_usage = payload.get("usage") if isinstance(payload.get("usage"), dict) else {}
+        prompt_tokens = _nonnegative_int(raw_usage.get("prompt_tokens"))
+        total_tokens = _nonnegative_int(raw_usage.get("total_tokens")) or prompt_tokens
+        return EmbeddingResponse(
+            provider=self.provider_name,
+            request_id=request_id,
+            requested_model=model,
+            response_model=str(payload.get("model") or model),
+            vectors=vectors,
+            usage=ProviderUsage(
+                prompt_tokens=prompt_tokens,
+                completion_tokens=0,
+                total_tokens=total_tokens,
+                cost_usd=_cost(payload, response),
+                raw=raw_usage,
+            ),
+            latency_ms=latency_ms,
+            settings=settings,
+        )

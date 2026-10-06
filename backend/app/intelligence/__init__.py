@@ -8,7 +8,13 @@ from .contracts import (
     SupplierInterpretation,
 )
 from .interpretation import InterpretationRun, interpret_supplier_data
-from .provider import LLMProvider, ProviderResponse, ProviderUsage
+from .provider import (
+    EmbeddingProvider,
+    EmbeddingResponse,
+    LLMProvider,
+    ProviderResponse,
+    ProviderUsage,
+)
 from .reviews import (
     REVIEW_SCHEMA_VERSION,
     ComplaintTopic,
@@ -18,14 +24,29 @@ from .reviews import (
     analyze_review_signals,
     analyze_supplier_reviews,
 )
+from .semantic_reviews import (
+    DEFAULT_SEMANTIC_THRESHOLD,
+    SEMANTIC_REVIEW_SCHEMA_VERSION,
+    CombinedReviewPattern,
+    SemanticCluster,
+    SemanticReviewAssessment,
+    SemanticReviewRun,
+    StructuredReviewFinding,
+    cluster_near_duplicates,
+    interpret_reviews,
+)
 from .yescale import YESCALE_BASE_URL, YEScaleProvider
 
 __all__ = [
     "PIPELINE_VERSION", "PROMPT_VERSION", "SCHEMA_VERSION",
     "EvidenceSignal", "SupplierInterpretation", "InterpretationRun",
-    "LLMProvider", "ProviderResponse", "ProviderUsage",
+    "EmbeddingProvider", "EmbeddingResponse", "LLMProvider", "ProviderResponse", "ProviderUsage",
     "REVIEW_SCHEMA_VERSION", "ComplaintTopic", "ReviewAnalysis",
     "ReviewEvidence", "ReviewPattern", "analyze_review_signals",
     "analyze_supplier_reviews",
+    "DEFAULT_SEMANTIC_THRESHOLD", "SEMANTIC_REVIEW_SCHEMA_VERSION",
+    "CombinedReviewPattern", "SemanticCluster", "SemanticReviewAssessment",
+    "SemanticReviewRun", "StructuredReviewFinding", "cluster_near_duplicates",
+    "interpret_reviews",
     "YESCALE_BASE_URL", "YEScaleProvider", "interpret_supplier_data",
 ]
