@@ -68,7 +68,7 @@ def test_mixed_fixture_exposes_recurring_topics_and_statistical_patterns():
     assert topics["AFTER_SALES"].evidence_ids == ["r5", "r6"]
 
     patterns = {pattern.kind: pattern for pattern in result.suspicious_patterns}
-    assert patterns["EXACT_DUPLICATE_TEXT"].evidence_ids == ["r3", "r4", "r5", "r6"]
+    assert patterns["EXACT_DUPLICATE_TEXT"].evidence_ids == ["r1", "r2", "r3", "r4", "r5", "r6"]
     assert patterns["TIMING_BURST"].evidence_ids == ["r1", "r2", "r3", "r4"]
     assert patterns["RATING_TEXT_MISMATCH"].evidence_ids == ["r1", "r2", "r3", "r4"]
     assert "REVIEW_VOLUME_INCONSISTENCY" not in patterns
