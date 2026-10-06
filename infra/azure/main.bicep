@@ -10,6 +10,8 @@ param webImageDigest string
 param enableProcessing bool = false
 @description('Opt-in cached public HTML rendering. Unavailable Chromium sandbox retains HTTP evidence.')
 param publicBrowserFallback bool = false
+@description('Pinned Story 3.1 YEScale candidate; change only with a recorded model decision.')
+param yescaleModel string = 'gpt-4o-mini'
 param registryName string
 param vaultName string
 param clerkPublishableKey string
@@ -66,6 +68,7 @@ var backendImage = '${registryName}.azurecr.io/vct-backend@${backendImageDigest}
 var webImage = '${registryName}.azurecr.io/vct-web@${webImageDigest}'
 var databaseSecretUrl = '${vault.properties.vaultUri}secrets/database-url'
 var clerkSecretUrl = '${vault.properties.vaultUri}secrets/clerk-secret-key'
+var yescaleSecretUrl = '${vault.properties.vaultUri}secrets/yescale-api-key'
 
 resource registry 'Microsoft.ContainerRegistry/registries@2023-07-01' existing = {
   name: registryName
@@ -282,7 +285,10 @@ resource analysisJob 'Microsoft.App/jobs@2025-01-01' = if (enableProcessing) {
       replicaRetryLimit: 1
       replicaTimeout: 900
       registries: [{ server: registry.properties.loginServer, identity: runtimeIdentity.id }]
-      secrets: [{ name: 'database-url', keyVaultUrl: databaseSecretUrl, identity: runtimeIdentity.id }]
+      secrets: [
+        { name: 'database-url', keyVaultUrl: databaseSecretUrl, identity: runtimeIdentity.id }
+        { name: 'yescale-api-key', keyVaultUrl: yescaleSecretUrl, identity: runtimeIdentity.id }
+      ]
       eventTriggerConfig: {
         parallelism: 1
         replicaCompletionCount: 1
@@ -310,6 +316,8 @@ resource analysisJob 'Microsoft.App/jobs@2025-01-01' = if (enableProcessing) {
         command: ['python', '-m', 'backend.worker.main']
         env: [
           { name: 'DATABASE_URL', secretRef: 'database-url' }
+          { name: 'YESCALE_API_KEY', secretRef: 'yescale-api-key' }
+          { name: 'YESCALE_MODEL', value: yescaleModel }
           { name: 'QUEUE_TRANSPORT', value: 'azure' }
           { name: 'AZURE_SERVICE_BUS_NAMESPACE', value: serviceBusNamespace }
           { name: 'AZURE_SERVICE_BUS_QUEUE', value: serviceBusQueue }
