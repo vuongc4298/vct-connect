@@ -29,6 +29,21 @@ def test_offline_probe_separates_non_language_rejections(tmp_path, text, reason)
     assert result["report_other_rejections"] == ["other"]
 
 
+def test_offline_probe_reports_exact_ids_for_both_language_mismatch_directions(tmp_path):
+    fixture = tmp_path / "mislabeled.jsonl"
+    cases = [
+        {"id": "vi_labeled_foreign", "expected_vietnamese": False, "text": "Nguồn có thông tin sản phẩm."},
+        {"id": "foreign_labeled_vi", "expected_vietnamese": True, "text": "The supplier is reliable."},
+    ]
+    fixture.write_text("\n".join(json.dumps(case) for case in cases), encoding="utf-8")
+    result = evaluate(fixture)
+    assert result["report_language_mismatches"] == ["vi_labeled_foreign", "foreign_labeled_vi"]
+    assert result["report_other_rejections"] == []
+    assert result["cases"][0]["report_accepts"] is True
+    assert result["cases"][1]["report_rejection"] == {
+        "reason": "NON_VIETNAMESE_PROSE", "location": "findings.text"}
+
+
 def configured(**kwargs):
     return replace(ReportConfig(enabled=True, endpoint="https://provider.test/v1/chat/completions",
                    api_key="private-key", model="pinned-model", model_version="version-2026-10-05",
@@ -507,6 +522,8 @@ def test_natural_vietnamese_confidence_basis_is_accepted():
 
 
 @pytest.mark.parametrize("basis", [
+    "Độ tin cậy còn hạn chế vì chỉ có 2 đánh giá.",
+    "Độ tin cậy còn hạn chế vì chỉ có hai đánh giá.",
     "Diễn giải dựa trên 2 đánh giá; chưa xác minh độc lập.",
     "Nguồn hiển thị giá 2.01; chưa xác minh độc lập.",
     "Diễn giải dựa trên hai đánh giá; cần kiểm tra mẫu.",
@@ -528,6 +545,21 @@ def test_qualitative_confidence_basis_with_source_numbers_settles_ready(basis):
 @pytest.mark.parametrize("prose", [
     "Độ tin cậy là 65%.", "Điểm tin cậy là 0.65.", "Điểm tự báo cáo là hai phần ba.",
     "Điểm rủi ro là bảy mươi hai.", "Độ tin cậy là 65/100.",
+    "Tôi chắc chắn 90% về cách diễn giải.", "Tôi khá chắc chắn: 65%.",
+    "Tôi tự tin 90% về cách diễn giải.", "Tôi khá tự tin: 65%.",
+    "Tôi chắc chắn chín mươi phần trăm về cách diễn giải.",
+    "Tôi tự tin hai phần ba về cách diễn giải.",
+    "Tôi chắc chắn 65/100 về cách diễn giải.",
+    "Chỉ số tin cậy bằng 0,65.", "Mức tin cậy là bảy mươi hai.",
+    "Độ tin cậy của diễn giải này là 90%.",
+    "Tôi chắc chắn đến 90% về cách diễn giải.",
+    "Độ tin cậy đánh giá là 90%.", "Độ tin cậy của đánh giá là 90%.",
+    "Độ tin cậy: +0.65.", "Độ tin cậy: -0.65.",
+    "Độ tin cậy: +65%.", "Độ tin cậy: -65%.",
+    "Độ tin cậy: +65/100.", "Độ tin cậy: -65/100.",
+    "Tôi chắc chắn một phần hai về cách diễn giải.",
+    "Tôi chắc chắn một phần trăm về cách diễn giải.",
+    "Tôi chắc chắn một phần 2 về cách diễn giải.",
 ])
 @pytest.mark.parametrize("field", ["summary", "findings", "limitations", "actions", "self_reported_confidence"])
 def test_numeric_and_number_word_scores_fail_safely_in_every_prose_field(prose, field):
@@ -543,6 +575,69 @@ def test_numeric_and_number_word_scores_fail_safely_in_every_prose_field(prose, 
     assert (store.metadata["validation_reason"], store.metadata["validation_location"]) == ("UNSUPPORTED_SCORE", location)
     assert prose not in json.dumps(store.metadata, ensure_ascii=False)
     assert not process_report_once(store, configured(), provider) and len(provider.calls) == 1
+
+
+@pytest.mark.parametrize("prose", [
+    "Độ tin cậy còn hạn chế vì chỉ có 2 đánh giá.",
+    "Độ tin cậy còn hạn chế vì chỉ có hai đánh giá.",
+    "Tôi khá chắc chắn về cách diễn giải vì chỉ có 2 đánh giá.",
+    "Tôi chắc chắn 2 đánh giá chưa đủ; cần xác minh độc lập.",
+    "Tôi chắc chắn hai đánh giá chưa đủ; cần xác minh độc lập.",
+    "Tôi chắc chắn một phần về cách diễn giải.",
+    "Tôi tự tin một phần về cách diễn giải.",
+    "Nguồn hiển thị giá -2.01 và +4.8 USD.",
+    "Nguồn hiển thị tỷ lệ đánh giá tích cực +90%.",
+    "Độ tin cậy của diễn giải này còn hạn chế vì chỉ có 2 đánh giá.",
+    "Độ tin cậy của đánh giá còn hạn chế vì chỉ có hai đánh giá.",
+    "Nguồn hiển thị tỷ lệ đánh giá tích cực 90% và giá 4.8 USD.",
+    "Độ tin cậy còn hạn chế; nguồn hiển thị tỷ lệ đánh giá tích cực 90%.",
+    "Độ tin cậy còn hạn chế; nguồn hiển thị giá 2.01 và 2 mẫu.",
+    "Độ tin cậy còn hạn chế; nguồn hiển thị 10µm và 5 Ω.",
+])
+@pytest.mark.parametrize("field", ["summary", "findings", "limitations", "actions", "self_reported_confidence"])
+def test_evidence_counts_and_source_values_are_not_confidence_scores(prose, field):
+    data = json.loads(content())
+    if field == "findings": data[field][0]["text"] = prose
+    elif field == "self_reported_confidence": data[field]["basis"] = prose
+    elif field in {"limitations", "actions"}: data[field] = [prose]
+    else: data[field] = prose
+    store, provider = MemoryStore(), FakeProvider(json.dumps(data, ensure_ascii=False))
+    process_report_once(store, configured(), provider)
+    assert store.state == "READY"
+    assert store.report["self_reported_confidence"]["score"] == 0.65
+    assert store.metadata["validation_version"] == "vi-prose.v5"
+    assert not process_report_once(store, configured(), provider) and len(provider.calls) == 1
+
+
+@pytest.mark.parametrize("prose", [
+    "Vải the mềm mại.", "Vải the.", "Giấy mỏng.", "Giấy rẻ.",
+    "Nguồn hiển thị kích thước 10µm.", "Nguồn hiển thị kích thước 10 µm.",
+    "Nguồn hiển thị kích thước 0,5 µm.", "Nguồn hiển thị kích thước 0.5µm.",
+    "Nguồn hiển thị 5Ω.", "Nguồn hiển thị 5 Ω.",
+])
+def test_bounded_fabric_vocabulary_and_numeric_units_are_vietnamese(prose):
+    assert screen_vietnamese(prose)
+    data = json.loads(content())
+    data["findings"][0]["text"] = prose
+    assert validate_report(json.dumps(data, ensure_ascii=False), [{"id": "E1"}])["findings"] == data["findings"]
+
+
+@pytest.mark.parametrize("prose", [
+    "Nguồn có thông tin the sản phẩm.", "Vải the mềm mại và the sản phẩm.",
+    "Vải the mềm mại. The supplier is reliable.",
+    "Vải; the mềm mại.", "Vải\nthe mềm mại.",
+    "Vải, the mềm mại.", "Vải 'the' mềm mại.",
+    "Nguồn có thông tin µm sản phẩm.", "Nguồn có thông tin Ω sản phẩm.",
+    "Nguồn hiển thị kích thước abc10µm.", "Nguồn hiển thị kích thước 10µmeter.",
+    "Nguồn hiển thị 5Ωmega.", "Nguồn hiển thị 5 Ω và Ω sản phẩm.",
+    "Nguồn hiển thị 10µm và 中国商品.", "Nguồn hiển thị 5 Ω và αξιόπιστος.",
+])
+def test_fabric_and_unit_exceptions_do_not_hide_foreign_narrative(prose):
+    assert not screen_vietnamese(prose)
+    data = json.loads(content())
+    data["findings"][0]["text"] = prose
+    with pytest.raises(ValueError, match="NON_VIETNAMESE_PROSE"):
+        validate_report(json.dumps(data, ensure_ascii=False), [{"id": "E1"}])
 
 
 def test_embedded_foreign_brand_requires_vietnamese_rendering():
@@ -577,7 +672,7 @@ def test_vietnamese_shipping_service_prose_with_versioned_validation(prose):
     store = MemoryStore()
     process_report_once(store, configured(), FakeProvider(json.dumps(data)))
     assert store.state == "READY"
-    assert store.metadata["validation_version"] == "vi-prose.v4"
+    assert store.metadata["validation_version"] == "vi-prose.v5"
     assert store.metadata["prompt_version"] == "vi-text.v8"
     for foreign in [" The supplier is reliable.", " \u4f9b\u5e94\u5546\u53ef\u9760", " Le fournisseur est fiable."]:
         assert not screen_vietnamese(prose + foreign)

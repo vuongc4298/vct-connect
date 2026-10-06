@@ -155,7 +155,8 @@ authorized release.
 
 ## Interpretation confidence and validation diagnostics
 
-New reports use `vi-text.v2` / `text-report.v2` and require
+New reports use prompt `vi-text.v8`, schema `text-report.v2`, and prose validation
+`vi-prose.v5`. They require
 `self_reported_confidence` with a score from 0 to 1 and a Vietnamese basis.
 The application labels it `model_self_reported` and `uncalibrated`. It describes
 the model's interpretation uncertainty; it is not supplier safety, factual

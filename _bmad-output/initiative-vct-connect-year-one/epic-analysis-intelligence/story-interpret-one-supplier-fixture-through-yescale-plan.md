@@ -4,13 +4,14 @@ type: 'feature'
 ticket: '1'
 created: '2026-10-05'
 status: 'built'
+acceptance_status: 'live-fixture-accepted'
 baseline_revision: 'f7210bd2944592325a5070b192cf42588b5b77a0'
 route: 'full'
 route_source: 'auto'
 review: 'thorough'
 review_source: 'auto'
 lenses_ran: ['blind-hunter', 'edge-case-hunter', 'verification-gap', 'intent-alignment']
-review_loop_iteration: 0
+review_loop_iteration: 1
 context: []
 ---
 
@@ -142,7 +143,119 @@ translation quality. No new paid call or deployment has run for v2 yet.
 
 ## Plan Change Log
 
+2026-10-06 completion review loopback (bad_plan): the dedicated confidence
+field introduced a prose surface not adequately protected against `Tôi chắc chắn
+90% về cách diễn giải.` / `Tôi khá chắc chắn: 65%.`; the current label-to-any-number
+guard also rejects `Độ tin cậy còn hạn chế vì chỉ có 2 đánh giá.`. Both outcomes
+were reproduced by the parent. No source edits were made in this resumed run
+before loopback, so no new implementation code needs reverting. KEEP the
+previously committed confidence contract, legacy UI, field projection, dispatch
+fences, source-quotation protections, secret guards and safe diagnostics intact.
+
+Completion implementation tasks, in order (this checkout only):
+The parent already initialized BMad successfully for this workflow run and is
+executing the rendered step-03 implementation handoff. This is a coding subtask,
+not a new BMad invocation: implement this plan directly; do not invoke or render
+any skill again. Existing operational files under tmp remain outside the code
+handoff and must not be staged or executed by the implementer.
+- [x] In `backend/app/interpretation/contracts.py`, replace the label-to-any-number
+  check with a narrowly defined numerical-confidence assertion check. Detect
+  numerical confidence assertions outside the dedicated score, including explicit
+  percentages after `chắc chắn`/`tự tin`, recognized score labels with numerical
+  values, fractions and Vietnamese number-word forms covered by existing tests.
+  Preserve unsupported supplier-risk scoring rejection. Permit a qualitative
+  confidence statement whose following number is explicitly an evidence count
+  (e.g. `2 đánh giá`), not an interpretation confidence value. Do not classify
+  arbitrary source percentages/prices/units as interpretation confidence.
+- [x] In that file, correct the demonstrated Vietnamese fabric homograph `vải the`
+  without accepting standalone English `the` narrative; exempt bounded technical
+  unit symbols µm and Ω only when attached to a numeric quantity, preserving
+  foreign-script prose rejection. Add the demonstrated ordinary short Vietnamese
+  product adjectives `mỏng`, `rẻ` to the vocabulary without changing thresholds.
+  Increment `VALIDATION_VERSION` to `vi-prose.v5`; leave prompt/schema versions
+  unchanged. Do not alter source quotations or language ratios speculatively.
+- [x] In `backend/tests/test_text_reports.py`, add regression tests for the exact
+  reproduced cases, all five prose locations for numeric-confidence rejection,
+  evidence-count/source-value allowances, foreign counterexamples for fabric/unit
+  exceptions, and both directions of `evaluate()` report-language mismatch IDs.
+  Retain every current confidence, quote, secret, persistence and replay test.
+- [x] Update `README.md` to identify current vi-text.v8/text-report.v2 and
+  vi-prose.v5, with uncalibrated confidence unchanged. Run focused report tests
+  and the offline language corpus; report any failures honestly. No paid calls,
+  deployment, remote operation, commit or push in the coding handoff.
+
+Task verification: Given a numerical interpretation-confidence claim in any
+prose field, when validated, then it is UNSUPPORTED_SCORE at that field. Given
+a qualitative basis with an explicit review count, when validated, then it is
+accepted without inferring a confidence value. Given Vietnamese fabric language
+or a numeric technical unit, when screened, then it is accepted; standalone
+foreign narrative and unquoted foreign scripts still fail. Given either evaluator
+label mismatch direction, when evaluated, then its exact ID is reported.
+
+Live completion remains the original frozen acceptance criterion. User authorized
+up to five deliberate diagnostic requests at the existing per-run $0.01 and
+combined $0.09 reservation bounds; run 1 rejected at summary and captured no
+prose under findings-only policy. Any extension of capture to other prose fields
+requires its pending explicit answer. Keep local demo generation disabled;
+isolated operator diagnostics cannot drain its queue or rewrite old results.
+
+Completion coding handoff verification (2026-10-06): all 427 focused tests in
+`backend/tests/test_text_reports.py` passed using the specified Python runtime.
+The offline evaluator ran all three retained language corpora (57 + 24 + 25 =
+106 cases): no screen false rejections, screen false acceptances, or report
+language mismatches. The `empty` case remains SCHEMA_INVALID/findings.text,
+an expected structural rejection rather than a language mismatch. New tests
+verify both evaluator mismatch directions with exact IDs, all five prose
+locations, safe settlement and no replay, explicit evidence counts/source values,
+and bounded fabric/unit exceptions with foreign counterexamples. Initial local
+failures exposed colon placement and casefolded unit handling in the patch;
+both were corrected before the final passing run. Frontend and PostgreSQL
+suites were not rerun for this contracts/tests/documentation-only completion
+patch. Live Chinese acceptance remains unmet. No operational tmp files were
+executed, and no paid request, deployment, remote operation, commit or push ran.
+
 ## Review Triage Log
+
+Completion review 2026-10-06 (every reviewer finding, before deduplication):
+
+| Lens / finding | Verdict | Evidence and route |
+| --- | --- | --- |
+| Blind numeric confidence | medium | Parent probe confirms `Tôi chắc chắn 90% về cách diễn giải.` accepts in new basis. New field lacks complete assertion detection; bad_plan, completion loopback. |
+| Blind qualitative source count | medium | Parent probe rejects `Độ tin cậy còn hạn chế vì chỉ có 2 đánh giá.` as score. New confidence explanation surface exposes false score classification; same bad_plan loopback. |
+| Blind mixed English/French padding | medium | Parent probes both accept; ratio heuristic already accepted these before this change. Pre-existing language-identification limitation; defer, not a factual/language QA guarantee. |
+| Blind fabric homograph | medium | `Vải the mềm mại.` rejects from newly strengthened any-blacklisted-word rule. Direct correction with counterexamples; patch. |
+| Blind technical units | medium | Parent probes numeric µm and Ω reject under new script guard. Bounded unit exception and negative examples; patch. |
+| Blind compact product descriptions | medium | `Giấy mỏng.` and `Giấy rẻ.` reject; concrete vocabulary omissions exposed by newly added tissue words. Direct vocabulary correction with unchanged thresholds; patch. |
+| Blind citation-scoped quotes | medium | Parent confirms quote from E2 with E1 citation accepts. Global supplied-source exemption was present in baseline, including single quotes; pre-existing entailment limitation, defer. |
+| Blind structural metadata quote | medium | Parent confirms path string is treated as supplied source. Recursive collection of complete evidence existed in baseline; pre-existing exemption-input defect, defer. |
+| Blind compact guidance/schema maxima | false | Prompt asks for compact output under token cap while schema retains backward-compatible structural maxima. A larger valid basis is not a claim that compact guidance is strictly schema-enforced; no contract requires those advisory limits. |
+| Blind README versions | low | README says v2 prompt while constants say v8. Direct documentation correction, patch. |
+| Blind substantive live acceptance | medium | Latest v8 acceptance failed; current run 1 summary also failed. Live gate remains unmet and is the active completion objective; retain honest partial status until observed. |
+| Edge numeric confidence colon | medium | Parent reproduces `Tôi khá chắc chắn: 65%.` accepted in new basis. Same new-field assertion defect as Blind numeric confidence, bad_plan loopback. |
+| Verification evaluator mismatch mutation | medium | Filed evidence trusted: forced empty mismatch list survives existing assertions. Add both mismatch-direction exact-ID tests; patch. |
+| Intent live outcome vs pipeline tests | false | Auditor correctly separates offline/earlier READY evidence from current substantive live gate. No completion claim exists; perform the pending gate and retain failure honestly if unmet. |
+
+Completion review round 2 (all lenses collected before triage):
+
+| Lens / finding | Verdict | Evidence and route |
+| --- | --- | --- |
+| Blind qualified confidence | medium | Parent reproduces `Độ tin cậy của diễn giải này là 90%.` and `Tôi chắc chắn đến 90% về cách diễn giải.` accepted. Narrow connector omissions in the assertion guard; trivial patch with exact all-field regressions. |
+| Blind qualitative partial confidence | medium | Parent reproduces `Tôi chắc chắn một phần về cách diễn giải.` falsely rejected. The new value matcher consumes this qualitative phrase; direct patch with quantified-fraction counterexamples. |
+| Blind risk-unknown evidence count | medium | Parent reproduces rejection, but the unchanged baseline risk-label-to-number branch also rejected it. Pre-existing conservative risk guard; defer rather than weaken its risk protections in this confidence correction. |
+| Blind score-bearing source quote | medium | Existing score check deliberately precedes language quotation exemptions and baseline also rejects source confidence-score quotes. Pre-existing source-score policy ambiguity; defer; do not silently exempt numerical score claims. |
+| Blind additional engineering units | medium | Existing vi-prose.v4 script guard rejects µg/µF/kΩ; the new bounded exceptions correct only demonstrated µm/Ω. Other unit handling remains a pre-existing coverage limitation, defer. |
+| Blind mixed-language padding | medium | carried: same inputs and unchanged cue-ratio defect as prior Blind mixed English/French. Keep previous defer; no second patch or deferred entry. |
+| Blind citation-scoped quotation | medium | carried: same global exemption inputs and cited-evidence mismatch as prior Blind citation-scoped quotes. Keep previous defer without duplicate entry. |
+| Blind metadata quotation | medium | carried: same complete-entry source-string traversal as prior Blind structural metadata quote. Keep previous defer without duplicate entry. |
+| Blind live acceptance absent | false | New actual run 2 is READY, independent bilingual audit passes its specific fixture, owned reopen is identical and another owner is denied. This happened after the review diff snapshot; record the new evidence without rewriting historical failed cloud acceptance. |
+| Blind evaluator CLI exit mode | false | This is an intentionally diagnostic offline CLI, not a CI gate; targeted known-mismatch datasets are expected inputs. No automated consumer relying on its zero exit as acceptance was identified. Adding an optional public check mode is not a demonstrated defect. |
+| Edge assessment qualifiers | medium | Parent reproduces assessment-qualified 90% accepted. Same narrow connector omission as Blind qualified confidence; patch, keep assessment confidence forbidden. |
+| Edge signed confidence | medium | Parent reproduces +0.65 accepted outside the dedicated field; optional sign omitted from numeric literal. Direct patch with positive/negative/fraction regressions and source-count counterexamples. |
+| Edge metadata quotation | medium | carried: prior identical location and complete-entry exemption claim; same defer, no duplicate action. |
+| Edge citation-scoped quotation | medium | carried: prior identical location and global exemption claim; same defer, no duplicate action. |
+| Edge mixed-language fragments | medium | carried: prior identical sentence-ratio claim; same defer, no duplicate action. |
+| Verification assessment-qualified scores | medium | Verified independently by parent after filed service reproduction. Same connector defect as Edge assessment qualifiers; patch exact forms across all fields. |
+| Intent contract versus actual model surface | false | Correct reading of the snapshot at launch. Actual live run 2 now supplies the missing independent semantic/persistence evidence. Preserve its bounded fixture scope; no human benchmark, calibration or historic causal explanation is claimed. |
 
 | Lens / finding | Verdict | Evidence and route |
 | --- | --- | --- |
@@ -191,6 +304,21 @@ provider from asserting calibration. Versioned generated schemas and optional
 legacy UI typing avoid rewriting immutable old reports.
 
 ## Verification
+
+Latest completion evidence: `../../implementation-artifacts/story31-completion-acceptance.md`.
+Actual live Chinese fixture run 2 is READY and independently compared to the
+source, with identical owned reopening and denied other-owner retrieval. The
+final reviewed assertion-guard patch revalidates that saved provider output
+without modifying its report or requesting generation. Parent final focused
+suite passes 522 tests; frontend 83 tests and TypeScript checks pass. Earlier
+implementation/release/failure notes above are historical and do not describe
+the new fixture acceptance. Final PostgreSQL rerun passed all 13 tests after the
+review corrections. All six frozen matrix rows are covered by the executed
+report/provider and PostgreSQL suites: confidence persistence/ownership, invalid
+confidence fields, diagnostic/secret boundaries, legacy no-generation reopen,
+credential echo and timeout/replay fencing. The live criterion is covered by
+actual run 2 plus independent source comparison and saved-owner inspection.
+No additional provider call, rejected-prose capture, deployment or push was needed.
 
 - Focused report/provider tests, including adversarial diagnostics and sanitized
   Chinese evidence; no external network or payment for offline verification.

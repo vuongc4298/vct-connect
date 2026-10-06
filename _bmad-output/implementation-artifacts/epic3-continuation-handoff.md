@@ -2,7 +2,15 @@
 
 Prepared 2026-10-05. Verified pushed demo baseline:
 `29344d20da6d861439dcdc1c79306f5b1e3d2630`, branch `codex/oct6-text-report`.
-This is a reconciliation and starting intent, not a completed story or epic.
+This is a reconciliation and starting intent, not a completed epic.
+
+Current update, 2026-10-06: Story 3.1's Chinese-fixture gate passed in isolated
+local diagnostic run 2 with actual YEScale output, independent bilingual source
+comparison, identical owner reopening and denial to another owner. See
+`story31-completion-acceptance.md` for the exact scope, provenance and final
+verification. This accepts the interpretation foundation, not a human benchmark,
+cloud rollout, full assessment engine or general translation guarantee. Historical
+failed runs below remain unchanged. Original 3.2 is the next implementation.
 
 ## What the demo already delivered
 
@@ -27,7 +35,7 @@ report/API contracts. Do not build a second gateway or duplicate dispatch ledger
 
 | Story | Existing contribution | Remaining original acceptance |
 | --- | --- | --- |
-| 3.1 YEScale supplier interpretation | Adapter, Vietnamese reports, versions/settings/usage/latency/reservation and backend-only credentials exist. The v2 release adds safe categorized diagnostics and explicitly uncalibrated model self-reported confidence, with persisted labels and legacy-compatible UI. | Live Chinese interpretation still has not passed: the v2 rehearsal identifies NON_VIETNAMESE_PROSE in findings.text. Distinguishing untranslated text from a validator false positive requires an approved bounded/redacted diagnostic policy. Confidence remains separate from calibrated assessment confidence. Actual cost stays unknown without trustworthy billing data. |
+| 3.1 YEScale supplier interpretation | Adapter, safe diagnostics, Vietnamese reports, explicitly uncalibrated model confidence, complete run provenance and backend-only credentials are implemented. Actual Chinese-fixture run 2 passed substantive comparison, persistence and ownership checks; final vi-prose.v5 corrections are tested. | Fixture foundation accepted; release to cloud is separate. Production model selection, calibration and broader language/entailment evaluation remain later work. Invoice cost stays explicitly unknown without trustworthy billing data. |
 | 3.2 Deterministic review signals | Selected review bodies can reach interpretation; extracted evidence IDs/provenance exist. | Complaint grouping, duplicate/timing/rating-text/volume signals and review reliability are not implemented. Missing dates/ratings must remain unknown. |
 | 3.3 Semantic/structured review interpretation | Provider, evidence projection and run metadata can be reused. | Embeddings, near-duplicate clustering, complaint category/severity and manipulation/reliability outputs are pending; original dependencies on 3.1 and 3.2 remain. |
 | 3.4 Factory/trader evidence | Existing extraction provenance and provider interfaces are reusable. | Direction/strength/reliability aggregation, contradictory/self-claim handling, likelihood/confidence and uncertainty are pending. Trader status alone must not add risk. |
@@ -39,9 +47,10 @@ report/API contracts. Do not build a second gateway or duplicate dispatch ledger
 Reporting Epic 4 likewise has a reusable text-report UI, authorized retrieval,
 progress, limitations and citations. Full assessment-backed risk/confidence/
 coverage, guest-safe assessment projection and complete reporting acceptance
-are not done. Do not mark 3.1, 3.7, Epic 3 or Epic 4 done from demo evidence.
+are not done. Do not mark 3.7, Epic 3 or Epic 4 done from the fixture-foundation
+acceptance or demo evidence.
 
-## Recommended next implementation: finish the interpretation foundation
+## Historical foundation continuation plan
 
 Use `bmad-build` with original ticket 3.1 and this handoff as additional context.
 Limit the first continuation to safe diagnostic observability and reproducible

@@ -162,3 +162,27 @@ These entries process the ten held first-instance review deferrals once. Later c
 - source_plan: `_bmad-output/implementation-artifacts/plan-story31-language-contract-investigation.md`
   summary: Bind foreign quotation exemptions to supplied evidence while preserving legitimate source names and identifiers.
   evidence: unprovided_english_quote passes validate_report with evidence E1 containing no source text because double-quoted content is stripped unconditionally. Independent straight/curly-quote probes reproduce this pre-existing boundary. Source quotation policy and meaningful negative tests must be settled before correction; no guard change in the approved offline investigation.
+
+- source_plan: `_bmad-output/initiative-vct-connect-year-one/epic-analysis-intelligence/story-interpret-one-supplier-fixture-through-yescale-plan.md`
+  summary: Existing Vietnamese cue-ratio screening can accept foreign fragments padded with Vietnamese prose.
+  evidence: Completion review reproduced inline excellent quality and très fiable accepted after ordinary Vietnamese cues; the same heuristic limitation predates this change. A general language-identification contract needs independently labeled evaluation, not a claim of complete foreign-language exclusion.
+
+- source_plan: `_bmad-output/initiative-vct-connect-year-one/epic-analysis-intelligence/story-interpret-one-supplier-fixture-through-yescale-plan.md`
+  summary: Existing source-quotation exemptions are global rather than bound to a finding's cited evidence.
+  evidence: Completion review confirmed a finding citing E1 can quote foreign text present only in E2. The baseline already exempted globally supplied single-quoted source text. Citation membership proves existence, not factual entailment.
+
+- source_plan: `_bmad-output/initiative-vct-connect-year-one/epic-analysis-intelligence/story-interpret-one-supplier-fixture-through-yescale-plan.md`
+  summary: Existing recursive source-string collection includes structural evidence metadata in quote exemptions.
+  evidence: Completion review confirmed quoted delivery_information is exempted when present only as a path. Baseline source-string collection traversed entire evidence entries; restrict future exemption input to source values with meaningful metadata-negative tests.
+
+- source_plan: `_bmad-output/initiative-vct-connect-year-one/epic-analysis-intelligence/story-interpret-one-supplier-fixture-through-yescale-plan.md`
+  summary: The existing risk-score guard can reject explicit unknown-risk statements followed by source counts.
+  evidence: Both baseline guard and completion probe reject Mức rủi ro chưa xác định vì chỉ có 2 đánh giá; the risk branch was preserved in this confidence correction. A separate assertion-aware risk policy must preserve rejection of invented risk scores.
+
+- source_plan: `_bmad-output/initiative-vct-connect-year-one/epic-analysis-intelligence/story-interpret-one-supplier-fixture-through-yescale-plan.md`
+  summary: Source-attributed confidence-score quotations lack a distinct policy from unsupported report score assertions.
+  evidence: The baseline and candidate both reject an exact source quotation containing confidence score 90% before language quotation exemptions. Resolve source-score presentation explicitly rather than exempting numerical confidence assertions silently.
+
+- source_plan: `_bmad-output/initiative-vct-connect-year-one/epic-analysis-intelligence/story-interpret-one-supplier-fixture-through-yescale-plan.md`
+  summary: Technical non-Latin units beyond the bounded µm and Ω exceptions remain unsupported by the conservative prose screen.
+  evidence: vi-prose.v4 already rejected µg, µF and kΩ; the completion correction is narrowly tested for numeric µm/Ω. Broader unit recognition requires bounded quantity parsing and foreign-prose counterexamples.
