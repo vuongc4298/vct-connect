@@ -200,6 +200,19 @@ class Store:
                 (analysis_id, user_id),
             ).fetchone()
 
+    def get_report_for_user(self, analysis_id: UUID, user_id: UUID) -> dict | None:
+        """Return a completed full report only to its owning customer."""
+        with self.connect() as conn:
+            return conn.execute(
+                """SELECT r.payload, r.created_at
+                   FROM reports r
+                   JOIN analyses a ON a.id = r.analysis_id
+                   WHERE a.id = %s AND a.user_id = %s
+                     AND a.actor_type = 'CUSTOMER'
+                     AND a.status = 'COMPLETED'""",
+                (analysis_id, user_id),
+            ).fetchone()
+
     def get_for_guest(self, analysis_id: UUID, guest_key: str) -> dict | None:
         key_hash = sha256(guest_key.encode()).hexdigest()
         with self.connect() as conn:
@@ -368,17 +381,19 @@ class Store:
         with self.connect() as conn:
             with conn.transaction():
                 row = conn.execute(
-                    """SELECT id, source_url, mode, status, attempt_count, next_retry_at,
-                              processing_claimed_until, supplier_snapshot_id
-                       FROM analyses WHERE id = %s FOR UPDATE""",
+                    """SELECT a.id, a.source_url, a.mode, a.status, a.attempt_count, a.next_retry_at,
+                              a.processing_claimed_until, a.supplier_snapshot_id,
+                              EXISTS (
+                                SELECT 1 FROM analysis_assessments aa
+                                WHERE aa.analysis_id = a.id
+                              ) AS has_assessment
+                       FROM analyses a WHERE a.id = %s FOR UPDATE""",
                     (analysis_id,),
                 ).fetchone()
                 if row is None:
                     return {"outcome": "unknown"}
                 if row["status"] == "COMPLETED":
                     return {"outcome": "completed"}
-                if row["status"] == "REPORTING":
-                    return {"outcome": "reporting"}
                 if row["status"] == "FAILED_FINAL":
                     return {"outcome": "final"}
                 now = datetime.now(timezone.utc)
@@ -406,7 +421,12 @@ class Store:
                     )
                     return {"outcome": "final"}
                 attempt = row["attempt_count"] + 1
-                phase_status = "ASSESSING" if row["supplier_snapshot_id"] is not None else "PROCESSING"
+                if row["has_assessment"]:
+                    phase_status = "REPORTING"
+                elif row["supplier_snapshot_id"] is not None:
+                    phase_status = "ASSESSING"
+                else:
+                    phase_status = "PROCESSING"
                 conn.execute(
                     """UPDATE analyses SET status = %s, attempt_count = %s,
                            processing_claim_token = %s,
@@ -421,7 +441,11 @@ class Store:
                     "outcome": "acquired", "analysis_id": analysis_id,
                     "source_url": row["source_url"], "mode": row["mode"],
                     "attempt": attempt, "token": token,
-                    "phase": "assessment" if phase_status == "ASSESSING" else "extraction",
+                    "phase": (
+                        "reporting" if phase_status == "REPORTING"
+                        else "assessment" if phase_status == "ASSESSING"
+                        else "extraction"
+                    ),
                 }
 
     def record_result_conflict(self, analysis_id: UUID) -> None:
@@ -772,7 +796,7 @@ class Store:
                        WHERE id = %s AND processing_claim_token = %s FOR UPDATE""",
                     (analysis_id, token),
                 ).fetchone()
-                if row is None or row["status"] not in {"PROCESSING", "ASSESSING"}:
+                if row is None or row["status"] not in {"PROCESSING", "ASSESSING", "REPORTING"}:
                     raise LeaseLost("Processing lease is no longer current")
                 final = row["attempt_count"] >= max_attempts
                 status = "FAILED_FINAL" if final else "FAILED_RETRYABLE"
