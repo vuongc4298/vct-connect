@@ -3,6 +3,8 @@ export const FIXTURE_URL = "https://detail.1688.com/offer/123456789012.html";
 export type AnalysisStatus =
   | "QUEUED"
   | "PROCESSING"
+  | "ASSESSING"
+  | "REPORTING"
   | "FAILED_RETRYABLE"
   | "FAILED_FINAL"
   | "COMPLETED";
@@ -103,4 +105,60 @@ export type Analysis = {
         omitted_review_count?: number; omitted_product_count?: number }
   ) | null;
   reviews: Array<Record<string, unknown>>;
+};
+
+
+export type ReportRiskLabel = "LOW" | "MODERATE" | "HIGH" | "INSUFFICIENT_INFORMATION";
+
+export type ReportEvidence = {
+  evidence_id: string;
+  source_kind: string;
+  source_field: string | null;
+  payload: Record<string, unknown>;
+};
+
+export type ReportFinding = {
+  finding_key: string;
+  finding_type: string;
+  dimension: string | null;
+  severity: number | null;
+  confidence: number | null;
+  evidence_ids: string[];
+  payload: Record<string, unknown>;
+};
+
+export type ReportRisk = {
+  overall_risk: number | null;
+  label: ReportRiskLabel;
+  confidence: number;
+  coverage: number;
+  scoring_version: string;
+  dimensions: Array<Record<string, unknown>>;
+};
+
+export type ReportV1 = {
+  schema_version: "report.v1";
+  language: "vi";
+  analysis_id: string;
+  source_url: string;
+  platform: string;
+  extracted_at: string;
+  supplier_name: string | null;
+  platform_supplier_id: string | null;
+  supplier_summary_vi: string;
+  risk: ReportRisk;
+  factory_trader: Record<string, unknown>;
+  review_summary: Record<string, unknown>;
+  key_risks: ReportFinding[];
+  positive_signals: ReportFinding[];
+  other_findings: ReportFinding[];
+  evidence: ReportEvidence[];
+  missing_data: {
+    source_fields: string[];
+    risk_dimensions: string[];
+    uncertainties_vi: string[];
+    [key: string]: string[];
+  };
+  limitations_vi: string[];
+  recommended_actions_vi: string[];
 };
