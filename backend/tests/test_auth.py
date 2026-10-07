@@ -277,6 +277,30 @@ class AuthStore:
         row = self.rows.get(analysis_id)
         return row if row and row.get("guest_key") == guest_key else None
 
+    def list_analysis_history(self, user_id, *, limit=100):
+        rows = [
+            row for row in self.rows.values()
+            if row.get("user_id") == user_id
+        ]
+        rows.sort(key=lambda row: str(row["id"]), reverse=True)
+        return [{
+            "id": row["id"],
+            "source_url": row["source_url"],
+            "status": row["status"],
+            "created_at": row["created_at"],
+            "completed_at": row.get("completed_at"),
+            "mode": row.get("mode", "ACCOUNT_PUBLIC"),
+            "extraction_method": row.get("extraction_method", "FIXTURE"),
+            "scoring_version": row.get("scoring_version", "v0.1.0"),
+            "supplier_name": None,
+            "platform": None,
+            "report_available": row["id"] in self.reports,
+            "risk_label": self.reports.get(row["id"], {}).get("risk", {}).get("label"),
+            "overall_risk": self.reports.get(row["id"], {}).get("risk", {}).get("overall_risk"),
+            "confidence": self.reports.get(row["id"], {}).get("risk", {}).get("confidence"),
+            "coverage": self.reports.get(row["id"], {}).get("risk", {}).get("coverage"),
+        } for row in rows[:limit]]
+
     def get(self, analysis_id):
         return self.rows.get(analysis_id)
 
@@ -904,3 +928,46 @@ def test_me_is_customer_only_and_reports_own_trial_and_usage(signing_keys):
     forbidden = client.get("/api/v1/me", headers=other_headers)
     assert forbidden.status_code == 403
     assert forbidden.json() == {"detail": "Forbidden"}
+
+
+def test_analysis_history_is_customer_only_and_owner_scoped(signing_keys):
+    private, public = signing_keys
+    client, store = client_and_store(public)
+    owner_headers = auth_header(token(private, "history_owner"))
+    other_headers = auth_header(token(private, "history_other"))
+
+    owner_pending = client.post(
+        "/api/v1/analyses", headers=owner_headers, json={"source_url": FIXTURE_URL},
+    )
+    other_pending = client.post(
+        "/api/v1/analyses", headers=other_headers, json={"source_url": FIXTURE_URL},
+    )
+    assert owner_pending.status_code == other_pending.status_code == 202
+
+    owner_id = UUID(owner_pending.json()["id"])
+    store.rows[owner_id]["status"] = "COMPLETED"
+    store.rows[owner_id]["completed_at"] = "2026-10-08T00:00:00Z"
+    store.reports[owner_id] = {
+        "risk": {
+            "overall_risk": 58,
+            "label": "MODERATE",
+            "confidence": 0.72,
+            "coverage": 0.75,
+        }
+    }
+
+    assert client.get("/api/v1/analyses").status_code == 401
+    history = client.get("/api/v1/analyses", headers=owner_headers)
+    assert history.status_code == 200
+    body = history.json()
+    assert len(body) == 1
+    assert body[0]["id"] == str(owner_id)
+    assert body[0]["status"] == "COMPLETED"
+    assert body[0]["report_available"] is True
+    assert body[0]["risk_label"] == "MODERATE"
+    assert body[0]["overall_risk"] == 58
+    assert all(item["id"] != other_pending.json()["id"] for item in body)
+
+    store.users["history_other"]["role"] = "ADMIN"
+    forbidden = client.get("/api/v1/analyses", headers=other_headers)
+    assert forbidden.status_code == 403
