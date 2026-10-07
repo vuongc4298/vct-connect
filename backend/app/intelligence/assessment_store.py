@@ -176,9 +176,7 @@ def persist_assessment_and_handoff(
                 """UPDATE analyses
                    SET status = 'REPORTING', assessed_at = now(),
                        failure_code = NULL, next_retry_at = NULL,
-                       final_disposition = NULL,
-                       processing_claim_token = NULL,
-                       processing_claimed_until = NULL
+                       final_disposition = NULL
                    WHERE id = %s AND processing_claim_token = %s
                    RETURNING id""",
                 (analysis_id, token),

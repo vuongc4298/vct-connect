@@ -262,6 +262,19 @@ def create_app(
             raise HTTPException(status_code=404, detail="Analysis not found")
         return row
 
+    @app.get("/api/v1/analyses/{analysis_id}/report")
+    def report(
+        analysis_id: UUID,
+        principal: Annotated[Principal, Depends(require_roles(CUSTOMER))],
+    ):
+        try:
+            row = store.get_report_for_user(analysis_id, principal.user_id)
+        except Exception as exc:
+            raise HTTPException(status_code=503, detail="Database unavailable") from exc
+        if row is None:
+            raise HTTPException(status_code=404, detail="Report not found")
+        return row["payload"]
+
     @app.get("/api/v1/analyses/{analysis_id}")
     def status(
         analysis_id: UUID,

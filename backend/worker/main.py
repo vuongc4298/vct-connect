@@ -14,6 +14,7 @@ from backend.app.intelligence.worker_assessment import (
     assessment_enabled,
     run_worker_assessment,
 )
+from backend.app.reporting.service import run_worker_report
 
 log = logging.getLogger(__name__)
 
@@ -55,10 +56,14 @@ def _process_claim_payload(
     assess=None,
     media_loader=None,
 ) -> None:
+    if claim.get("phase") == "reporting":
+        run_worker_report(store, claim)
+        return
     if claim.get("phase") == "assessment":
         run_worker_assessment(
             store, claim, settings, assess=assess, media_loader=media_loader
         )
+        run_worker_report(store, claim)
         return
 
     payload = _compute_claim(claim, compute, settings)
@@ -76,6 +81,7 @@ def _process_claim_payload(
     run_worker_assessment(
         store, claim, settings, assess=assess, media_loader=media_loader
     )
+    run_worker_report(store, claim)
 
 
 def dispatch_outbox_once(store: Store, queue: AzureQueue, settings: Settings) -> bool:
@@ -122,7 +128,7 @@ def process_local_once(
     if claim["outcome"] in {"busy", "waiting"}:
         store.release_local(analysis_id, local_claim["claim_token"])
         return True
-    if claim["outcome"] in {"completed", "reporting", "final", "unknown"}:
+    if claim["outcome"] in {"completed", "final", "unknown"}:
         store.finish_local(analysis_id, local_claim["claim_token"])
         return True
     try:
@@ -256,7 +262,7 @@ def process_azure_once(
                         raise
                     log.warning("Dead-lettered unknown analysis_id=%s", analysis_id)
                     return True
-                if claim["outcome"] in {"completed", "reporting"}:
+                if claim["outcome"] == "completed":
                     if clock() >= settle_deadline:
                         return True
                     _complete_message(receiver, message, analysis_id)
@@ -336,8 +342,8 @@ def process_azure_once(
                     # for the durable retry time without consuming a broker delivery.
                     continue
 
-                # Persistence has committed. A settlement failure is replayable:
-                # redelivery observes REPORTING/COMPLETED and never recomputes the result.
+                # Report persistence and COMPLETED have committed. A settlement
+                # failure is replayable and never recomputes assessment or report.
                 if clock() >= settle_deadline:
                     return True
                 _complete_message(receiver, message, analysis_id)
