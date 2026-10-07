@@ -15,6 +15,7 @@ from backend.app.intelligence.assessment_store import (
     load_assessment_snapshot,
     persist_assessment_and_handoff,
 )
+from backend.app.intelligence.media import ReviewMediaInput
 from backend.app.intelligence.yescale import YEScaleProvider
 
 log = logging.getLogger(__name__)
@@ -54,12 +55,21 @@ def _run_assessment(
     settings: Settings | None,
     *,
     assess=None,
+    media_loader=None,
 ) -> None:
     snapshot_id, supplier_data = load_assessment_snapshot(
         store, claim["analysis_id"], claim["token"]
     )
+    permitted_media: tuple[ReviewMediaInput, ...] = ()
+    if media_loader is not None:
+        loaded = media_loader(store, snapshot_id, supplier_data)
+        permitted_media = tuple(loaded or ())
     if assess is not None:
-        bundle = assess(supplier_data)
+        bundle = (
+            assess(supplier_data, permitted_media)
+            if media_loader is not None
+            else assess(supplier_data)
+        )
     else:
         if settings is None or not settings.yescale_api_key:
             raise ValueError("YESCALE_API_KEY is required for worker assessment")
@@ -70,6 +80,9 @@ def _run_assessment(
                 model=settings.yescale_model,
                 embedding_provider=provider if settings.yescale_embedding_model else None,
                 embedding_model=settings.yescale_embedding_model,
+                media=permitted_media,
+                multimodal_provider=provider if permitted_media else None,
+                multimodal_model=settings.yescale_model if permitted_media else None,
                 metadata={
                     "feature": "complete_assessment",
                     "session_id": str(claim["analysis_id"]),
@@ -95,9 +108,12 @@ def _process_claim_payload(
     *,
     compute=None,
     assess=None,
+    media_loader=None,
 ) -> None:
     if claim.get("phase") == "assessment":
-        _run_assessment(store, claim, settings, assess=assess)
+        _run_assessment(
+            store, claim, settings, assess=assess, media_loader=media_loader
+        )
         return
 
     payload = _compute_claim(claim, compute, settings)
@@ -112,7 +128,9 @@ def _process_claim_payload(
     store.complete_extraction_for_assessment(
         claim["analysis_id"], claim["token"], payload
     )
-    _run_assessment(store, claim, settings, assess=assess)
+    _run_assessment(
+        store, claim, settings, assess=assess, media_loader=media_loader
+    )
 
 
 def dispatch_outbox_once(store: Store, queue: AzureQueue, settings: Settings) -> bool:
@@ -148,6 +166,7 @@ def process_local_once(
     *,
     compute=None,
     assess=None,
+    media_loader=None,
 ) -> bool:
     max_attempts, lease_seconds, _ = _limits(settings)
     local_claim = store.claim_local(lease_seconds)
@@ -163,7 +182,8 @@ def process_local_once(
         return True
     try:
         _process_claim_payload(
-            store, claim, settings, compute=compute, assess=assess
+            store, claim, settings, compute=compute, assess=assess,
+            media_loader=media_loader
         )
         store.finish_local(analysis_id, local_claim["claim_token"])
     except ResultConflict:
@@ -240,6 +260,7 @@ def process_azure_once(
     *,
     compute=None,
     assess=None,
+    media_loader=None,
     sleep=time.sleep,
     clock=time.monotonic,
 ) -> bool:
@@ -319,7 +340,8 @@ def process_azure_once(
 
                 try:
                     _process_claim_payload(
-                        store, claim, settings, compute=compute, assess=assess
+                        store, claim, settings, compute=compute, assess=assess,
+                        media_loader=media_loader
                     )
                 except ResultConflict:
                     store.record_result_conflict(analysis_id)

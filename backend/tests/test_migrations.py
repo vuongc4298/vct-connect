@@ -94,7 +94,7 @@ def _rollback_post_core_revisions(database_url: str) -> None:
         with backend.lock():
             revisions = [migration for migration in backend.to_rollback(migrations)
                          if migration.id in {"0007_1688_extraction_evidence", "0008_allow_public_extraction",
-                                             "0009_allow_snapshot_replay", "0010_llm_review_runs", "0011_worker_assessments"}]
+                                             "0009_allow_snapshot_replay", "0010_llm_review_runs", "0011_worker_assessments", "0012_multimodal_assessments"}]
             backend.rollback_migrations(revisions)
     finally:
         migrations_module._close_backend(backend)
@@ -232,6 +232,7 @@ def test_fresh_apply_failure_rollback_and_reapply_are_reproducible(
         ("0009_allow_snapshot_replay", False),
         ("0010_llm_review_runs", False),
         ("0011_worker_assessments", False),
+        ("0012_multimodal_assessments", False),
     ]
 
     with psycopg.connect(isolated_database_url, autocommit=True) as conn:
@@ -250,6 +251,7 @@ def test_fresh_apply_failure_rollback_and_reapply_are_reproducible(
         ("0009_allow_snapshot_replay", True),
         ("0010_llm_review_runs", True),
         ("0011_worker_assessments", True),
+        ("0012_multimodal_assessments", True),
     ]
 
 
@@ -341,7 +343,7 @@ def test_processing_hardening_schema_is_reversible_and_preserves_claims(isolated
     ])
     assert migrated_outbox == (created_id, "PENDING")
 
-    with pytest.raises(RuntimeError, match="0011_worker_assessments"):
+    with pytest.raises(RuntimeError, match="0012_multimodal_assessments"):
         rollback_core_migration(isolated_database_url)
     _rollback_post_core_revisions(isolated_database_url)
     assert rollback_core_migration(isolated_database_url)
@@ -847,7 +849,7 @@ def test_core_rollback_preserves_tracer_drops_columns_and_reapplies(isolated_dat
             (user_id, snapshot_id, completed_id),
         )
 
-    with pytest.raises(RuntimeError, match="0011_worker_assessments"):
+    with pytest.raises(RuntimeError, match="0012_multimodal_assessments"):
         rollback_core_migration(isolated_database_url)
     _rollback_post_core_revisions(isolated_database_url)
     assert rollback_core_migration(isolated_database_url)
@@ -876,7 +878,7 @@ def test_core_rollback_preserves_tracer_drops_columns_and_reapplies(isolated_dat
 
     apply_migrations(isolated_database_url)
     assert migration_status(isolated_database_url)[-1] == (
-        "0011_worker_assessments",
+        "0012_multimodal_assessments",
         True,
     )
     assert {"user_id", "supplier_snapshot_id", "mode", "scoring_version"} <= set(
