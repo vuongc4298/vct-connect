@@ -369,3 +369,88 @@ def test_worker_media_loader_enriches_same_reporting_path_without_persisting_byt
             )
     finally:
         cleanup(store, analysis_id)
+
+
+def test_reporting_retry_uses_persisted_assessment_without_repeating_ai(store, monkeypatch):
+    from backend.app.reporting.service import run_worker_report as real_run_worker_report
+
+    data = supplier_data()
+    payload = {
+        "source_url": SOURCE_URL,
+        "extraction_status": "PARTIAL",
+        "raw_payload": {"fixture": True},
+        "reviews": data["reviews"],
+        "supplier_data": data,
+    }
+    provider = WorkerProvider()
+    assessor_calls = 0
+
+    def assessor(snapshot):
+        nonlocal assessor_calls
+        assessor_calls += 1
+        return build_assessment(
+            snapshot,
+            provider=provider,
+            model="worker-chat",
+            embedding_provider=provider,
+            embedding_model="worker-embedding",
+            metadata={"feature": "report_retry_test"},
+        )
+
+    def fail_report(_store, _claim):
+        raise RuntimeError("fixture reporting failure")
+
+    analysis_id = store.submit_local(SOURCE_URL)
+    try:
+        monkeypatch.setattr("backend.worker.main.run_worker_report", fail_report)
+        assert process_local_once(
+            store,
+            compute=lambda _url: payload,
+            assess=assessor,
+        )
+        failed = store.get(analysis_id)
+        assert failed["status"] == "FAILED_RETRYABLE"
+        assert assessor_calls == 1
+        assert provider.chat_calls == 2
+        assert provider.embedding_calls == 1
+
+        with store.connect() as conn:
+            assert conn.execute(
+                "SELECT count(*) AS n FROM analysis_assessments WHERE analysis_id = %s",
+                (analysis_id,),
+            ).fetchone()["n"] == 1
+            assert conn.execute(
+                "SELECT count(*) AS n FROM reports WHERE analysis_id = %s",
+                (analysis_id,),
+            ).fetchone()["n"] == 0
+            conn.execute(
+                "UPDATE analyses SET next_retry_at = now() WHERE id = %s",
+                (analysis_id,),
+            )
+            conn.execute(
+                "UPDATE local_queue SET available_at = now() WHERE analysis_id = %s",
+                (analysis_id,),
+            )
+
+        monkeypatch.setattr("backend.worker.main.run_worker_report", real_run_worker_report)
+        assert process_local_once(
+            store,
+            compute=lambda _url: (_ for _ in ()).throw(
+                AssertionError("report retry re-extracted")
+            ),
+            assess=lambda _snapshot: (_ for _ in ()).throw(
+                AssertionError("report retry repeated AI")
+            ),
+        )
+
+        assert store.get(analysis_id)["status"] == "COMPLETED"
+        assert assessor_calls == 1
+        assert provider.chat_calls == 2
+        assert provider.embedding_calls == 1
+        with store.connect() as conn:
+            assert conn.execute(
+                "SELECT count(*) AS n FROM reports WHERE analysis_id = %s",
+                (analysis_id,),
+            ).fetchone()["n"] == 1
+    finally:
+        cleanup(store, analysis_id)
