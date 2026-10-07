@@ -168,6 +168,7 @@ test("full report renders real score, identity, review, actions and evidence tra
   assert.match(html, /Chưa đủ bằng chứng/);
   assert.match(html, /href="#evidence-review-0"/);
   assert.match(html, /id="evidence-review-0"/);
+  assert.match(html, /review:0/);
   assert.match(html, /Độ mới: bằng chứng thuộc ảnh chụp ngày/);
   assert.match(html, /Mở trang nguồn 1688/);
 });
@@ -211,4 +212,13 @@ test("dangling historical evidence ids render as missing source, not fake anchor
   const html = renderToStaticMarkup(<FullReport report={report} />);
   assert.match(html, /missing:evidence · thiếu nguồn/);
   assert.doesNotMatch(html, /href="#evidence-missing-evidence"/);
+});
+
+
+test("internal scorer references are labeled without pretending to be source anchors", () => {
+  const report = reportFixture();
+  report.risk.dimensions[0].evidence_ids = ["review-finding:quality"];
+  const html = renderToStaticMarkup(<FullReport report={report} />);
+  assert.match(html, /review-finding:quality · tham chiếu chấm điểm/);
+  assert.doesNotMatch(html, /href="#evidence-review-finding-quality"/);
 });
