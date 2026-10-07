@@ -7,6 +7,20 @@ export type RequestAuth = {
   getToken: () => Promise<string | null>;
 };
 
+export type ApiRequestOptions = {
+  origin?: string;
+  timeoutMs?: number;
+};
+
+function endpoint(path: string, options?: ApiRequestOptions): string {
+  if (!options?.origin) return path;
+  const origin = new URL(options.origin);
+  if (!["http:", "https:"].includes(origin.protocol) || origin.username || origin.password) {
+    throw new ApiError("Invalid API origin", 500);
+  }
+  return `${origin.origin}${path}`;
+}
+
 export class ApiError extends Error {
   constructor(message: string, readonly status: number) {
     super(message);
@@ -85,11 +99,13 @@ export async function submitAnalysis(
   }));
 }
 
-export async function getAnalysis(id: string, auth?: RequestAuth): Promise<Analysis> {
-  return request<Analysis>(`/api/v1/analyses/${encodeURIComponent(id)}`, async () => ({
+export async function getAnalysis(
+  id: string, auth?: RequestAuth, options?: ApiRequestOptions,
+): Promise<Analysis> {
+  return request<Analysis>(endpoint(`/api/v1/analyses/${encodeURIComponent(id)}`, options), async () => ({
     cache: "no-store",
     headers: await authorizationHeaders(auth),
-  }));
+  }), options?.timeoutMs);
 }
 
 export async function getReport(id: string, auth: RequestAuth): Promise<ReportV1> {
