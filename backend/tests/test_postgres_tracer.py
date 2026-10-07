@@ -1119,3 +1119,56 @@ def test_configured_azure_service_bus_round_trip(store):
     finally:
         remove(store, analysis_id)
         remove_user(store, verifier.subject)
+
+
+def test_account_state_uses_persisted_entitlement_and_current_usage(store):
+    subject = "account_state_" + uuid4().hex
+    user = store.resolve_user(subject, "pilot@example.test")
+    entitlement_id = uuid4()
+    try:
+        with store.connect() as conn:
+            with conn.transaction():
+                conn.execute(
+                    """INSERT INTO entitlements
+                         (id, user_id, entitlement, source, starts_at, expires_at, status)
+                       VALUES (%s, %s, 'ANALYSIS_ACCESS', 'MVP_TRIAL',
+                               now() - interval '1 day', now() + interval '29 days', 'ACTIVE')""",
+                    (entitlement_id, user["id"]),
+                )
+                conn.execute(
+                    """INSERT INTO admission_counters (scope, subject, window_number, used)
+                       VALUES ('CUSTOMER', %s, floor(extract(epoch FROM now()) / 86400)::bigint, 7)""",
+                    (str(user["id"]),),
+                )
+        state = store.get_account_state(
+            user["id"], customer_limit=20, window_seconds=86400,
+        )
+        assert state is not None
+        assert state["user"]["email"] == "pilot@example.test"
+        assert state["plan"] == "MVP_TRIAL"
+        assert state["trial"]["active"] is True
+        assert state["trial"]["status"] == "ACTIVE"
+        assert state["usage"]["used"] == 7
+        assert state["usage"]["limit"] == 20
+        assert state["usage"]["remaining"] == 13
+
+        with store.connect() as conn:
+            conn.execute(
+                "UPDATE entitlements SET expires_at = now() - interval '1 second' WHERE id = %s",
+                (entitlement_id,),
+            )
+        expired = store.get_account_state(
+            user["id"], customer_limit=20, window_seconds=86400,
+        )
+        assert expired["plan"] == "FREE"
+        assert expired["trial"]["active"] is False
+        assert expired["trial"]["status"] == "ACTIVE"
+    finally:
+        with store.connect() as conn:
+            with conn.transaction():
+                conn.execute(
+                    "DELETE FROM admission_counters WHERE scope = 'CUSTOMER' AND subject = %s",
+                    (str(user["id"]),),
+                )
+                conn.execute("DELETE FROM entitlements WHERE user_id = %s", (user["id"],))
+                conn.execute("DELETE FROM users WHERE id = %s", (user["id"],))
