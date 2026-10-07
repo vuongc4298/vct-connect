@@ -1,5 +1,5 @@
 import type {
-  Analysis, ImportSavedPageResponse, SubmitAnalysisRequest, SubmitAnalysisResponse,
+  Analysis, ImportSavedPageResponse, ReportV1, SubmitAnalysisRequest, SubmitAnalysisResponse,
   SubmitGuestAnalysisRequest, SubmitGuestAnalysisResponse,
 } from "@vct/contracts";
 
@@ -87,6 +87,13 @@ export async function submitAnalysis(
 
 export async function getAnalysis(id: string, auth?: RequestAuth): Promise<Analysis> {
   return request<Analysis>(`/api/v1/analyses/${encodeURIComponent(id)}`, async () => ({
+    cache: "no-store",
+    headers: await authorizationHeaders(auth),
+  }));
+}
+
+export async function getReport(id: string, auth: RequestAuth): Promise<ReportV1> {
+  return request<ReportV1>(`/api/v1/analyses/${encodeURIComponent(id)}/report`, async () => ({
     cache: "no-store",
     headers: await authorizationHeaders(auth),
   }));
