@@ -2,79 +2,32 @@ import React from "react";
 import type { ReportEvidence, ReportFinding, ReportV1 } from "@vct/contracts";
 import { safeSourceUrl } from "./source-url";
 import { reportFreshness } from "./report-freshness";
-
-const DIMENSIONS: Record<string, string> = {
-  PRODUCT_QUALITY: "Chất lượng sản phẩm",
-  DELIVERY: "Giao hàng",
-  AFTER_SALES: "Hậu mãi",
-  REVIEW_MANIPULATION: "Độ tin cậy đánh giá",
-  SUPPLIER_IDENTITY: "Danh tính nhà cung cấp",
-  PRICING: "Giá và điều khoản",
-  COMMUNICATION: "Giao tiếp",
-};
-
-const SOURCE_KINDS: Record<string, string> = {
-  SUPPLIER_DATA: "Dữ liệu nhà cung cấp",
-  REVIEW: "Đánh giá người mua",
-  REVIEW_MEDIA: "Ảnh / video đánh giá",
-  PLATFORM_PROFILE: "Hồ sơ nền tảng",
-  DERIVED: "Tín hiệu suy luận xác định",
-  MODEL_INTERPRETATION: "Diễn giải có cấu trúc",
-};
-
-function percent(value: unknown) {
-  return typeof value === "number" ? `${Math.round(value * 100)}%` : "Chưa xác định";
-}
-
-function barWidth(value: unknown) {
-  return typeof value === "number" ? `${Math.max(0, Math.min(100, Math.round(value * 100)))}%` : "0%";
-}
-
-function scorePercent(value: number) {
-  return `${Math.round(value * 100)}%`;
-}
-
-function riskLabel(report: ReportV1) {
-  switch (report.risk.label) {
-    case "LOW": return { text: "RỦI RO THẤP", tone: "good" as const };
-    case "MODERATE": return { text: "RỦI RO TRUNG BÌNH", tone: "warning" as const };
-    case "HIGH": return { text: "RỦI RO CAO", tone: "danger" as const };
-    default: return { text: "CHƯA ĐỦ THÔNG TIN", tone: "neutral" as const };
-  }
-}
-
-function evidenceAnchor(id: string) {
-  return `evidence-${id.replace(/[^a-zA-Z0-9_-]/g, "-")}`;
-}
-
-function payloadText(payload: Record<string, unknown>) {
-  for (const key of ["statement_vi", "statement", "title", "kind"]) {
-    const value = payload[key];
-    if (typeof value === "string" && value.trim()) return value.trim();
-  }
-  return null;
-}
-
-function findingTitle(finding: ReportFinding) {
-  return payloadText(finding.payload)
-    ?? DIMENSIONS[finding.dimension ?? ""]
-    ?? finding.finding_type.replaceAll("_", " ");
-}
+import {
+  REPORT_DIMENSION_LABELS,
+  REPORT_SOURCE_KIND_LABELS,
+  optionalReportPercent,
+  reportBarWidth,
+  reportEvidenceAnchor,
+  reportFindingTitle,
+  reportPayloadText,
+  reportPercent,
+  reportRiskLabel,
+} from "./report-presentation";
 
 function FindingCard({ finding, availableEvidenceIds }: { finding: ReportFinding; availableEvidenceIds: Set<string> }) {
-  const statement = payloadText(finding.payload);
+  const statement = reportPayloadText(finding.payload);
   return <article className="report-finding">
     <div className="report-finding-head">
-      <span>{DIMENSIONS[finding.dimension ?? ""] ?? finding.finding_type.replaceAll("_", " ")}</span>
-      {finding.confidence !== null && <small>{scorePercent(finding.confidence)} tin cậy</small>}
+      <span>{REPORT_DIMENSION_LABELS[finding.dimension ?? ""] ?? finding.finding_type.replaceAll("_", " ")}</span>
+      {finding.confidence !== null && <small>{reportPercent(finding.confidence)} tin cậy</small>}
     </div>
-    <h4>{findingTitle(finding)}</h4>
-    {statement && statement !== findingTitle(finding) ? <p>{statement}</p> : null}
+    <h4>{reportFindingTitle(finding)}</h4>
+    {statement && statement !== reportFindingTitle(finding) ? <p>{statement}</p> : null}
     {finding.evidence_ids.length > 0 && <div className="finding-evidence">
       <span>Bằng chứng</span>
       {finding.evidence_ids.map(id =>
         availableEvidenceIds.has(id)
-          ? <a key={id} href={`#${evidenceAnchor(id)}`}>{id}</a>
+          ? <a key={id} href={`#${reportEvidenceAnchor(id)}`}>{id}</a>
           : <span className="missing-evidence-ref" key={id}>{id} · thiếu nguồn</span>
       )}
     </div>}
@@ -82,12 +35,12 @@ function FindingCard({ finding, availableEvidenceIds }: { finding: ReportFinding
 }
 
 function EvidenceCard({ evidence, extractedAt }: { evidence: ReportEvidence; extractedAt: string }) {
-  const text = payloadText(evidence.payload);
+  const text = reportPayloadText(evidence.payload);
   const freshness = reportFreshness(extractedAt);
-  return <article className="report-source" id={evidenceAnchor(evidence.evidence_id)}>
+  return <article className="report-source" id={reportEvidenceAnchor(evidence.evidence_id)}>
     <div className="report-source-head">
       <code>{evidence.evidence_id}</code>
-      <span>{SOURCE_KINDS[evidence.source_kind] ?? evidence.source_kind}</span>
+      <span>{REPORT_SOURCE_KIND_LABELS[evidence.source_kind] ?? evidence.source_kind}</span>
     </div>
     {evidence.source_field && <p><strong>Trường nguồn:</strong> {evidence.source_field}</p>}
     {text && <p>{text}</p>}
@@ -99,12 +52,12 @@ function MissingList({ title, values }: { title: string; values: string[] }) {
   if (!values.length) return null;
   return <div className="report-missing-group">
     <strong>{title}</strong>
-    <ul>{values.map(value => <li key={value}>{DIMENSIONS[value] ?? value}</li>)}</ul>
+    <ul>{values.map(value => <li key={value}>{REPORT_DIMENSION_LABELS[value] ?? value}</li>)}</ul>
   </div>;
 }
 
 export function FullReport({ report }: { report: ReportV1 }) {
-  const label = riskLabel(report);
+  const label = reportRiskLabel(report.risk.label);
   const source = safeSourceUrl(report.source_url);
   const factory = report.factory_trader;
   const review = report.review_summary;
@@ -153,14 +106,14 @@ export function FullReport({ report }: { report: ReportV1 }) {
       </article>
       <article>
         <span className="card-label">ĐỘ TIN CẬY</span>
-        <strong className="metric-value">{scorePercent(report.risk.confidence)}</strong>
-        <div className="report-meter"><i style={{ width: scorePercent(report.risk.confidence) }} /></div>
+        <strong className="metric-value">{reportPercent(report.risk.confidence)}</strong>
+        <div className="report-meter"><i style={{ width: reportPercent(report.risk.confidence) }} /></div>
         <p>Mức tin cậy của kết quả dựa trên chất lượng và độ đầy đủ của bằng chứng.</p>
       </article>
       <article>
         <span className="card-label">ĐỘ PHỦ DỮ LIỆU</span>
-        <strong className="metric-value">{scorePercent(report.risk.coverage)}</strong>
-        <div className="report-meter"><i style={{ width: scorePercent(report.risk.coverage) }} /></div>
+        <strong className="metric-value">{reportPercent(report.risk.coverage)}</strong>
+        <div className="report-meter"><i style={{ width: reportPercent(report.risk.coverage) }} /></div>
         <p>Phiên bản chấm điểm: <code>{report.risk.scoring_version}</code></p>
       </article>
     </div>
@@ -179,12 +132,12 @@ export function FullReport({ report }: { report: ReportV1 }) {
             ? item.evidence_ids.filter((value): value is string => typeof value === "string")
             : [];
           return <article className={`report-dimension ${dimensionRisk === null ? "unknown" : ""}`} key={dimension}>
-            <div><strong>{DIMENSIONS[dimension] ?? dimension}</strong><span>{dimensionRisk === null ? "Chưa đủ bằng chứng" : `${Math.round(dimensionRisk)}/100`}</span></div>
+            <div><strong>{REPORT_DIMENSION_LABELS[dimension] ?? dimension}</strong><span>{dimensionRisk === null ? "Chưa đủ bằng chứng" : `${Math.round(dimensionRisk)}/100`}</span></div>
             <div className="dimension-meta">
-              <small>Độ tin cậy hiệu dụng: {confidence === null ? "chưa xác định" : scorePercent(confidence)}</small>
+              <small>Độ tin cậy hiệu dụng: {confidence === null ? "chưa xác định" : reportPercent(confidence)}</small>
               {ids.length > 0 && <span>{ids.map(id =>
                 availableEvidenceIds.has(id)
-                  ? <a href={`#${evidenceAnchor(id)}`} key={id}>{id}</a>
+                  ? <a href={`#${reportEvidenceAnchor(id)}`} key={id}>{id}</a>
                   : <span className="scoring-reference" key={id}>{id} · tham chiếu chấm điểm</span>
               )}</span>}
             </div>
@@ -200,10 +153,10 @@ export function FullReport({ report }: { report: ReportV1 }) {
           <span>{typeof factory.classification === "string" ? factory.classification : "UNCERTAIN"}</span>
         </div>
         <div className="identity-bars">
-          <div><span><b>Khả năng nhà máy</b><small>{percent(factory.factory_likelihood)}</small></span><i><b style={{ width: barWidth(factory.factory_likelihood) }} /></i></div>
-          <div><span><b>Khả năng thương mại</b><small>{percent(factory.trader_likelihood)}</small></span><i className="dark"><b style={{ width: barWidth(factory.trader_likelihood) }} /></i></div>
+          <div><span><b>Khả năng nhà máy</b><small>{optionalReportPercent(factory.factory_likelihood)}</small></span><i><b style={{ width: reportBarWidth(factory.factory_likelihood) }} /></i></div>
+          <div><span><b>Khả năng thương mại</b><small>{optionalReportPercent(factory.trader_likelihood)}</small></span><i className="dark"><b style={{ width: reportBarWidth(factory.trader_likelihood) }} /></i></div>
         </div>
-        <p className="identity-note">Độ tin cậy nhận định: {percent(factory.confidence)}. Đây là tổng hợp bằng chứng, không phải xác minh pháp lý độc lập.</p>
+        <p className="identity-note">Độ tin cậy nhận định: {optionalReportPercent(factory.confidence)}. Đây là tổng hợp bằng chứng, không phải xác minh pháp lý độc lập.</p>
       </article>
 
       <article className="report-summary-card">
@@ -212,7 +165,7 @@ export function FullReport({ report }: { report: ReportV1 }) {
           <span>{review.mode === "semantic" ? "Ngữ nghĩa" : "Xác định"}</span>
         </div>
         <dl className="report-summary-stats">
-          <div><dt>Độ tin cậy đánh giá</dt><dd>{reviewReliability === null ? "Chưa xác định" : scorePercent(reviewReliability)}</dd></div>
+          <div><dt>Độ tin cậy đánh giá</dt><dd>{reviewReliability === null ? "Chưa xác định" : reportPercent(reviewReliability)}</dd></div>
           <div><dt>Mẫu / phát hiện</dt><dd>{reviewCount ?? "Chưa xác định"}</dd></div>
         </dl>
         {Array.isArray(review.missing_inputs) && review.missing_inputs.length > 0 &&
