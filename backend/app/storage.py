@@ -315,6 +315,73 @@ class Store:
                 (analysis_id, key_hash),
             ).fetchone()
 
+    def list_watchlist(self, user_id: UUID) -> list[dict]:
+        with self.connect() as conn:
+            rows = conn.execute(
+                """SELECT w.id, w.created_at, s.id AS supplier_id, s.platform,
+                          s.platform_supplier_id, s.name, s.source_url,
+                          latest.analysis_id, latest.status AS analysis_status,
+                          latest.report_available, latest.risk_label,
+                          latest.overall_risk, latest.confidence, latest.coverage
+                   FROM watchlist_entries w
+                   JOIN suppliers s ON s.id = w.supplier_id
+                   LEFT JOIN LATERAL (
+                     SELECT a.id AS analysis_id, a.status,
+                            (r.id IS NOT NULL) AS report_available,
+                            r.payload->'risk'->>'label' AS risk_label,
+                            NULLIF(r.payload->'risk'->>'overall_risk', '')::double precision AS overall_risk,
+                            NULLIF(r.payload->'risk'->>'confidence', '')::double precision AS confidence,
+                            NULLIF(r.payload->'risk'->>'coverage', '')::double precision AS coverage
+                     FROM analyses a
+                     JOIN supplier_snapshots ss ON ss.id = a.supplier_snapshot_id
+                     LEFT JOIN reports r ON r.analysis_id = a.id
+                     WHERE a.user_id = w.user_id
+                       AND a.actor_type = 'CUSTOMER'
+                       AND ss.supplier_id = w.supplier_id
+                     ORDER BY a.created_at DESC, a.id DESC
+                     LIMIT 1
+                   ) latest ON TRUE
+                   WHERE w.user_id = %s
+                   ORDER BY w.created_at DESC, w.id DESC""",
+                (user_id,),
+            ).fetchall()
+        return [dict(row) for row in rows]
+
+    def add_watchlist_from_analysis(self, user_id: UUID, analysis_id: UUID) -> dict | None:
+        entry_id = uuid4()
+        with self.connect() as conn:
+            with conn.transaction():
+                row = conn.execute(
+                    """SELECT s.id AS supplier_id
+                       FROM analyses a
+                       JOIN supplier_snapshots ss ON ss.id = a.supplier_snapshot_id
+                       JOIN suppliers s ON s.id = ss.supplier_id
+                       WHERE a.id = %s AND a.user_id = %s
+                         AND a.actor_type = 'CUSTOMER'""",
+                    (analysis_id, user_id),
+                ).fetchone()
+                if row is None:
+                    return None
+                existing = conn.execute(
+                    """INSERT INTO watchlist_entries (id, user_id, supplier_id)
+                       VALUES (%s, %s, %s)
+                       ON CONFLICT (user_id, supplier_id) DO UPDATE
+                       SET user_id = EXCLUDED.user_id
+                       RETURNING id, created_at""",
+                    (entry_id, user_id, row["supplier_id"]),
+                ).fetchone()
+        return {"id": existing["id"], "created_at": existing["created_at"]}
+
+    def remove_watchlist_entry(self, user_id: UUID, entry_id: UUID) -> bool:
+        with self.connect() as conn:
+            row = conn.execute(
+                """DELETE FROM watchlist_entries
+                   WHERE id = %s AND user_id = %s
+                   RETURNING id""",
+                (entry_id, user_id),
+            ).fetchone()
+        return row is not None
+
     def get_report_for_guest(self, analysis_id: UUID, guest_key: str) -> dict | None:
         """Return a completed report only to the guest browser that created the analysis."""
         key_hash = sha256(guest_key.encode()).hexdigest()
