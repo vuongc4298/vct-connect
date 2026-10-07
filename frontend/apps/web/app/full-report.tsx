@@ -7,8 +7,8 @@ const DIMENSIONS: Record<string, string> = {
   AFTER_SALES: "Hậu mãi",
   REVIEW_MANIPULATION: "Độ tin cậy đánh giá",
   SUPPLIER_IDENTITY: "Danh tính nhà cung cấp",
-  BUSINESS_STABILITY: "Ổn định hoạt động",
-  TRANSACTION: "Giao dịch",
+  PRICING: "Giá và điều khoản",
+  COMMUNICATION: "Giao tiếp",
 };
 
 const SOURCE_KINDS: Record<string, string> = {
