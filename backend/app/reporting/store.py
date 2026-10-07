@@ -172,3 +172,7 @@ def persist_report_and_complete(
                 row["attempt_count"],
             )
     return report_id
+
+
+def get_report_for_user(store: Store, analysis_id: UUID, user_id: UUID) -> dict | None:
+    return store.get_report_for_user(analysis_id, user_id)
