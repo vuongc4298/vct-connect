@@ -16,12 +16,25 @@ from .identity import (
     assess_supplier_identity,
     supplier_identity_evidence,
 )
+from .media import (
+    MEDIA_PIPELINE_VERSION,
+    MEDIA_PROMPT_VERSION,
+    MEDIA_SCHEMA_VERSION,
+    MediaAssessment,
+    MediaFinding,
+    MediaInterpretationRun,
+    MediaProvenance,
+    ReviewMediaInput,
+    interpret_review_media,
+)
 from .provider import (
     EmbeddingProvider,
+    MultimodalLLMProvider,
     EmbeddingResponse,
     LLMProvider,
     ProviderResponse,
     ProviderUsage,
+    VisualInput,
 )
 from .reviews import (
     REVIEW_SCHEMA_VERSION,
@@ -63,7 +76,11 @@ __all__ = [
     "EvidenceSignal", "SupplierInterpretation", "InterpretationRun",
     "IDENTITY_SCHEMA_VERSION", "FactoryTraderAssessment", "IdentityEvidence",
     "aggregate_identity_evidence", "assess_supplier_identity", "supplier_identity_evidence",
-    "EmbeddingProvider", "EmbeddingResponse", "LLMProvider", "ProviderResponse", "ProviderUsage",
+    "EmbeddingProvider", "EmbeddingResponse", "LLMProvider", "MultimodalLLMProvider",
+    "ProviderResponse", "ProviderUsage", "VisualInput",
+    "MEDIA_PIPELINE_VERSION", "MEDIA_PROMPT_VERSION", "MEDIA_SCHEMA_VERSION",
+    "MediaAssessment", "MediaFinding", "MediaInterpretationRun", "MediaProvenance",
+    "ReviewMediaInput", "interpret_review_media",
     "REVIEW_SCHEMA_VERSION", "ComplaintTopic", "ReviewAnalysis",
     "ReviewEvidence", "ReviewPattern", "analyze_review_signals",
     "analyze_supplier_reviews",
