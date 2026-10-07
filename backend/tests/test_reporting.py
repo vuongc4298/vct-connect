@@ -1,3 +1,5 @@
+import pytest
+
 from backend.app.reporting.builder import build_report
 from backend.app.reporting.contracts import REPORT_SCHEMA_VERSION
 
@@ -199,3 +201,81 @@ def test_insufficient_information_is_explicit_and_never_rendered_as_low_risk():
     assert report.risk.coverage == 0.40
     assert any("không được diễn giải" in item for item in report.limitations_vi)
     assert any("Bổ sung bằng chứng" in item for item in report.recommended_actions_vi)
+
+
+def test_material_report_finding_cannot_reference_missing_evidence():
+    assessment, snapshot, findings, evidence, reviews = source_fixture()
+    findings[1]["payload"]["evidence_ids"] = ["review:missing"]
+
+    with pytest.raises(ValueError, match="Report finding references missing evidence: review:missing"):
+        build_report(
+            analysis_id="analysis-missing-evidence",
+            source_url=snapshot["normalized_data"]["source_url"],
+            snapshot=snapshot,
+            assessment=assessment,
+            findings=findings,
+            evidence=evidence,
+            raw_reviews=reviews,
+        )
+
+
+def test_contradictory_media_is_material_only_with_traceable_evidence():
+    assessment, snapshot, findings, evidence, reviews = source_fixture()
+    findings.append({
+        "finding_key": "media:review:0:image-1",
+        "finding_type": "MEDIA_CONSISTENCY",
+        "dimension": "PRODUCT_QUALITY",
+        "severity": 65.0,
+        "confidence": 0.9,
+        "payload": {
+            "media_id": "image-1",
+            "review_evidence_id": "review:0",
+            "consistency": "CONTRADICTS",
+            "statement_vi": "Hình ảnh không nhất quán với mô tả đánh giá.",
+        },
+    })
+    evidence.append({
+        "evidence_id": "media:image-1",
+        "source_kind": "REVIEW_MEDIA",
+        "source_field": "reviews.media",
+        "payload": {"statement_vi": "Khung ảnh đã được diễn giải."},
+    })
+
+    report = build_report(
+        analysis_id="analysis-contradictory-media",
+        source_url=snapshot["normalized_data"]["source_url"],
+        snapshot=snapshot,
+        assessment=assessment,
+        findings=findings,
+        evidence=evidence,
+        raw_reviews=reviews,
+    )
+
+    contradictory = next(
+        finding for finding in report.key_risks
+        if finding.finding_type == "MEDIA_CONSISTENCY"
+    )
+    assert contradictory.evidence_ids == ["media:image-1", "review:0"]
+    available = {item.evidence_id for item in report.evidence}
+    assert set(contradictory.evidence_ids) <= available
+
+
+def test_missing_source_data_is_visible_and_never_assumed_safe():
+    assessment, snapshot, findings, evidence, reviews = source_fixture()
+    report = build_report(
+        analysis_id="analysis-missing-source",
+        source_url=snapshot["normalized_data"]["source_url"],
+        snapshot=snapshot,
+        assessment=assessment,
+        findings=findings,
+        evidence=evidence,
+        raw_reviews=reviews,
+    )
+
+    assert report.missing_data["source_fields"] == [
+        "certifications", "delivery_information"
+    ]
+    assert any(
+        "chưa biết thay vì giả định an toàn" in item
+        for item in report.limitations_vi
+    )
