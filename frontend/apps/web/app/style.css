@@ -233,6 +233,18 @@ button { cursor: pointer; }
 .report-decision p { margin: .7rem 0 0; color: var(--muted); font-size: .64rem; line-height: 1.45; }
 .report-meter { height: 6px; overflow: hidden; border-radius: 99px; background: #e7ece9; }
 .report-meter i { display: block; height: 100%; border-radius: inherit; background: var(--green); }
+.report-dimensions { padding: 1.35rem; border: 1px solid var(--line); border-radius: 14px; background: #fff; }
+.report-dimension-list { display: grid; grid-template-columns: repeat(2, minmax(0, 1fr)); gap: .65rem; margin-top: 1rem; }
+.report-dimension { padding: .8rem; border: 1px solid #e2e9e6; border-radius: 9px; background: #fbfcfb; }
+.report-dimension.unknown { border-style: dashed; background: #fafbfa; }
+.report-dimension > div:first-child { display: flex; justify-content: space-between; gap: .7rem; align-items: baseline; }
+.report-dimension strong { font-size: .68rem; }
+.report-dimension > div:first-child > span { color: #495b54; font-size: .62rem; font-weight: 800; }
+.report-dimension.unknown > div:first-child > span { color: #8a9792; font-weight: 700; }
+.dimension-meta { display: grid; gap: .45rem; margin-top: .5rem; color: #8a9792; font-size: .54rem; }
+.dimension-meta > span { display: flex; flex-wrap: wrap; gap: .3rem; }
+.dimension-meta a { color: #2e6d55; background: #e9f4ee; border-radius: 4px; padding: .14rem .3rem; text-decoration: none; }
+.dimension-meta a:hover, .dimension-meta a:focus-visible { text-decoration: underline; }
 .report-summary-card { padding: 1.35rem; border: 1px solid var(--line); border-radius: 14px; background: #fff; }
 .report-summary-stats { display: grid; grid-template-columns: 1fr 1fr; gap: .8rem; margin: 1.3rem 0; }
 .report-summary-stats div { padding: .8rem; border-radius: 9px; background: var(--soft); }
@@ -447,6 +459,7 @@ button { cursor: pointer; }
   .full-report .report-ref { display: grid; text-align: left; }
   .report-decision, .report-unknowns, .report-source-list { grid-template-columns: 1fr; }
   .report-summary-stats { grid-template-columns: 1fr; }
+  .report-dimension-list { grid-template-columns: 1fr; }
   .report-finding-head, .report-source-head { align-items: flex-start; flex-direction: column; }
   .report-source-head span { text-align: left; }
   .overall-score { grid-template-columns: 1fr; justify-items: center; text-align: center; }
