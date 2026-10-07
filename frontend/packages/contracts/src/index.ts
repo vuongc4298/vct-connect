@@ -162,3 +162,20 @@ export type ReportV1 = {
   limitations_vi: string[];
   recommended_actions_vi: string[];
 };
+
+export type GuestPreviewV1 = {
+  schema_version: "guest-preview.v1";
+  language: "vi";
+  analysis_id: string;
+  platform: string;
+  supplier_name: string | null;
+  extracted_at: string;
+  confidence: number;
+  coverage: number;
+  information_state: "INSUFFICIENT_INFORMATION" | "LIMITED_PREVIEW";
+  missing_source_fields: string[];
+  missing_risk_dimensions: string[];
+  uncertainties_vi: string[];
+  limitations_vi: string[];
+  registration_required: true;
+};
