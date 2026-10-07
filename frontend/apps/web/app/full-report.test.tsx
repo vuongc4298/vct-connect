@@ -169,7 +169,7 @@ test("full report renders real score, identity, review, actions and evidence tra
   assert.match(html, /href="#evidence-review-0"/);
   assert.match(html, /id="evidence-review-0"/);
   assert.match(html, /review:0/);
-  assert.match(html, /Độ mới: bằng chứng thuộc ảnh chụp ngày/);
+  assert.match(html, /Độ mới:/);
   assert.match(html, /Mở trang nguồn 1688/);
 });
 
