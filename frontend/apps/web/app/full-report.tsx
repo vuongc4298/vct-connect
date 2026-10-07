@@ -1,3 +1,4 @@
+import React from "react";
 import type { ReportEvidence, ReportFinding, ReportV1 } from "@vct/contracts";
 import { safeSourceUrl } from "./source-url";
 
