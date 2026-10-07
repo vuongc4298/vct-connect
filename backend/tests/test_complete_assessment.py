@@ -165,3 +165,35 @@ def test_missing_embedding_model_degrades_to_deterministic_review_without_second
     assert provider.embedding_calls == 0
     assert bundle.risk.scoring_version == "v0.1.0"
     assert hasattr(bundle.review_analysis, "suspicious_patterns")
+
+
+def test_recurring_complaint_topics_are_persistable_findings_but_not_new_risk_signals():
+    provider = FakeProvider()
+    fixture = supplier_fixture()
+    fixture["reviews"] = [
+        {"text": "Poor quality stitching", "source_url": "https://example.test/r1"},
+        {"text": "Poor quality and poor stitching", "source_url": "https://example.test/r2"},
+    ]
+    bundle = build_assessment(
+        fixture,
+        provider=provider,
+        model="fixture-chat",
+        embedding_provider=None,
+        embedding_model=None,
+    )
+    topic = next(
+        finding
+        for finding in bundle.findings
+        if finding["finding_type"] == "REVIEW_COMPLAINT_TOPIC"
+    )
+    assert topic["payload"]["category"] == "QUALITY"
+    assert topic["payload"]["evidence_ids"] == ["review:0", "review:1"]
+    assert topic["severity"] is None
+    quality = next(
+        dimension
+        for dimension in bundle.risk.dimensions
+        if dimension.dimension == "PRODUCT_QUALITY"
+    )
+    assert quality.risk is None
+    assert "PRODUCT_QUALITY" in bundle.risk.missing_dimensions
+    assert bundle.risk.scoring_version == "v0.1.0"
