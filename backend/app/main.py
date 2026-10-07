@@ -123,6 +123,15 @@ def create_app(
             raise HTTPException(status_code=404, detail="Account not found")
         return state
 
+    @app.get("/api/v1/analyses")
+    def history(
+        principal: Annotated[Principal, Depends(require_roles(CUSTOMER))],
+    ):
+        try:
+            return store.list_analysis_history(principal.user_id)
+        except Exception as exc:
+            raise HTTPException(status_code=503, detail="Database unavailable") from exc
+
     @app.post("/api/v1/analyses", status_code=202)
     def submit(
         body: Submission,

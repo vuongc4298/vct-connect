@@ -203,3 +203,22 @@ export type AccountState = {
     resets_at: string;
   };
 };
+
+
+export type AnalysisHistoryItem = {
+  id: string;
+  source_url: string;
+  status: AnalysisStatus;
+  created_at: string;
+  completed_at: string | null;
+  mode: AnalysisMode;
+  extraction_method: string;
+  scoring_version: string;
+  supplier_name: string | null;
+  platform: string | null;
+  report_available: boolean;
+  risk_label: ReportRiskLabel | null;
+  overall_risk: number | null;
+  confidence: number | null;
+  coverage: number | null;
+};

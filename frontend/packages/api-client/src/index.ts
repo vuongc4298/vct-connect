@@ -1,5 +1,5 @@
 import type {
-  AccountState, Analysis, GuestPreviewV1, ImportSavedPageResponse, ReportV1, SubmitAnalysisRequest, SubmitAnalysisResponse,
+  AccountState, Analysis, AnalysisHistoryItem, GuestPreviewV1, ImportSavedPageResponse, ReportV1, SubmitAnalysisRequest, SubmitAnalysisResponse,
   SubmitGuestAnalysisRequest, SubmitGuestAnalysisResponse,
 } from "@vct/contracts";
 
@@ -145,6 +145,14 @@ export async function getGuestPreview(id: string): Promise<GuestPreviewV1> {
 
 export async function getAccountState(auth: RequestAuth): Promise<AccountState> {
   return request<AccountState>("/api/v1/me", async () => ({
+    cache: "no-store",
+    headers: await authorizationHeaders(auth),
+  }));
+}
+
+
+export async function getAnalysisHistory(auth: RequestAuth): Promise<AnalysisHistoryItem[]> {
+  return request<AnalysisHistoryItem[]>("/api/v1/analyses", async () => ({
     cache: "no-store",
     headers: await authorizationHeaders(auth),
   }));

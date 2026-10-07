@@ -255,6 +255,32 @@ class Store:
         LEFT JOIN supplier_snapshots s ON s.id = a.supplier_snapshot_id
     """
 
+    def list_analysis_history(self, user_id: UUID, *, limit: int = 100) -> list[dict]:
+        """List one customer's analyses newest-first with compact persisted report state."""
+        bounded_limit = max(1, min(limit, 100))
+        with self.connect() as conn:
+            rows = conn.execute(
+                """SELECT a.id, a.source_url, a.status, a.created_at, a.completed_at,
+                          a.mode, a.extraction_method, a.scoring_version,
+                          COALESCE(r.payload->>'supplier_name',
+                                   s.normalized_data->>'supplier_name') AS supplier_name,
+                          COALESCE(r.payload->>'platform',
+                                   s.normalized_data->>'platform') AS platform,
+                          (r.id IS NOT NULL) AS report_available,
+                          r.payload->'risk'->>'label' AS risk_label,
+                          NULLIF(r.payload->'risk'->>'overall_risk', '')::double precision AS overall_risk,
+                          NULLIF(r.payload->'risk'->>'confidence', '')::double precision AS confidence,
+                          NULLIF(r.payload->'risk'->>'coverage', '')::double precision AS coverage
+                   FROM analyses a
+                   LEFT JOIN supplier_snapshots s ON s.id = a.supplier_snapshot_id
+                   LEFT JOIN reports r ON r.analysis_id = a.id
+                   WHERE a.user_id = %s AND a.actor_type = 'CUSTOMER'
+                   ORDER BY a.created_at DESC, a.id DESC
+                   LIMIT %s""",
+                (user_id, bounded_limit),
+            ).fetchall()
+        return [dict(row) for row in rows]
+
     def get(self, analysis_id: UUID) -> dict | None:
         with self.connect() as conn:
             return conn.execute(self._SELECT + " WHERE a.id = %s", (analysis_id,)).fetchone()
