@@ -9,7 +9,7 @@ from typing import Mapping, Sequence
 
 import httpx
 
-from .provider import EmbeddingResponse, ProviderResponse, ProviderUsage
+from .provider import EmbeddingResponse, ProviderResponse, ProviderUsage, VisualInput
 
 
 YESCALE_BASE_URL = "https://api.yescale.io/v1"
@@ -193,6 +193,96 @@ class YEScaleProvider:
             latency_ms=latency_ms,
             finish_reason=str(first.get("finish_reason")) if first.get("finish_reason") is not None else None,
             settings=request_settings,
+        )
+
+    def generate_multimodal_json(
+        self,
+        *,
+        model: str,
+        system_prompt: str,
+        user_prompt: str,
+        images: Sequence[VisualInput],
+        temperature: float,
+        max_tokens: int,
+        metadata: Mapping[str, str] | None = None,
+    ) -> ProviderResponse:
+        if not model.strip():
+            raise ValueError("YEScale model is required")
+        if not images or len(images) > 12:
+            raise ValueError("multimodal requests require between 1 and 12 images")
+        if not 0 <= temperature <= 2:
+            raise ValueError("temperature must be between 0 and 2")
+        if not 1 <= max_tokens <= 8192:
+            raise ValueError("max_tokens must be between 1 and 8192")
+
+        content: list[dict] = [{"type": "text", "text": user_prompt}]
+        for image in images:
+            if not image.media_id.strip() or len(image.media_id) > 160:
+                raise ValueError("multimodal media_id is invalid")
+            if not image.data_url.startswith(
+                ("data:image/png;base64,", "data:image/jpeg;base64,", "data:image/webp;base64,")
+            ):
+                raise ValueError("multimodal inputs must use bounded PNG/JPEG/WebP data URLs")
+            if len(image.data_url) > 7_000_000:
+                raise ValueError("multimodal image input exceeds the application bound")
+            content.append({"type": "text", "text": f"MEDIA_ID: {image.media_id}"})
+            content.append({
+                "type": "image_url",
+                "image_url": {"url": image.data_url, "detail": image.detail},
+            })
+
+        request_settings = {
+            "temperature": temperature,
+            "max_tokens": max_tokens,
+            "stream": False,
+            "response_format": {"type": "json_object"},
+        }
+        response, latency_ms = self._post(
+            "/chat/completions",
+            metadata=metadata,
+            body={
+                "model": model,
+                "messages": [
+                    {"role": "system", "content": system_prompt},
+                    {"role": "user", "content": content},
+                ],
+                **request_settings,
+            },
+        )
+        request_id = _request_id(response)
+        try:
+            payload = response.json()
+            choices = payload["choices"]
+            first = choices[0]
+            output = first["message"]["content"]
+        except (ValueError, KeyError, IndexError, TypeError) as exc:
+            raise ProviderError(
+                "YEScale response did not match the multimodal chat contract",
+                request_id=request_id,
+            ) from exc
+        if not isinstance(output, str) or not output.strip():
+            raise ProviderError("YEScale returned an empty multimodal completion", request_id=request_id)
+
+        raw_usage = payload.get("usage") if isinstance(payload.get("usage"), dict) else {}
+        prompt_tokens = _nonnegative_int(raw_usage.get("prompt_tokens"))
+        completion_tokens = _nonnegative_int(raw_usage.get("completion_tokens"))
+        total_tokens = _nonnegative_int(raw_usage.get("total_tokens")) or prompt_tokens + completion_tokens
+        return ProviderResponse(
+            provider=self.provider_name,
+            request_id=request_id,
+            requested_model=model,
+            response_model=str(payload.get("model") or model),
+            content=output,
+            usage=ProviderUsage(
+                prompt_tokens=prompt_tokens,
+                completion_tokens=completion_tokens,
+                total_tokens=total_tokens,
+                cost_usd=_cost(payload, response),
+                raw=raw_usage,
+            ),
+            latency_ms=latency_ms,
+            finish_reason=str(first.get("finish_reason")) if first.get("finish_reason") is not None else None,
+            settings={**request_settings, "image_count": len(images)},
         )
 
     def embed_texts(
