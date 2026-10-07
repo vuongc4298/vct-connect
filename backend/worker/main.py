@@ -10,13 +10,10 @@ from backend.app.fixture import FIXTURE_URL, fixture_result
 from backend.app.extraction import extract_1688, extract_taobao, extract_alibaba, source_platform
 from backend.app.queue import AzureQueue
 from backend.app.storage import LeaseLost, ResultConflict, Store
-from backend.app.intelligence.assessment import build_assessment
-from backend.app.intelligence.assessment_store import (
-    load_assessment_snapshot,
-    persist_assessment_and_handoff,
+from backend.app.intelligence.worker_assessment import (
+    assessment_enabled,
+    run_worker_assessment,
 )
-from backend.app.intelligence.media import ReviewMediaInput
-from backend.app.intelligence.yescale import YEScaleProvider
 
 log = logging.getLogger(__name__)
 
@@ -49,58 +46,6 @@ def _compute_claim(claim: dict, compute, settings: Settings | None = None) -> di
     return adapter(claim["source_url"], **options)
 
 
-def _run_assessment(
-    store: Store,
-    claim: dict,
-    settings: Settings | None,
-    *,
-    assess=None,
-    media_loader=None,
-) -> None:
-    snapshot_id, supplier_data = load_assessment_snapshot(
-        store, claim["analysis_id"], claim["token"]
-    )
-    permitted_media: tuple[ReviewMediaInput, ...] = ()
-    if media_loader is not None:
-        loaded = media_loader(store, snapshot_id, supplier_data)
-        permitted_media = tuple(loaded or ())
-    if assess is not None:
-        bundle = (
-            assess(supplier_data, permitted_media)
-            if media_loader is not None
-            else assess(supplier_data)
-        )
-    else:
-        if settings is None or not settings.yescale_api_key:
-            raise ValueError("YESCALE_API_KEY is required for worker assessment")
-        with YEScaleProvider(settings.yescale_api_key) as provider:
-            bundle = build_assessment(
-                supplier_data,
-                provider=provider,
-                model=settings.yescale_model,
-                embedding_provider=provider if settings.yescale_embedding_model else None,
-                embedding_model=settings.yescale_embedding_model,
-                media=permitted_media,
-                multimodal_provider=provider if permitted_media else None,
-                multimodal_model=settings.yescale_model if permitted_media else None,
-                metadata={
-                    "feature": "complete_assessment",
-                    "session_id": str(claim["analysis_id"]),
-                },
-            )
-    persist_assessment_and_handoff(
-        store,
-        analysis_id=claim["analysis_id"],
-        token=claim["token"],
-        supplier_snapshot_id=snapshot_id,
-        bundle=bundle,
-    )
-
-
-def _assessment_enabled(settings: Settings | None, assess) -> bool:
-    return assess is not None or bool(settings and settings.yescale_api_key)
-
-
 def _process_claim_payload(
     store: Store,
     claim: dict,
@@ -111,7 +56,7 @@ def _process_claim_payload(
     media_loader=None,
 ) -> None:
     if claim.get("phase") == "assessment":
-        _run_assessment(
+        run_worker_assessment(
             store, claim, settings, assess=assess, media_loader=media_loader
         )
         return
@@ -121,14 +66,14 @@ def _process_claim_payload(
         payload.get("extraction_status") in {"SUCCESS", "PARTIAL"}
         and isinstance(payload.get("supplier_data"), dict)
     )
-    if not extracted or not _assessment_enabled(settings, assess):
+    if not extracted or not assessment_enabled(settings, assess):
         store.complete_processing(claim["analysis_id"], claim["token"], payload)
         return
 
     store.complete_extraction_for_assessment(
         claim["analysis_id"], claim["token"], payload
     )
-    _run_assessment(
+    run_worker_assessment(
         store, claim, settings, assess=assess, media_loader=media_loader
     )
 
@@ -392,7 +337,7 @@ def process_azure_once(
                     continue
 
                 # Persistence has committed. A settlement failure is replayable:
-                # redelivery observes COMPLETED and never recomputes the result.
+                # redelivery observes REPORTING/COMPLETED and never recomputes the result.
                 if clock() >= settle_deadline:
                     return True
                 _complete_message(receiver, message, analysis_id)
