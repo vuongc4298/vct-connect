@@ -4,6 +4,7 @@ import { NextRequest } from "next/server";
 
 import { POST } from "./route";
 import { GET } from "./[analysisId]/route";
+import { GET as PREVIEW_GET } from "./[analysisId]/preview/route";
 
 test("guest route issues an opaque HttpOnly cookie and forwards only its key", async () => {
   const originalFetch = globalThis.fetch;
@@ -66,6 +67,37 @@ test("guest status forwards the valid cookie key and preserves the private respo
     assert.equal(response.status, 200);
     assert.equal(response.headers.get("cache-control"), "private, no-store");
     assert.deepEqual(await response.json(), { id: "guest-id", status: "COMPLETED" });
+  } finally {
+    globalThis.fetch = originalFetch;
+  }
+});
+
+
+test("guest preview route requires the cookie and forwards only the opaque guest key", async () => {
+  const originalFetch = globalThis.fetch;
+  const key = "c".repeat(64);
+  let forwarded: Headers | undefined;
+  let forwardedUrl = "";
+  globalThis.fetch = async (input, init) => {
+    forwardedUrl = String(input);
+    forwarded = new Headers(init?.headers);
+    return Response.json({ schema_version: "guest-preview.v1", confidence: 0.5, coverage: 0.4 }, { status: 200 });
+  };
+  try {
+    const denied = await PREVIEW_GET(
+      new NextRequest("https://example.org/api/v1/guest-analyses/guest-id/preview"),
+      { params: Promise.resolve({ analysisId: "guest-id" }) },
+    );
+    assert.equal(denied.status, 404);
+    const response = await PREVIEW_GET(
+      new NextRequest("https://example.org/api/v1/guest-analyses/guest-id/preview", {
+        headers: { Cookie: `vct_guest=${key}`, "x-vct-guest-key": "browser-spoof" },
+      }),
+      { params: Promise.resolve({ analysisId: "guest-id" }) },
+    );
+    assert.equal(forwardedUrl, "http://127.0.0.1:8000/api/v1/guest-analyses/guest-id/preview");
+    assert.equal(forwarded?.get("x-vct-guest-key"), key);
+    assert.equal(response.headers.get("cache-control"), "private, no-store");
   } finally {
     globalThis.fetch = originalFetch;
   }
