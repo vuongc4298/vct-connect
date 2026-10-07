@@ -1,6 +1,6 @@
-# VCT Connect authenticated developer tracer
+# VCT Connect
 
-This is a Clerk-authenticated **developer tracer**. It accepts exactly `https://detail.1688.com/offer/123456789012.html`; the result is a deterministic fixture, **not live supplier evidence**. Run the API on loopback only. Extraction, scoring, quotas, and production retry policy belong to later stories.
+VCT Connect is a supplier-analysis application for Chinese sourcing workflows. The current implementation supports authenticated and guest submissions, durable extraction/assessment/reporting, evidence-backed Risk/Confidence/Coverage, a Vietnamese full report for the owning customer, and a reduced guest-safe preview. The repository still includes deterministic fixtures for repeatable development and CI; fixture output is not live supplier evidence.
 
 ## Run locally
 
@@ -27,7 +27,7 @@ The API accepts Clerk session tokens only through the `Authorization: Bearer` he
 
 The API commits a `QUEUED` analysis, its initial status event, and an outbox row in one PostgreSQL transaction. It returns `202` without waiting for Azure. The worker publishes pending outbox rows with the analysis UUID as `MessageId`; ambiguous publication is retried with the same ID. PostgreSQL sessions use UTC and return `TIMESTAMPTZ` values through FastAPI.
 
-Poll responses expose `QUEUED`, `PROCESSING`, `FAILED_RETRYABLE`, `FAILED_FINAL`, and `COMPLETED`, plus ordered status events, attempt count, next retry time, a sanitized failure code, and final DLQ disposition. The browser keeps polling retryable states and stops on `COMPLETED` or `FAILED_FINAL`; it never automatically repeats a submission.
+Poll responses expose `QUEUED`, `PROCESSING`, `ASSESSING`, `REPORTING`, `FAILED_RETRYABLE`, `FAILED_FINAL`, and `COMPLETED`, plus ordered status events, attempt count, next retry time, a sanitized failure code, and final DLQ disposition. The browser keeps polling retryable states and stops on `COMPLETED` or `FAILED_FINAL`; it never automatically repeats a submission.
 
 ## Database migrations
 
@@ -38,15 +38,13 @@ The application continues to use psycopg directly; Yoyo owns only schema history
 
 The isolated-database rollback reverses the processing-hardening and Story 1.3 revisions, removes their tables and columns, and retains the Story 1.1 tracer tables and rows. Rehearse it only against a dedicated, disposable database: `.venv/Scripts/python.exe -m backend.app.migrations rollback-core --confirm-isolated-database`. The confirmation flag is mandatory because rollback deletes later-story data. Reapply with the normal `apply` command.
 
-## Story 3.1 YEScale interpretation tracer
+## Analysis intelligence and reporting
 
-Story 3.1 adds a provider-neutral intelligence boundary and a server-only YEScale adapter without yet placing paid model calls inside the queue worker. It interprets one already-completed SupplierData snapshot, validates a Vietnamese `supplier-interpretation.v1` object, and stores immutable run provenance in `llm_review_runs`. The contract intentionally has no overall risk score, risk label, or factory/trader verdict; those belong to later Epic 3 stories.
+The worker now composes the versioned analysis pipeline end to end: normalized supplier evidence, supplier interpretation, deterministic/semantic review analysis, factory/trader evidence, multimodal review interpretation when permitted, deterministic Risk v0.1.0 scoring, and immutable `report.v1` persistence. YEScale remains behind provider-neutral contracts and is used only from backend/worker paths; deterministic code owns the final risk score and missing evidence is never treated as zero risk.
 
-For local manual verification, load `DATABASE_URL`, `YESCALE_API_KEY`, and optionally `YESCALE_MODEL` (default candidate `gpt-4o-mini`), apply migrations, then run `python -m backend.app.intelligence.cli <completed-analysis-uuid>`. The selected analysis must already own a persisted supplier snapshot. The command prints only non-secret operational provenance: run ID, provider request ID, actual model, tokens, reported cost when available, and interpretation confidence.
+The owning `CUSTOMER` can retrieve `GET /api/v1/analyses/{analysis_id}/report`. Risk, Confidence, and Coverage are presented separately, material findings remain linked to persisted evidence, stale source snapshots are labeled, and `INSUFFICIENT_INFORMATION` is distinct from LOW. Anonymous guests can retrieve only `GET /api/v1/guest-analyses/{analysis_id}/preview` using the opaque browser key established by the web boundary; the reduced `guest-preview.v1` intentionally omits the overall risk score, detailed findings, evidence payloads, and full action list.
 
-YEScale requests use `https://api.yescale.io/v1/chat/completions`, JSON-object mode, and bounded `X-YEScale-Metadata`. Provider bodies and credentials are not included in application errors. The persisted run retains the requested/actual model, prompt/pipeline/schema versions, request settings, exact projected input plus SHA-256, structured output, token usage, latency, provider request ID, and provider-reported cost. When the chat response does not report cost, `cost_status=UNAVAILABLE`; the retained request ID is the reconciliation key for YEScale Control Plane rather than inventing an application-side estimate.
-
-Azure resolves `yescale-api-key` from Key Vault only into the analysis Job. The web app, FastAPI container, and dispatcher do not receive the key. Story 3.7 will connect this service to the complete queued assessment after review/factory/scoring contracts are ready and duplicate-spend behavior can be enforced end to end.
+For local intelligence work, load `DATABASE_URL`, `YESCALE_API_KEY`, and the configured model variables. Provider credentials remain server-only and are resolved from Key Vault in Azure. Model-run provenance stores request/model/usage/cost metadata and structured outputs without exposing provider secrets or raw media.
 
 ## Azure development transport
 
@@ -54,7 +52,7 @@ The approved development queue is the existing Service Bus **Standard** `vct-con
 
 ## Guest admission and provenance
 
-`POST /api/v1/guest-analyses` accepts the fixture without a Clerk account. The web route issues a random, HttpOnly, SameSite=Lax `vct_guest` cookie and uses it to scope `GET /api/v1/guest-analyses/{id}`; the existing `/api/v1/analyses` routes still require Clerk. Guest analyses create no user row. Accepted guest and customer rows record `GUEST_PUBLIC` or `ACCOUNT_PUBLIC`, actor type, `FIXTURE` extraction method, and scoring version `v0.1.0`. The guest page shows only a fixture preview.
+`POST /api/v1/guest-analyses` accepts a supported guest submission without a Clerk account. The web route issues a random, HttpOnly, SameSite=Lax `vct_guest` cookie and uses it to scope guest status and guest-preview reads; the existing `/api/v1/analyses` and full-report routes still require Clerk. Guest analyses create no user row. Accepted guest and customer rows record their analysis mode, actor type, extraction method, and scoring version. The guest page exposes only the reduced preview contract, never the authenticated full report.
 
 Development admission limits are configurable with `GUEST_BROWSER_LIMIT`, `GUEST_GLOBAL_LIMIT`, `CUSTOMER_LIMIT`, and `ADMISSION_WINDOW_SECONDS`. Their current defaults are 3, 100, 20, and 86400 seconds. These are temporary development guardrails, not final product quotas. PostgreSQL counters enforce each fixed time window in the same transaction as analysis and queue/outbox creation, so a rejected request adds no work. Clearing the browser cookie can reset its individual count; the shared guest cap still bounds total fixture submissions. Set lower values in a test environment to exercise 429 responses without consuming the dev deployment's shared budget.
 
