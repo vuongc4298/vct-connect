@@ -222,3 +222,25 @@ export type AnalysisHistoryItem = {
   confidence: number | null;
   coverage: number | null;
 };
+
+export type WatchlistEntry = {
+  id: string;
+  created_at: string;
+  supplier_id: string;
+  platform: string;
+  platform_supplier_id: string | null;
+  name: string | null;
+  source_url: string;
+  analysis_id: string | null;
+  analysis_status: AnalysisStatus | null;
+  report_available: boolean | null;
+  risk_label: ReportRiskLabel | null;
+  overall_risk: number | null;
+  confidence: number | null;
+  coverage: number | null;
+};
+
+export type AddWatchlistResponse = {
+  id: string;
+  created_at: string;
+};
