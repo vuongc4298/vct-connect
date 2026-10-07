@@ -57,17 +57,72 @@ export function analysisPresentation(analysis: StatusInput) {
   const final = status === "FAILED_FINAL" || blocked;
   const retrying = status === "FAILED_RETRYABLE";
   const processing = status === "PROCESSING";
+  const assessing = status === "ASSESSING";
+  const reporting = status === "REPORTING";
+
+  const progressStep =
+    complete ? 4 :
+    reporting ? 3 :
+    assessing ? 2 :
+    processing || retrying ? 1 : 0;
+
+  let headline = "Đang chờ xử lý";
+  let detail = "Yêu cầu đã được ghi nhận. Không cần gửi lại trong khi đang chờ hàng đợi.";
+  let pillLabel = "ĐANG CHỜ";
+  let nextAction: string | null = null;
+
+  if (blocked) {
+    headline = `Chưa thể trích xuất trang ${source}`;
+    detail = `Trạng thái nguồn: ${extractionStatus ?? "UNKNOWN"}${reason ? ` · ${reason}` : ""}. Không có ảnh chụp bằng chứng cho URL này.`;
+    pillLabel = "KHÔNG CÓ DỮ LIỆU";
+    nextAction = recovery ?? "Kiểm tra trang nguồn và tạo một phân tích mới.";
+  } else if (complete && live) {
+    headline = extractionStatus === "PARTIAL"
+      ? "Đã hoàn tất với bằng chứng một phần"
+      : "Xử lý nguồn đã hoàn tất";
+    detail = "Bằng chứng đã được lưu. Báo cáo đánh giá đã lưu sẽ xuất hiện bên dưới khi khả dụng; nếu chưa có, VCT Connect vẫn giữ nguyên bằng chứng trích xuất.";
+    pillLabel = extractionStatus === "PARTIAL" ? "TRÍCH XUẤT MỘT PHẦN" : "HOÀN TẤT";
+  } else if (complete) {
+    headline = "Báo cáo đã sẵn sàng";
+    detail = "Phân tích đã hoàn tất và kết quả đã được lưu.";
+    pillLabel = "HOÀN TẤT";
+  } else if (status === "FAILED_FINAL") {
+    headline = "Phân tích chưa thể hoàn tất";
+    detail = `Mã lỗi an toàn: ${analysis?.failure_code ?? "PROCESSING_ERROR"}.`;
+    pillLabel = "DỪNG XỬ LÝ";
+    nextAction = "Tạo một phân tích mới. Nếu trang nguồn yêu cầu đăng nhập, hãy dùng tiện ích VCT Connect khi đang mở trang.";
+  } else if (retrying) {
+    headline = "Hệ thống sẽ thử lại";
+    detail = `Lần thử ${analysis?.attempt_count ?? 1} chưa thành công. Trạng thái này chưa phải thất bại cuối cùng.`;
+    pillLabel = "SẼ THỬ LẠI";
+    nextAction = "Không cần gửi lại yêu cầu; hệ thống sẽ tự động thử lại theo lịch đã ghi nhận.";
+  } else if (reporting) {
+    headline = "Đang tạo báo cáo";
+    detail = "Điểm số và phát hiện đã được đánh giá; hệ thống đang lưu báo cáo trước khi đánh dấu hoàn tất.";
+    pillLabel = "ĐANG LẬP BÁO CÁO";
+  } else if (assessing) {
+    headline = "Đang đánh giá bằng chứng";
+    detail = "Hệ thống đang tổng hợp tín hiệu, độ tin cậy và độ phủ từ bằng chứng đã lưu.";
+    pillLabel = "ĐANG ĐÁNH GIÁ";
+  } else if (processing) {
+    headline = live ? "Đang trích xuất bằng chứng" : "Đang xử lý dữ liệu demo";
+    detail = "Nguồn đang được xử lý và bằng chứng hợp lệ sẽ được lưu trước bước đánh giá.";
+    pillLabel = "ĐANG XỬ LÝ";
+  }
+
   return {
     complete,
     final,
     retrying,
     terminal: completedProcessing || final,
     shouldPoll: !completedProcessing && !final,
+    progressStep,
+    nextAction,
     orbClass: complete ? "complete" : final ? "failed" : "working",
     orbSymbol: complete ? "✓" : final ? "!" : "",
     pillTone: blocked || extractionStatus === "PARTIAL" || final || retrying ? "warning" : complete ? "good" : "neutral",
-    pillLabel: blocked ? "KHÔNG CÓ DỮ LIỆU" : complete && live ? extractionStatus === "PARTIAL" ? "TRÍCH XUẤT MỘT PHẦN" : "ĐÃ TRÍCH XUẤT" : complete ? "HOÀN TẤT" : final ? "DỪNG XỬ LÝ" : retrying ? "SẼ THỬ LẠI" : "ĐANG XỬ LÝ",
-    headline: blocked ? `Chưa thể trích xuất trang ${source}` : complete && live ? "Bằng chứng đã được lưu" : complete ? "Báo cáo đã sẵn sàng" : final ? "Phân tích chưa thể hoàn tất" : retrying ? "Hệ thống sẽ thử lại" : processing ? live ? "Đang trích xuất bằng chứng" : "Đang xử lý dữ liệu demo" : "Đang chờ xử lý",
-    detail: blocked ? `Trạng thái nguồn: ${extractionStatus ?? "UNKNOWN"}${reason ? ` · ${reason}` : ""}. Không có ảnh chụp bằng chứng cho URL này. ${recovery ?? "Bạn có thể tạo phân tích mới."}` : complete && live ? "Nguồn và độ phủ đã được ghi nhận; chưa có điểm rủi ro." : complete ? "Dữ liệu minh hoạ đã được tổng hợp." : final ? `Mã lỗi an toàn: ${analysis?.failure_code ?? "PROCESSING_ERROR"}. Bạn có thể tạo một phân tích mới.` : retrying ? `Lần thử ${analysis?.attempt_count ?? 1} chưa thành công. Hệ thống sẽ tự động thử lại.` : "Bạn có thể giữ trang này mở trong khi hệ thống xử lý.",
+    pillLabel,
+    headline,
+    detail,
   } as const;
 }
