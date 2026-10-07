@@ -197,3 +197,22 @@ def test_recurring_complaint_topics_are_persistable_findings_but_not_new_risk_si
     assert quality.risk is None
     assert "PRODUCT_QUALITY" in bundle.risk.missing_dimensions
     assert bundle.risk.scoring_version == "v0.1.0"
+
+
+def test_deferred_topic_linkage_does_not_replace_existing_pattern_evidence_payload():
+    provider = FakeProvider()
+    fixture = supplier_fixture()
+    fixture["reviews"] = [
+        {"text": "Poor quality stitching", "source_url": "https://example.test/r1"},
+        {"text": "Poor quality stitching", "source_url": "https://example.test/r2"},
+    ]
+    bundle = build_assessment(
+        fixture,
+        provider=provider,
+        model="fixture-chat",
+        embedding_provider=None,
+        embedding_model=None,
+    )
+    evidence = {item["evidence_id"]: item for item in bundle.evidence}
+    assert evidence["review:0"]["payload"] == {"pattern": "EXACT_DUPLICATE_TEXT"}
+    assert evidence["review:1"]["payload"] == {"pattern": "EXACT_DUPLICATE_TEXT"}
