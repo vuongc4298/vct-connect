@@ -403,6 +403,20 @@ button { cursor: pointer; }
 .history-source-url { overflow: hidden; color: #7c8b85; font-size: .58rem; text-overflow: ellipsis; white-space: nowrap; }
 .history-open-button { justify-self: start; margin-top: .15rem; }
 
+.report-watchlist-action { display: flex; align-items: center; gap: .7rem; margin: 1rem 0; }
+.report-watchlist-action > span { color: #9d3932; font-size: .62rem; }
+.watchlist-grid { display: grid; grid-template-columns: repeat(2, minmax(0, 1fr)); gap: 1rem; }
+.watchlist-card { display: grid; gap: .7rem; padding: 1rem; border: 1px solid var(--line); border-radius: 14px; background: #fff; }
+.watchlist-card-head { display: flex; justify-content: space-between; align-items: center; gap: .7rem; }
+.watchlist-card h2 { margin: 0; font-size: 1rem; }
+.watchlist-card code, .watchlist-source { overflow-wrap: anywhere; color: var(--muted); font-size: .6rem; }
+.watchlist-source { margin: 0; }
+.watchlist-metrics { display: grid; grid-template-columns: repeat(3, 1fr); gap: .5rem; }
+.watchlist-metrics span { display: grid; gap: .15rem; padding: .55rem; border-radius: 8px; background: var(--soft); }
+.watchlist-metrics small { color: #87958f; font-size: .52rem; text-transform: uppercase; }
+.watchlist-metrics strong { font-size: .8rem; }
+@media (max-width: 720px) { .watchlist-grid { grid-template-columns: 1fr; } }
+
 /* Analysis history and supplier notes */
 .history-dashboard { width: min(1320px, calc(100% - 3rem)); }
 .history-notice { display: flex; align-items: flex-start; gap: .65rem; margin-bottom: 1rem; padding: .75rem .9rem; border: 1px solid #d8e7df; border-radius: 10px; color: #5d7168; background: #f2f8f5; }

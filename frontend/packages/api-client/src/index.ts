@@ -1,5 +1,5 @@
 import type {
-  AccountState, Analysis, AnalysisHistoryItem, GuestPreviewV1, ImportSavedPageResponse, ReportV1, SubmitAnalysisRequest, SubmitAnalysisResponse,
+  AccountState, AddWatchlistResponse, Analysis, AnalysisHistoryItem, GuestPreviewV1, ImportSavedPageResponse, ReportV1, SubmitAnalysisRequest, SubmitAnalysisResponse, WatchlistEntry,
   SubmitGuestAnalysisRequest, SubmitGuestAnalysisResponse,
 } from "@vct/contracts";
 
@@ -154,6 +154,31 @@ export async function getAccountState(auth: RequestAuth): Promise<AccountState> 
 export async function getAnalysisHistory(auth: RequestAuth): Promise<AnalysisHistoryItem[]> {
   return request<AnalysisHistoryItem[]>("/api/v1/analyses", async () => ({
     cache: "no-store",
+    headers: await authorizationHeaders(auth),
+  }));
+}
+
+export async function getWatchlist(auth: RequestAuth): Promise<WatchlistEntry[]> {
+  return request<WatchlistEntry[]>("/api/v1/watchlist", async () => ({
+    cache: "no-store",
+    headers: await authorizationHeaders(auth),
+  }));
+}
+
+export async function addWatchlist(
+  analysisId: string, auth: RequestAuth,
+): Promise<AddWatchlistResponse> {
+  return request<AddWatchlistResponse>(`/api/v1/watchlist/${encodeURIComponent(analysisId)}`, async () => ({
+    method: "POST",
+    headers: await authorizationHeaders(auth),
+  }));
+}
+
+export async function removeWatchlist(
+  entryId: string, auth: RequestAuth,
+): Promise<{ removed: true }> {
+  return request<{ removed: true }>(`/api/v1/watchlist/${encodeURIComponent(entryId)}`, async () => ({
+    method: "DELETE",
     headers: await authorizationHeaders(auth),
   }));
 }

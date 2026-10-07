@@ -132,6 +132,41 @@ def create_app(
         except Exception as exc:
             raise HTTPException(status_code=503, detail="Database unavailable") from exc
 
+    @app.get("/api/v1/watchlist")
+    def watchlist(
+        principal: Annotated[Principal, Depends(require_roles(CUSTOMER))],
+    ):
+        try:
+            return store.list_watchlist(principal.user_id)
+        except Exception as exc:
+            raise HTTPException(status_code=503, detail="Database unavailable") from exc
+
+    @app.post("/api/v1/watchlist/{analysis_id}", status_code=201)
+    def add_watchlist(
+        analysis_id: UUID,
+        principal: Annotated[Principal, Depends(require_roles(CUSTOMER))],
+    ):
+        try:
+            row = store.add_watchlist_from_analysis(principal.user_id, analysis_id)
+        except Exception as exc:
+            raise HTTPException(status_code=503, detail="Database unavailable") from exc
+        if row is None:
+            raise HTTPException(status_code=404, detail="Analysis not found")
+        return row
+
+    @app.delete("/api/v1/watchlist/{entry_id}")
+    def remove_watchlist(
+        entry_id: UUID,
+        principal: Annotated[Principal, Depends(require_roles(CUSTOMER))],
+    ):
+        try:
+            removed = store.remove_watchlist_entry(principal.user_id, entry_id)
+        except Exception as exc:
+            raise HTTPException(status_code=503, detail="Database unavailable") from exc
+        if not removed:
+            raise HTTPException(status_code=404, detail="Watchlist entry not found")
+        return {"removed": True}
+
     @app.post("/api/v1/analyses", status_code=202)
     def submit(
         body: Submission,

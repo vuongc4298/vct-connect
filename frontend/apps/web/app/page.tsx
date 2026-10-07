@@ -2,8 +2,8 @@
 
 import { SignInButton, SignUpButton, UserButton, useAuth } from "@clerk/nextjs";
 import { useEffect, useRef, useState, type FormEvent, type ReactNode } from "react";
-import { FIXTURE_URL, type AccountState, type Analysis, type AnalysisHistoryItem, type GuestPreviewV1, type ReportV1 } from "@vct/contracts";
-import { ApiError, getAccountState, getAnalysis, getAnalysisHistory, getGuestAnalysis, getGuestPreview, getReport, submitGuestAnalysis } from "@vct/api-client";
+import { FIXTURE_URL, type AccountState, type Analysis, type AnalysisHistoryItem, type GuestPreviewV1, type ReportV1, type WatchlistEntry } from "@vct/contracts";
+import { ApiError, addWatchlist, getAccountState, getAnalysis, getAnalysisHistory, getGuestAnalysis, getGuestPreview, getReport, getWatchlist, removeWatchlist, submitGuestAnalysis } from "@vct/api-client";
 import { submitSelectedAnalysis } from "./analysis-request";
 import { analysisPresentation } from "./analysis-status";
 import { ExtractionEvidence, isFixtureResult } from "./extraction-evidence";
@@ -11,6 +11,7 @@ import { FullReport } from "./full-report";
 import { GuestPreview } from "./guest-preview";
 import { AccountStateView } from "./account-state";
 import { AnalysisHistory } from "./analysis-history";
+import { WatchlistView } from "./watchlist";
 
 const DEMO_SIGNALS = [
   { tone: "risk", title: "Thông tin pháp nhân chưa đầy đủ", body: "Kịch bản demo chưa có mã đăng ký kinh doanh để đối chiếu chéo." },
@@ -18,7 +19,7 @@ const DEMO_SIGNALS = [
   { tone: "positive", title: "Lịch sử hoạt động ổn định", body: "Hồ sơ minh hoạ thể hiện hoạt động liên tục và phản hồi khách hàng đều." },
 ] as const;
 
-type WorkspaceView = "analysis" | "history" | "account";
+type WorkspaceView = "analysis" | "history" | "watchlist" | "account";
 type EvidenceTone = "risk" | "watch" | "positive";
 type EvidenceProfile = "low" | "medium" | "high";
 
@@ -228,12 +229,13 @@ function Landing() {
   </div>;
 }
 
-function Sidebar({ view, historyCount, onViewChange }: { view: WorkspaceView; historyCount: number; onViewChange: (view: WorkspaceView) => void }) {
+function Sidebar({ view, historyCount, watchlistCount, onViewChange }: { view: WorkspaceView; historyCount: number; watchlistCount: number; onViewChange: (view: WorkspaceView) => void }) {
   return <aside className="sidebar">
     <Brand />
     <nav className="side-nav" aria-label="Điều hướng sản phẩm">
       <button type="button" aria-label="Phân tích mới" className={view === "analysis" ? "active" : ""} aria-current={view === "analysis" ? "page" : undefined} onClick={() => onViewChange("analysis")}><span>◇</span><span className="nav-label">Phân tích mới</span></button>
       <button type="button" aria-label={`Lịch sử, ${historyCount} mục`} className={view === "history" ? "active" : ""} aria-current={view === "history" ? "page" : undefined} onClick={() => onViewChange("history")}><span>◷</span><span className="nav-label">Lịch sử</span><span className="nav-count">{historyCount}</span></button>
+      <button type="button" aria-label={`Watchlist, ${watchlistCount} mục`} className={view === "watchlist" ? "active" : ""} aria-current={view === "watchlist" ? "page" : undefined} onClick={() => onViewChange("watchlist")}><span>☆</span><span className="nav-label">Watchlist</span><span className="nav-count">{watchlistCount}</span></button>
       <button type="button" aria-label="Tài khoản" className={view === "account" ? "active" : ""} aria-current={view === "account" ? "page" : undefined} onClick={() => onViewChange("account")}><span>◎</span><span className="nav-label">Tài khoản</span></button>
     </nav>
     <div className="sidebar-footer"><span>?</span><div><strong>Trung tâm trợ giúp</strong><small>Hướng dẫn sử dụng</small></div></div>
@@ -436,6 +438,11 @@ export default function Page() {
   const [analysisHistory, setAnalysisHistory] = useState<AnalysisHistoryItem[]>([]);
   const [historyLoading, setHistoryLoading] = useState(false);
   const [historyError, setHistoryError] = useState("");
+  const [watchlist, setWatchlist] = useState<WatchlistEntry[]>([]);
+  const [watchlistLoading, setWatchlistLoading] = useState(false);
+  const [watchlistError, setWatchlistError] = useState("");
+  const [watchlistRemovingId, setWatchlistRemovingId] = useState<string | null>(null);
+  const [watchlistBusy, setWatchlistBusy] = useState(false);
   const [accountState, setAccountState] = useState<AccountState | null>(null);
   const [accountError, setAccountError] = useState("");
   const [accountLoading, setAccountLoading] = useState(false);
@@ -448,6 +455,7 @@ export default function Page() {
   useEffect(() => {
     setId(null); setAnalysis(null); setReport(null); setReportError(""); setReportLoading(false); setError(""); setDelayed(false); setView("analysis");
     setAnalysisHistory([]); setHistoryLoading(false); setHistoryError("");
+    setWatchlist([]); setWatchlistLoading(false); setWatchlistError(""); setWatchlistRemovingId(null); setWatchlistBusy(false);
     setAccountState(null); setAccountError(""); setAccountLoading(false);
     clearSavedPage(); setRequestedMethod(null);
   }, [userId]);
@@ -465,6 +473,22 @@ export default function Page() {
         setHistoryError(cause instanceof Error ? cause.message : "Không thể tải lịch sử phân tích");
       },
     ).finally(() => { if (active) setHistoryLoading(false); });
+    return () => { active = false; };
+  }, [getToken, isSignedIn, userId, view]);
+
+  useEffect(() => {
+    if (!isSignedIn || !userId || view !== "watchlist") return;
+    let active = true;
+    setWatchlistLoading(true);
+    setWatchlistError("");
+    void getWatchlist({ getToken }).then(
+      value => { if (active) setWatchlist(value); },
+      cause => {
+        if (!active) return;
+        setWatchlist([]);
+        setWatchlistError(cause instanceof Error ? cause.message : "Không thể tải Watchlist");
+      },
+    ).finally(() => { if (active) setWatchlistLoading(false); });
     return () => { active = false; };
   }, [getToken, isSignedIn, userId, view]);
 
@@ -574,6 +598,54 @@ export default function Page() {
     } finally { setBusy(false); }
   }
 
+  async function saveCurrentSupplier() {
+    if (!id || watchlistBusy) return;
+    setWatchlistBusy(true);
+    setWatchlistError("");
+    try {
+      await addWatchlist(id, { getToken });
+      setWatchlist(await getWatchlist({ getToken }));
+    } catch (cause) {
+      setWatchlistError(cause instanceof Error ? cause.message : "Không thể lưu Watchlist");
+    } finally {
+      setWatchlistBusy(false);
+    }
+  }
+
+  async function deleteWatchlistEntry(entry: WatchlistEntry) {
+    setWatchlistRemovingId(entry.id);
+    setWatchlistError("");
+    try {
+      await removeWatchlist(entry.id, { getToken });
+      setWatchlist(current => current.filter(item => item.id !== entry.id));
+    } catch (cause) {
+      setWatchlistError(cause instanceof Error ? cause.message : "Không thể xoá khỏi Watchlist");
+    } finally {
+      setWatchlistRemovingId(null);
+    }
+  }
+
+  function openWatchlistAnalysis(entry: WatchlistEntry) {
+    if (!entry.analysis_id) return;
+    openHistoryAnalysis({
+      id: entry.analysis_id,
+      source_url: entry.source_url,
+      status: entry.analysis_status ?? "COMPLETED",
+      created_at: entry.created_at,
+      completed_at: null,
+      mode: "ACCOUNT_PUBLIC",
+      extraction_method: "PUBLIC_HTTP",
+      scoring_version: "v0.1.0",
+      supplier_name: entry.name,
+      platform: entry.platform,
+      report_available: Boolean(entry.report_available),
+      risk_label: entry.risk_label,
+      overall_risk: entry.overall_risk,
+      confidence: entry.confidence,
+      coverage: entry.coverage,
+    });
+  }
+
   function openHistoryAnalysis(item: AnalysisHistoryItem) {
     const next = new URL(window.location.href);
     next.searchParams.set("analysis", item.id);
@@ -606,10 +678,10 @@ export default function Page() {
   if (!isSignedIn) return <Landing />;
 
   return <div className="product-shell">
-    <Sidebar view={view} historyCount={analysisHistory.length} onViewChange={setView} />
+    <Sidebar view={view} historyCount={analysisHistory.length} watchlistCount={watchlist.length} onViewChange={setView} />
     <div className="workspace">
-      <header className="workspace-header"><div><span>Không gian Pilot</span><i>/</i><strong>{view === "analysis" ? "Phân tích mới" : view === "history" ? "Lịch sử" : "Tài khoản"}</strong></div><nav className="mobile-nav" aria-label="Điều hướng di động"><button type="button" className={view === "analysis" ? "active" : ""} aria-current={view === "analysis" ? "page" : undefined} onClick={() => setView("analysis")}>Phân tích</button><button type="button" className={view === "history" ? "active" : ""} aria-current={view === "history" ? "page" : undefined} onClick={() => setView("history")}>Lịch sử</button><button type="button" className={view === "account" ? "active" : ""} aria-current={view === "account" ? "page" : undefined} onClick={() => setView("account")}>Tài khoản</button></nav><div className="header-tools"><button type="button" className="icon-button" aria-label="Thông báo">♢<i /></button><span className="language">VI</span><UserButton /></div></header>
-      {view === "history" ? <AnalysisHistory items={analysisHistory} loading={historyLoading} error={historyError} onOpen={openHistoryAnalysis} onNewAnalysis={showNewAnalysis} /> : view === "account" ? (accountState ? <AccountStateView state={accountState} /> : <main className="dashboard account-dashboard"><section className="account-card" aria-live="polite">{accountLoading ? <p>Đang tải trạng thái tài khoản…</p> : <p role={accountError ? "alert" : undefined}>{accountError || "Chưa có trạng thái tài khoản."}</p>}</section></main>) : <main className="dashboard" id="analysis">
+      <header className="workspace-header"><div><span>Không gian Pilot</span><i>/</i><strong>{view === "analysis" ? "Phân tích mới" : view === "history" ? "Lịch sử" : view === "watchlist" ? "Watchlist" : "Tài khoản"}</strong></div><nav className="mobile-nav" aria-label="Điều hướng di động"><button type="button" className={view === "analysis" ? "active" : ""} aria-current={view === "analysis" ? "page" : undefined} onClick={() => setView("analysis")}>Phân tích</button><button type="button" className={view === "history" ? "active" : ""} aria-current={view === "history" ? "page" : undefined} onClick={() => setView("history")}>Lịch sử</button><button type="button" className={view === "watchlist" ? "active" : ""} aria-current={view === "watchlist" ? "page" : undefined} onClick={() => setView("watchlist")}>Watchlist</button><button type="button" className={view === "account" ? "active" : ""} aria-current={view === "account" ? "page" : undefined} onClick={() => setView("account")}>Tài khoản</button></nav><div className="header-tools"><button type="button" className="icon-button" aria-label="Thông báo">♢<i /></button><span className="language">VI</span><UserButton /></div></header>
+      {view === "history" ? <AnalysisHistory items={analysisHistory} loading={historyLoading} error={historyError} onOpen={openHistoryAnalysis} onNewAnalysis={showNewAnalysis} /> : view === "watchlist" ? <WatchlistView entries={watchlist} loading={watchlistLoading} error={watchlistError} removingId={watchlistRemovingId} onOpen={openWatchlistAnalysis} onRemove={deleteWatchlistEntry} /> : view === "account" ? (accountState ? <AccountStateView state={accountState} /> : <main className="dashboard account-dashboard"><section className="account-card" aria-live="polite">{accountLoading ? <p>Đang tải trạng thái tài khoản…</p> : <p role={accountError ? "alert" : undefined}>{accountError || "Chưa có trạng thái tài khoản."}</p>}</section></main>) : <main className="dashboard" id="analysis">
         <section className="dashboard-intro"><div><Pill tone="good">BẢN DEMO TƯƠNG TÁC</Pill><h1>Phân tích nhà cung cấp</h1><p>Dán liên kết sản phẩm 1688, sản phẩm / cửa hàng Taobao hoặc sản phẩm / hồ sơ công ty Alibaba để xem bằng chứng công khai và độ phủ. URL mẫu hiển thị báo cáo rủi ro minh họa.</p></div>{(analysis?.status === "COMPLETED" || analysis?.status === "FAILED_FINAL") && <button type="button" className="button button-ghost" onClick={showNewAnalysis}>+ Phân tích mới</button>}</section>
         <section className="analyze-card">
           <form onSubmit={submit}>
@@ -624,7 +696,7 @@ export default function Page() {
         {id && <ProgressCard analysis={analysis} delayed={delayed} requestedMethod={requestedMethod} />}
         {id && analysis?.status === "COMPLETED" && reportLoading &&
           <section className="report-loading" aria-live="polite"><i className="spinner" /><span>Đang tải báo cáo đánh giá đã lưu…</span></section>}
-        {id && analysis?.status === "COMPLETED" && report && <FullReport report={report} />}
+        {id && analysis?.status === "COMPLETED" && report && <><div className="report-watchlist-action"><button type="button" className="button button-ghost" disabled={watchlistBusy} onClick={() => { void saveCurrentSupplier(); }}>{watchlistBusy ? "Đang lưu…" : "☆ Lưu vào Watchlist"}</button>{watchlistError && <span role="alert">{watchlistError}</span>}</div><FullReport report={report} /></>}
         {id && analysis?.status === "COMPLETED" && !reportLoading && !report && reportError &&
           <div className="report-unavailable" role="status"><span>i</span><div><strong>Chưa có báo cáo đánh giá đầy đủ</strong><p>{reportError}</p></div></div>}
         {id && analysis?.status === "COMPLETED" && !report && !isFixtureResult(analysis.result) && <ExtractionEvidence analysis={analysis} />}
