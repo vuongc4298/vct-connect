@@ -381,6 +381,22 @@ button { cursor: pointer; }
 .evidence-follow-up p { display: grid; margin: 0; font-size: .64rem; }
 .evidence-follow-up strong { font-size: .58rem; text-transform: uppercase; letter-spacing: .06em; }
 
+.account-dashboard { width: min(1100px, calc(100% - 3rem)); }
+.account-grid { display: grid; grid-template-columns: 1fr 1fr; gap: 1rem; align-items: stretch; }
+.account-card { padding: 1.2rem; border: 1px solid var(--line); border-radius: 14px; background: #fff; }
+.account-card h2 { margin: .35rem 0 1rem; font-size: 1.15rem; }
+.account-card dl { display: grid; gap: .65rem; margin: 0; }
+.account-card dl div { display: flex; justify-content: space-between; gap: 1rem; padding-bottom: .55rem; border-bottom: 1px solid #edf1ef; }
+.account-card dt { color: var(--muted); font-size: .62rem; }
+.account-card dd { margin: 0; font-size: .66rem; font-weight: 800; text-align: right; }
+.account-safety-note { margin: .9rem 0 0; padding: .7rem; border-radius: 9px; color: #556b62; background: #f0f7f3; font-size: .64rem; line-height: 1.5; }
+.account-usage-card { grid-column: 1 / -1; }
+.account-usage-value { display: flex; align-items: baseline; gap: .35rem; margin: .35rem 0 .5rem; }
+.account-usage-value strong { font-size: 2rem; line-height: 1; }
+.account-usage-value span { color: var(--muted); font-size: .8rem; }
+.account-usage-card p { margin: .65rem 0 .2rem; color: var(--muted); font-size: .68rem; }
+.account-usage-card small { color: #8b9893; font-size: .58rem; }
+
 /* Analysis history and supplier notes */
 .history-dashboard { width: min(1320px, calc(100% - 3rem)); }
 .history-notice { display: flex; align-items: flex-start; gap: .65rem; margin-bottom: 1rem; padding: .75rem .9rem; border: 1px solid #d8e7df; border-radius: 10px; color: #5d7168; background: #f2f8f5; }
@@ -501,6 +517,8 @@ button { cursor: pointer; }
   .evidence-row { align-items: flex-start; flex-direction: column; }
   .history-dashboard { width: calc(100% - 2rem); }
   .history-layout { grid-template-columns: 1fr; }
+  .account-grid { grid-template-columns: 1fr; }
+  .account-usage-card { grid-column: auto; }
   .history-panel { position: static; }
   .history-list { max-height: none; }
   .history-detail { padding: 1rem; }
