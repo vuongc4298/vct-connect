@@ -154,7 +154,7 @@ def create_app(
             raise HTTPException(status_code=404, detail="Analysis not found")
         return row
 
-    @app.delete("/api/v1/watchlist/{entry_id}", status_code=204)
+    @app.delete("/api/v1/watchlist/{entry_id}")
     def remove_watchlist(
         entry_id: UUID,
         principal: Annotated[Principal, Depends(require_roles(CUSTOMER))],
@@ -165,7 +165,7 @@ def create_app(
             raise HTTPException(status_code=503, detail="Database unavailable") from exc
         if not removed:
             raise HTTPException(status_code=404, detail="Watchlist entry not found")
-        return None
+        return {"removed": True}
 
     @app.post("/api/v1/analyses", status_code=202)
     def submit(
