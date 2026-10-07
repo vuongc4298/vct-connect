@@ -177,7 +177,7 @@ def cleanup(store, analysis_id):
             )
 
 
-def test_worker_reaches_reporting_once_and_replay_spends_no_ai(store):
+def test_worker_persists_report_completes_once_and_replay_spends_no_ai(store):
     data = supplier_data()
     payload = {
         "source_url": SOURCE_URL,
@@ -209,7 +209,7 @@ def test_worker_reaches_reporting_once_and_replay_spends_no_ai(store):
             assess=assessor,
         )
         row = store.get(analysis_id)
-        assert row["status"] == "REPORTING"
+        assert row["status"] == "COMPLETED"
         assert assessor_calls == 1
         assert provider.chat_calls == 2
         assert provider.embedding_calls == 1
@@ -237,6 +237,26 @@ def test_worker_reaches_reporting_once_and_replay_spends_no_ai(store):
                 "WHERE assessment_id = %s",
                 (assessment["id"],),
             ).fetchone()["n"] > 0
+            report = conn.execute(
+                "SELECT schema_version, language, payload FROM reports "
+                "WHERE analysis_id = %s AND assessment_id = %s",
+                (analysis_id, assessment["id"]),
+            ).fetchone()
+            assert report is not None
+            assert report["schema_version"] == "report.v1"
+            assert report["language"] == "vi"
+            assert report["payload"]["risk"]["scoring_version"] == "v0.1.0"
+            assert report["payload"]["risk"]["coverage"] == 0.75
+            assert report["payload"]["supplier_summary_vi"]
+            assert report["payload"]["recommended_actions_vi"]
+            assert report["payload"]["limitations_vi"]
+            assert report["payload"]["missing_data"]["source_fields"] == [
+                "certifications", "delivery_information", "activity_history"
+            ]
+            assert any(
+                item["evidence_id"] == "review:0"
+                for item in report["payload"]["evidence"]
+            )
 
             conn.execute(
                 "INSERT INTO local_queue (analysis_id) VALUES (%s)",
@@ -251,7 +271,7 @@ def test_worker_reaches_reporting_once_and_replay_spends_no_ai(store):
         assert assessor_calls == 1
         assert provider.chat_calls == 2
         assert provider.embedding_calls == 1
-        assert store.get(analysis_id)["status"] == "REPORTING"
+        assert store.get(analysis_id)["status"] == "COMPLETED"
     finally:
         cleanup(store, analysis_id)
 
@@ -304,7 +324,7 @@ def test_worker_media_loader_enriches_same_reporting_path_without_persisting_byt
             assess=assessor,
             media_loader=media_loader,
         )
-        assert store.get(analysis_id)["status"] == "REPORTING"
+        assert store.get(analysis_id)["status"] == "COMPLETED"
         assert loader_calls == 1
         assert provider.chat_calls == 3
         assert provider.embedding_calls == 1
@@ -336,5 +356,16 @@ def test_worker_media_loader_enriches_same_reporting_path_without_persisting_byt
             assert media_evidence is not None
             assert media_evidence["payload"]["private_ref"] == "blob://approved/worker/review-0"
             assert "data:image" not in json.dumps(media_evidence["payload"])
+            report = conn.execute(
+                "SELECT payload FROM reports WHERE analysis_id = %s",
+                (analysis_id,),
+            ).fetchone()
+            assert report is not None
+            assert report["payload"]["schema_version"] == "report.v1"
+            assert "data:image" not in json.dumps(report["payload"])
+            assert any(
+                item["evidence_id"] == "media:worker-img-0"
+                for item in report["payload"]["evidence"]
+            )
     finally:
         cleanup(store, analysis_id)
