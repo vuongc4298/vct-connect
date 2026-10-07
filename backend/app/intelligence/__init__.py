@@ -1,5 +1,11 @@
 """Analysis intelligence public contracts for VCT Connect."""
 
+from .assessment import AssessmentBundle, build_assessment
+from .assessment_store import (
+    assessment_exists,
+    load_assessment_snapshot,
+    persist_assessment_and_handoff,
+)
 from .contracts import (
     PIPELINE_VERSION,
     PROMPT_VERSION,
@@ -72,6 +78,8 @@ from .semantic_reviews import (
 from .yescale import YESCALE_BASE_URL, YEScaleProvider
 
 __all__ = [
+    "AssessmentBundle", "build_assessment", "assessment_exists",
+    "load_assessment_snapshot", "persist_assessment_and_handoff",
     "PIPELINE_VERSION", "PROMPT_VERSION", "SCHEMA_VERSION",
     "EvidenceSignal", "SupplierInterpretation", "InterpretationRun",
     "IDENTITY_SCHEMA_VERSION", "FactoryTraderAssessment", "IdentityEvidence",

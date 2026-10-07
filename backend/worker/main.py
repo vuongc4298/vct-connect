@@ -10,6 +10,12 @@ from backend.app.fixture import FIXTURE_URL, fixture_result
 from backend.app.extraction import extract_1688, extract_taobao, extract_alibaba, source_platform
 from backend.app.queue import AzureQueue
 from backend.app.storage import LeaseLost, ResultConflict, Store
+from backend.app.intelligence.assessment import build_assessment
+from backend.app.intelligence.assessment_store import (
+    load_assessment_snapshot,
+    persist_assessment_and_handoff,
+)
+from backend.app.intelligence.yescale import YEScaleProvider
 
 log = logging.getLogger(__name__)
 
@@ -40,6 +46,73 @@ def _compute_claim(claim: dict, compute, settings: Settings | None = None) -> di
     if settings and settings.public_browser_fallback:
         options["browser_fallback"] = True
     return adapter(claim["source_url"], **options)
+
+
+def _run_assessment(
+    store: Store,
+    claim: dict,
+    settings: Settings | None,
+    *,
+    assess=None,
+) -> None:
+    snapshot_id, supplier_data = load_assessment_snapshot(
+        store, claim["analysis_id"], claim["token"]
+    )
+    if assess is not None:
+        bundle = assess(supplier_data)
+    else:
+        if settings is None or not settings.yescale_api_key:
+            raise ValueError("YESCALE_API_KEY is required for worker assessment")
+        with YEScaleProvider(settings.yescale_api_key) as provider:
+            bundle = build_assessment(
+                supplier_data,
+                provider=provider,
+                model=settings.yescale_model,
+                embedding_provider=provider if settings.yescale_embedding_model else None,
+                embedding_model=settings.yescale_embedding_model,
+                metadata={
+                    "feature": "complete_assessment",
+                    "session_id": str(claim["analysis_id"]),
+                },
+            )
+    persist_assessment_and_handoff(
+        store,
+        analysis_id=claim["analysis_id"],
+        token=claim["token"],
+        supplier_snapshot_id=snapshot_id,
+        bundle=bundle,
+    )
+
+
+def _assessment_enabled(settings: Settings | None, assess) -> bool:
+    return assess is not None or bool(settings and settings.yescale_api_key)
+
+
+def _process_claim_payload(
+    store: Store,
+    claim: dict,
+    settings: Settings | None,
+    *,
+    compute=None,
+    assess=None,
+) -> None:
+    if claim.get("phase") == "assessment":
+        _run_assessment(store, claim, settings, assess=assess)
+        return
+
+    payload = _compute_claim(claim, compute, settings)
+    extracted = (
+        payload.get("extraction_status") in {"SUCCESS", "PARTIAL"}
+        and isinstance(payload.get("supplier_data"), dict)
+    )
+    if not extracted or not _assessment_enabled(settings, assess):
+        store.complete_processing(claim["analysis_id"], claim["token"], payload)
+        return
+
+    store.complete_extraction_for_assessment(
+        claim["analysis_id"], claim["token"], payload
+    )
+    _run_assessment(store, claim, settings, assess=assess)
 
 
 def dispatch_outbox_once(store: Store, queue: AzureQueue, settings: Settings) -> bool:
@@ -74,6 +147,7 @@ def process_local_once(
     settings: Settings | None = None,
     *,
     compute=None,
+    assess=None,
 ) -> bool:
     max_attempts, lease_seconds, _ = _limits(settings)
     local_claim = store.claim_local(lease_seconds)
@@ -84,12 +158,13 @@ def process_local_once(
     if claim["outcome"] in {"busy", "waiting"}:
         store.release_local(analysis_id, local_claim["claim_token"])
         return True
-    if claim["outcome"] in {"completed", "final", "unknown"}:
+    if claim["outcome"] in {"completed", "reporting", "final", "unknown"}:
         store.finish_local(analysis_id, local_claim["claim_token"])
         return True
     try:
-        payload = _compute_claim(claim, compute, settings)
-        store.complete_processing(analysis_id, claim["token"], payload)
+        _process_claim_payload(
+            store, claim, settings, compute=compute, assess=assess
+        )
         store.finish_local(analysis_id, local_claim["claim_token"])
     except ResultConflict:
         store.record_result_conflict(analysis_id)
@@ -164,6 +239,7 @@ def process_azure_once(
     settings: Settings | None = None,
     *,
     compute=None,
+    assess=None,
     sleep=time.sleep,
     clock=time.monotonic,
 ) -> bool:
@@ -214,7 +290,7 @@ def process_azure_once(
                         raise
                     log.warning("Dead-lettered unknown analysis_id=%s", analysis_id)
                     return True
-                if claim["outcome"] == "completed":
+                if claim["outcome"] in {"completed", "reporting"}:
                     if clock() >= settle_deadline:
                         return True
                     _complete_message(receiver, message, analysis_id)
@@ -242,8 +318,9 @@ def process_azure_once(
                     continue
 
                 try:
-                    payload = _compute_claim(claim, compute, settings)
-                    store.complete_processing(analysis_id, claim["token"], payload)
+                    _process_claim_payload(
+                        store, claim, settings, compute=compute, assess=assess
+                    )
                 except ResultConflict:
                     store.record_result_conflict(analysis_id)
                     if clock() >= settle_deadline:

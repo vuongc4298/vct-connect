@@ -369,7 +369,7 @@ class Store:
             with conn.transaction():
                 row = conn.execute(
                     """SELECT id, source_url, mode, status, attempt_count, next_retry_at,
-                              processing_claimed_until
+                              processing_claimed_until, supplier_snapshot_id
                        FROM analyses WHERE id = %s FOR UPDATE""",
                     (analysis_id,),
                 ).fetchone()
@@ -377,6 +377,8 @@ class Store:
                     return {"outcome": "unknown"}
                 if row["status"] == "COMPLETED":
                     return {"outcome": "completed"}
+                if row["status"] == "REPORTING":
+                    return {"outcome": "reporting"}
                 if row["status"] == "FAILED_FINAL":
                     return {"outcome": "final"}
                 now = datetime.now(timezone.utc)
@@ -404,20 +406,22 @@ class Store:
                     )
                     return {"outcome": "final"}
                 attempt = row["attempt_count"] + 1
+                phase_status = "ASSESSING" if row["supplier_snapshot_id"] is not None else "PROCESSING"
                 conn.execute(
-                    """UPDATE analyses SET status = 'PROCESSING', attempt_count = %s,
+                    """UPDATE analyses SET status = %s, attempt_count = %s,
                            processing_claim_token = %s,
                            processing_claimed_until = now() + %s * interval '1 second',
                            processing_started_at = COALESCE(processing_started_at, now()),
                            failure_code = NULL, next_retry_at = NULL, final_disposition = NULL
                        WHERE id = %s""",
-                    (attempt, token, lease_seconds, analysis_id),
+                    (phase_status, attempt, token, lease_seconds, analysis_id),
                 )
-                self._event(conn, analysis_id, "PROCESSING", attempt)
+                self._event(conn, analysis_id, phase_status, attempt)
                 return {
                     "outcome": "acquired", "analysis_id": analysis_id,
                     "source_url": row["source_url"], "mode": row["mode"],
                     "attempt": attempt, "token": token,
+                    "phase": "assessment" if phase_status == "ASSESSING" else "extraction",
                 }
 
     def record_result_conflict(self, analysis_id: UUID) -> None:
@@ -450,6 +454,16 @@ class Store:
         with self.connect() as conn:
             with conn.transaction():
                 return self._complete_processing(conn, analysis_id, token, payload)
+
+    def complete_extraction_for_assessment(
+        self, analysis_id: UUID, token: UUID, payload: dict
+    ) -> str:
+        """Persist immutable extraction evidence while retaining the worker lease."""
+        with self.connect() as conn:
+            with conn.transaction():
+                return self._complete_processing(
+                    conn, analysis_id, token, payload, handoff_to_assessment=True
+                )
 
     def import_customer_page(
         self, source_url: str, user_id: UUID, payload: dict, *,
@@ -584,7 +598,8 @@ class Store:
                 return analysis_id
 
     def _complete_processing(self, conn, analysis_id: UUID, token: UUID, payload: dict,
-                             *, existing_supplier_id: UUID | None = None) -> str:
+                             *, existing_supplier_id: UUID | None = None,
+                             handoff_to_assessment: bool = False) -> str:
         public_payload = {key: value for key, value in payload.items()
                           if key not in {"raw_payload", "reviews", "supplier_data"}}
         row = conn.execute(
@@ -718,6 +733,18 @@ class Store:
                           extraction_method = %s WHERE id = %s""",
                 (snapshot_id, supplier_data["extraction_method"], analysis_id),
             )
+        if handoff_to_assessment and extracted:
+            updated = conn.execute(
+                """UPDATE analyses SET status = 'ASSESSING',
+                       failure_code = NULL, next_retry_at = NULL, final_disposition = NULL
+                   WHERE id = %s AND processing_claim_token = %s
+                   RETURNING id""",
+                (analysis_id, token),
+            ).fetchone()
+            if updated is None:
+                raise LeaseLost("Processing lease is no longer current")
+            self._event(conn, analysis_id, "ASSESSING", row["attempt_count"])
+            return "assessing"
         conn.execute(
             """UPDATE analyses SET status = 'COMPLETED', completed_at = now(),
                    failure_code = NULL, next_retry_at = NULL, final_disposition = NULL,
@@ -745,7 +772,7 @@ class Store:
                        WHERE id = %s AND processing_claim_token = %s FOR UPDATE""",
                     (analysis_id, token),
                 ).fetchone()
-                if row is None or row["status"] != "PROCESSING":
+                if row is None or row["status"] not in {"PROCESSING", "ASSESSING"}:
                     raise LeaseLost("Processing lease is no longer current")
                 final = row["attempt_count"] >= max_attempts
                 status = "FAILED_FINAL" if final else "FAILED_RETRYABLE"

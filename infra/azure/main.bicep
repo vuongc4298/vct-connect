@@ -10,8 +10,10 @@ param webImageDigest string
 param enableProcessing bool = false
 @description('Opt-in cached public HTML rendering. Unavailable Chromium sandbox retains HTTP evidence.')
 param publicBrowserFallback bool = false
-@description('Pinned Story 3.1 YEScale candidate; change only with a recorded model decision.')
+@description('Pinned YEScale chat candidate; change only with a recorded model decision.')
 param yescaleModel string = 'gpt-4o-mini'
+@description('Optional Story 3.3 embedding model. Empty disables semantic review clustering.')
+param yescaleEmbeddingModel string = ''
 param registryName string
 param vaultName string
 param clerkPublishableKey string
@@ -318,6 +320,7 @@ resource analysisJob 'Microsoft.App/jobs@2025-01-01' = if (enableProcessing) {
           { name: 'DATABASE_URL', secretRef: 'database-url' }
           { name: 'YESCALE_API_KEY', secretRef: 'yescale-api-key' }
           { name: 'YESCALE_MODEL', value: yescaleModel }
+          { name: 'YESCALE_EMBEDDING_MODEL', value: yescaleEmbeddingModel }
           { name: 'QUEUE_TRANSPORT', value: 'azure' }
           { name: 'AZURE_SERVICE_BUS_NAMESPACE', value: serviceBusNamespace }
           { name: 'AZURE_SERVICE_BUS_QUEUE', value: serviceBusQueue }
