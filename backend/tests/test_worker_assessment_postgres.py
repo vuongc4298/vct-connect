@@ -6,6 +6,7 @@ import pytest
 
 from backend.app.intelligence.assessment import build_assessment
 from backend.app.intelligence.contracts import SCHEMA_VERSION
+from backend.app.intelligence.media import MEDIA_SCHEMA_VERSION, ReviewMediaInput
 from backend.app.intelligence.provider import EmbeddingResponse, ProviderResponse, ProviderUsage
 from backend.app.storage import Store
 from backend.worker.main import process_local_once
@@ -59,6 +60,33 @@ class WorkerProvider:
             content=json.dumps(output, ensure_ascii=False),
             usage=ProviderUsage(100, 40, 140, Decimal("0.001"), {"total_tokens": 140}),
             latency_ms=20,
+            finish_reason="stop",
+            settings={"temperature": kwargs["temperature"], "max_tokens": kwargs["max_tokens"]},
+        )
+
+    def generate_multimodal_json(self, **kwargs):
+        self.chat_calls += 1
+        output = {
+            "schema_version": MEDIA_SCHEMA_VERSION,
+            "language": "vi",
+            "findings": [{
+                "media_id": "worker-img-0",
+                "review_evidence_id": "review:0",
+                "consistency": "SUPPORTS",
+                "statement_vi": "Ảnh hỗ trợ mô tả vấn đề đường may.",
+                "confidence": 0.9,
+                "timestamp_ms": None,
+            }],
+            "confidence": 0.9,
+        }
+        return ProviderResponse(
+            provider="FAKE_WORKER",
+            request_id=f"worker-media-{self.chat_calls}",
+            requested_model=kwargs["model"],
+            response_model="worker-vision-v1",
+            content=json.dumps(output, ensure_ascii=False),
+            usage=ProviderUsage(70, 30, 100, Decimal("0.002"), {"total_tokens": 100}),
+            latency_ms=12,
             finish_reason="stop",
             settings={"temperature": kwargs["temperature"], "max_tokens": kwargs["max_tokens"]},
         )
@@ -224,5 +252,89 @@ def test_worker_reaches_reporting_once_and_replay_spends_no_ai(store):
         assert provider.chat_calls == 2
         assert provider.embedding_calls == 1
         assert store.get(analysis_id)["status"] == "REPORTING"
+    finally:
+        cleanup(store, analysis_id)
+
+
+def test_worker_media_loader_enriches_same_reporting_path_without_persisting_bytes(store):
+    data = supplier_data()
+    payload = {
+        "source_url": SOURCE_URL,
+        "extraction_status": "PARTIAL",
+        "raw_payload": {"fixture": True},
+        "reviews": data["reviews"],
+        "supplier_data": data,
+    }
+    provider = WorkerProvider()
+    loader_calls = 0
+
+    def media_loader(_store, _snapshot_id, _supplier_data):
+        nonlocal loader_calls
+        loader_calls += 1
+        return [
+            ReviewMediaInput(
+                media_id="worker-img-0",
+                review_evidence_id="review:0",
+                media_type="IMAGE",
+                access_status="ACCESSIBLE",
+                private_ref="blob://approved/worker/review-0",
+                mime_type="image/png",
+                data_url="data:image/png;base64,aGVsbG8=",
+            )
+        ]
+
+    def assessor(snapshot, media):
+        return build_assessment(
+            snapshot,
+            provider=provider,
+            model="worker-chat",
+            embedding_provider=provider,
+            embedding_model="worker-embedding",
+            media=media,
+            multimodal_provider=provider,
+            multimodal_model="worker-vision",
+            metadata={"feature": "worker_media_test"},
+        )
+
+    analysis_id = store.submit_local(SOURCE_URL)
+    try:
+        assert process_local_once(
+            store,
+            compute=lambda _url: payload,
+            assess=assessor,
+            media_loader=media_loader,
+        )
+        assert store.get(analysis_id)["status"] == "REPORTING"
+        assert loader_calls == 1
+        assert provider.chat_calls == 3
+        assert provider.embedding_calls == 1
+
+        with store.connect() as conn:
+            assessment = conn.execute(
+                "SELECT id, media_analysis FROM analysis_assessments WHERE analysis_id = %s",
+                (analysis_id,),
+            ).fetchone()
+            assert assessment is not None
+            assert assessment["media_analysis"]["assessment"]["findings"][0]["consistency"] == "SUPPORTS"
+            assert "data:image" not in json.dumps(assessment["media_analysis"])
+            runs = conn.execute(
+                "SELECT run_kind, input_payload, output FROM llm_review_runs "
+                "WHERE assessment_id = %s ORDER BY run_kind",
+                (assessment["id"],),
+            ).fetchall()
+            assert {row["run_kind"] for row in runs} == {
+                "SUPPLIER_INTERPRETATION",
+                "REVIEW_INTERPRETATION",
+                "MEDIA_INTERPRETATION",
+            }
+            assert all("data:image" not in json.dumps(row["input_payload"]) for row in runs)
+            media_evidence = conn.execute(
+                "SELECT payload FROM analysis_evidence "
+                "WHERE assessment_id = %s AND source_kind = 'REVIEW_MEDIA'",
+                (assessment["id"],),
+            ).fetchone()
+            assert media_evidence is not None
+            assert media_evidence["payload"]["private_ref"] == "blob://approved/worker/review-0"
+            assert "data:image" not in json.dumps(media_evidence["payload"])
     finally:
         cleanup(store, analysis_id)
