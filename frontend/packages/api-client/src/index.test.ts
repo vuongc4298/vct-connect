@@ -268,3 +268,44 @@ test("timeout remains active while the response body is parsed", async () => {
     globalThis.setTimeout = originalSetTimeout;
   }
 });
+
+
+test("analysis lookup can target the trusted web origin for extension use", async () => {
+  const originalFetch = globalThis.fetch;
+  let sent: { url: string; headers: Headers } | undefined;
+  globalThis.fetch = async (input, init) => {
+    sent = { url: String(input), headers: new Headers(init?.headers) };
+    return Response.json({
+      id: "analysis-extension",
+      source_url: "https://detail.1688.com/offer/123456789012.html",
+      status: "QUEUED",
+      created_at: "2026-10-08T00:00:00Z",
+      completed_at: null,
+      attempt_count: 0,
+      failure_code: null,
+      next_retry_at: null,
+      final_disposition: null,
+      mode: "EXTENSION_ENHANCED",
+      actor_type: "CUSTOMER",
+      extraction_method: "EXTENSION_DOM",
+      scoring_version: "v0.1.0",
+      events: [],
+      result: null,
+      supplier_snapshot_id: null,
+      supplier_data: null,
+      raw_evidence: null,
+      reviews: [],
+    });
+  };
+  try {
+    await getAnalysis(
+      "analysis-extension",
+      { getToken: async () => "extension-token" },
+      { origin: "https://vct.example.test", timeoutMs: 45_000 },
+    );
+  } finally {
+    globalThis.fetch = originalFetch;
+  }
+  assert.equal(sent?.url, "https://vct.example.test/api/v1/analyses/analysis-extension");
+  assert.equal(sent?.headers.get("Authorization"), "Bearer extension-token");
+});
