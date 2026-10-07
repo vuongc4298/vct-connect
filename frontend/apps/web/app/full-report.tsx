@@ -24,6 +24,10 @@ function percent(value: unknown) {
   return typeof value === "number" ? `${Math.round(value * 100)}%` : "Chưa xác định";
 }
 
+function barWidth(value: unknown) {
+  return typeof value === "number" ? `${Math.max(0, Math.min(100, Math.round(value * 100)))}%` : "0%";
+}
+
 function scorePercent(value: number) {
   return `${Math.round(value * 100)}%`;
 }
@@ -165,8 +169,8 @@ export function FullReport({ report }: { report: ReportV1 }) {
           <span>{typeof factory.classification === "string" ? factory.classification : "UNCERTAIN"}</span>
         </div>
         <div className="identity-bars">
-          <div><span><b>Khả năng nhà máy</b><small>{percent(factory.factory_likelihood)}</small></span><i><b style={{ width: percent(factory.factory_likelihood) }} /></i></div>
-          <div><span><b>Khả năng thương mại</b><small>{percent(factory.trader_likelihood)}</small></span><i className="dark"><b style={{ width: percent(factory.trader_likelihood) }} /></i></div>
+          <div><span><b>Khả năng nhà máy</b><small>{percent(factory.factory_likelihood)}</small></span><i><b style={{ width: barWidth(factory.factory_likelihood) }} /></i></div>
+          <div><span><b>Khả năng thương mại</b><small>{percent(factory.trader_likelihood)}</small></span><i className="dark"><b style={{ width: barWidth(factory.trader_likelihood) }} /></i></div>
         </div>
         <p className="identity-note">Độ tin cậy nhận định: {percent(factory.confidence)}. Đây là tổng hợp bằng chứng, không phải xác minh pháp lý độc lập.</p>
       </article>
