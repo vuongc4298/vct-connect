@@ -29,6 +29,7 @@ from .extraction.offer1688 import MAX_HTML_BYTES, parse_1688_page
 from .extraction.extension1688 import DomCapture, MAX_CAPTURE_BYTES, normalize_capture
 from .extraction.extension_merge import reject_sensitive_page_state
 from .storage import AdmissionDenied, Store
+from .reporting.preview import build_guest_preview
 
 
 class Submission(BaseModel):
@@ -261,6 +262,17 @@ def create_app(
         if row is None:
             raise HTTPException(status_code=404, detail="Analysis not found")
         return row
+
+    @app.get("/api/v1/guest-analyses/{analysis_id}/preview")
+    def guest_preview(analysis_id: UUID, request: Request):
+        key = guest_key(request)
+        try:
+            row = store.get_report_for_guest(analysis_id, key)
+        except Exception as exc:
+            raise HTTPException(status_code=503, detail="Database unavailable") from exc
+        if row is None:
+            raise HTTPException(status_code=404, detail="Preview not found")
+        return build_guest_preview(row["payload"]).model_dump()
 
     @app.get("/api/v1/analyses/{analysis_id}/report")
     def report(
