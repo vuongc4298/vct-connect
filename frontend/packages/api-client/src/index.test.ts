@@ -1,7 +1,7 @@
 import assert from "node:assert/strict";
 import test from "node:test";
 
-import { ApiError, getAnalysis, getGuestAnalysis, importSavedPage, submitAnalysis, submitGuestAnalysis } from "./index";
+import { ApiError, getAnalysis, getGuestAnalysis, getGuestPreview, importSavedPage, submitAnalysis, submitGuestAnalysis } from "./index";
 
 test("saved page import sends the file with bearer authorization and rejects oversized files", async () => {
   const originalFetch = globalThis.fetch;
@@ -97,13 +97,14 @@ test("guest submission and polling use cookie credentials without bearer identit
   try {
     await submitGuestAnalysis({ source_url: "https://detail.1688.com/offer/123456789012.html" });
     await getGuestAnalysis("guest-id");
+    await getGuestPreview("guest-id");
   } finally {
     globalThis.fetch = originalFetch;
   }
   assert.deepEqual(requests.map(request => request.url), [
-    "/api/v1/guest-analyses", "/api/v1/guest-analyses/guest-id",
+    "/api/v1/guest-analyses", "/api/v1/guest-analyses/guest-id", "/api/v1/guest-analyses/guest-id/preview",
   ]);
-  assert.deepEqual(requests.map(request => request.credentials), ["same-origin", "same-origin"]);
+  assert.deepEqual(requests.map(request => request.credentials), ["same-origin", "same-origin", "same-origin"]);
   assert.ok(requests.every(request => !request.headers.has("Authorization")));
 });
 
