@@ -6,6 +6,7 @@ from pydantic import BaseModel, ConfigDict, Field
 
 
 REPORT_SCHEMA_VERSION = "report.v1"
+GUEST_PREVIEW_SCHEMA_VERSION = "guest-preview.v1"
 
 
 class ReportEvidence(BaseModel):
@@ -62,3 +63,22 @@ class ReportPayload(BaseModel):
     missing_data: dict[str, list[str]]
     limitations_vi: list[str]
     recommended_actions_vi: list[str]
+
+
+class GuestPreviewPayload(BaseModel):
+    model_config = ConfigDict(extra="forbid")
+
+    schema_version: Literal["guest-preview.v1"] = GUEST_PREVIEW_SCHEMA_VERSION
+    language: Literal["vi"] = "vi"
+    analysis_id: str = Field(min_length=1, max_length=80)
+    platform: str = Field(min_length=1, max_length=40)
+    supplier_name: str | None = Field(default=None, max_length=500)
+    extracted_at: str = Field(min_length=1, max_length=80)
+    confidence: float = Field(ge=0, le=1)
+    coverage: float = Field(ge=0, le=1)
+    information_state: Literal["INSUFFICIENT_INFORMATION", "LIMITED_PREVIEW"]
+    missing_source_fields: list[str]
+    missing_risk_dimensions: list[str]
+    uncertainties_vi: list[str]
+    limitations_vi: list[str]
+    registration_required: Literal[True] = True

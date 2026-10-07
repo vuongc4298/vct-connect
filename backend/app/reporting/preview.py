@@ -1,27 +1,8 @@
 from __future__ import annotations
 
-from typing import Literal, Mapping
+from typing import Mapping
 
-from pydantic import BaseModel, ConfigDict, Field
-
-GUEST_PREVIEW_SCHEMA_VERSION = "guest-preview.v1"
-
-class GuestPreviewPayload(BaseModel):
-    model_config = ConfigDict(extra="forbid")
-    schema_version: Literal["guest-preview.v1"] = GUEST_PREVIEW_SCHEMA_VERSION
-    language: Literal["vi"] = "vi"
-    analysis_id: str = Field(min_length=1, max_length=80)
-    platform: str = Field(min_length=1, max_length=40)
-    supplier_name: str | None = Field(default=None, max_length=500)
-    extracted_at: str = Field(min_length=1, max_length=80)
-    confidence: float = Field(ge=0, le=1)
-    coverage: float = Field(ge=0, le=1)
-    information_state: Literal["INSUFFICIENT_INFORMATION", "LIMITED_PREVIEW"]
-    missing_source_fields: list[str]
-    missing_risk_dimensions: list[str]
-    uncertainties_vi: list[str]
-    limitations_vi: list[str]
-    registration_required: Literal[True] = True
+from .contracts import GuestPreviewPayload
 
 def build_guest_preview(report: Mapping[str, object]) -> GuestPreviewPayload:
     risk = report.get("risk") if isinstance(report.get("risk"), Mapping) else {}
