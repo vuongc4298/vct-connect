@@ -175,6 +175,8 @@ class AuthStore:
         self.rows = {}
         self.reports = {}
         self.outbox = []
+        self.account_trials = {}
+        self.account_usage = {}
 
     def resolve_user(self, clerk_user_id, email=None):
         row = self.users.get(clerk_user_id)
@@ -189,6 +191,32 @@ class AuthStore:
         elif email:
             row["email"] = email
         return row.copy()
+
+    def get_account_state(self, user_id, *, customer_limit, window_seconds):
+        user = next((row for row in self.users.values() if row["id"] == user_id), None)
+        if user is None:
+            return None
+        trial = self.account_trials.get(user_id)
+        used = self.account_usage.get(user_id, 0)
+        active = bool(trial and trial.get("active"))
+        return {
+            "user": {"id": user_id, "email": user.get("email"), "role": user["role"]},
+            "plan": "MVP_TRIAL" if active else "FREE",
+            "trial": {
+                "active": active,
+                "starts_at": trial.get("starts_at") if trial else None,
+                "expires_at": trial.get("expires_at") if trial else None,
+                "status": trial.get("status") if trial else None,
+            },
+            "usage": {
+                "used": used,
+                "limit": customer_limit,
+                "remaining": max(customer_limit - used, 0),
+                "window_seconds": window_seconds,
+                "starts_at": "2026-10-07T00:00:00Z",
+                "resets_at": "2026-10-08T00:00:00Z",
+            },
+        }
 
     def submit_local(self, source_url, user_id=None):
         analysis_id = uuid4()
@@ -826,3 +854,53 @@ def test_guest_preview_is_browser_scoped_and_never_exposes_full_report(signing_k
     assert client.get(url, headers={"x-vct-guest-key": "b" * 64}).status_code == 404
     customer_only = client.get(url, headers=auth_header(token(signing_keys[0], "preview_customer")))
     assert customer_only.status_code == 404
+
+
+def test_me_is_customer_only_and_reports_own_trial_and_usage(signing_keys):
+    private, public = signing_keys
+    client, store = client_and_store(public)
+
+    assert client.get("/api/v1/me").status_code == 401
+
+    owner_headers = auth_header(token(private, "account_owner", email="owner@example.test"))
+    first = client.get("/api/v1/me", headers=owner_headers)
+    assert first.status_code == 200
+    owner_id = store.users["account_owner"]["id"]
+    assert first.json()["user"]["email"] == "owner@example.test"
+    assert first.json()["user"]["role"] == "CUSTOMER"
+    assert first.json()["plan"] == "FREE"
+    assert first.json()["trial"]["active"] is False
+    assert first.json()["usage"] == {
+        "used": 0,
+        "limit": 20,
+        "remaining": 20,
+        "window_seconds": 86400,
+        "starts_at": "2026-10-07T00:00:00Z",
+        "resets_at": "2026-10-08T00:00:00Z",
+    }
+
+    store.account_trials[owner_id] = {
+        "active": True,
+        "starts_at": "2026-10-01T00:00:00Z",
+        "expires_at": "2026-10-31T00:00:00Z",
+        "status": "ACTIVE",
+    }
+    store.account_usage[owner_id] = 7
+    trial = client.get("/api/v1/me", headers=owner_headers)
+    assert trial.status_code == 200
+    assert trial.json()["plan"] == "MVP_TRIAL"
+    assert trial.json()["trial"]["active"] is True
+    assert trial.json()["usage"]["used"] == 7
+    assert trial.json()["usage"]["remaining"] == 13
+
+    other_headers = auth_header(token(private, "account_other", email="other@example.test"))
+    other = client.get("/api/v1/me", headers=other_headers)
+    assert other.status_code == 200
+    assert other.json()["user"]["email"] == "other@example.test"
+    assert other.json()["plan"] == "FREE"
+    assert other.json()["usage"]["used"] == 0
+
+    store.users["account_other"]["role"] = "INTERNAL_REVIEWER"
+    forbidden = client.get("/api/v1/me", headers=other_headers)
+    assert forbidden.status_code == 403
+    assert forbidden.json() == {"detail": "Forbidden"}
