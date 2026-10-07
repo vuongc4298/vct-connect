@@ -79,6 +79,27 @@ def review_score_inputs(
     evidence: list[dict] = []
     by_dimension: dict[str, list[RiskSignal]] = {}
     media_factors = media_review_factors(media_run)
+    complaint_topics = (
+        review_analysis.deterministic_analysis.complaint_topics
+        if isinstance(review_analysis, SemanticReviewRun)
+        else review_analysis.complaint_topics
+    )
+    for index, topic in enumerate(complaint_topics):
+        findings.append({
+            "finding_key": f"review-topic:{index}:{topic.category}",
+            "finding_type": "REVIEW_COMPLAINT_TOPIC",
+            "dimension": CATEGORY_DIMENSION.get(topic.category),
+            "severity": None,
+            "confidence": topic.reliability,
+            "payload": topic.model_dump(mode="json"),
+        })
+        for evidence_id in topic.evidence_ids:
+            evidence.append({
+                "evidence_id": evidence_id,
+                "source_kind": "REVIEW",
+                "source_field": "reviews",
+                "payload": {"complaint_topic": topic.category},
+            })
 
     if isinstance(review_analysis, SemanticReviewRun):
         assessment = review_analysis.assessment
