@@ -467,7 +467,7 @@ export default function Page() {
   }, [userId]);
 
   useEffect(() => {
-    if (!isSignedIn || !userId) return;
+    if (!isSignedIn || !userId || view !== "account") return;
     let active = true;
     setAccountLoading(true);
     setAccountError("");
@@ -480,7 +480,7 @@ export default function Page() {
       },
     ).finally(() => { if (active) setAccountLoading(false); });
     return () => { active = false; };
-  }, [getToken, isSignedIn, userId]);
+  }, [getToken, isSignedIn, userId, view]);
 
   useEffect(() => {
     if (!userId) return;
