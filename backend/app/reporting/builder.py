@@ -133,6 +133,7 @@ def _recommended_actions(
     *,
     risk: Mapping[str, object],
     identity: Mapping[str, object],
+    supplier_interpretation: Mapping[str, object],
 ) -> list[str]:
     actions = [
         "Xác minh tên pháp nhân, giấy phép kinh doanh và tài khoản nhận tiền trước khi đặt cọc.",
@@ -158,6 +159,9 @@ def _recommended_actions(
         actions.append(
             "Yêu cầu bằng chứng độc lập về năng lực sản xuất, địa chỉ cơ sở và vai trò nhà máy/thương mại."
         )
+    for item in _as_list(supplier_interpretation.get("recommended_verifications")):
+        if isinstance(item, str) and item.strip():
+            actions.append(item.strip())
     return list(dict.fromkeys(actions))
 
 
@@ -278,5 +282,6 @@ def build_report(
         recommended_actions_vi=_recommended_actions(
             risk=risk,
             identity=identity,
+            supplier_interpretation=supplier_interpretation,
         ),
     )
