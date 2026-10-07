@@ -1140,6 +1140,14 @@ def test_account_state_uses_persisted_entitlement_and_current_usage(store):
                        VALUES ('CUSTOMER', %s, floor(extract(epoch FROM now()) / 86400)::bigint, 7)""",
                     (str(user["id"]),),
                 )
+        with store.connect() as conn:
+            conn.execute(
+                """INSERT INTO entitlements
+                     (id, user_id, entitlement, source, starts_at, expires_at, status)
+                   VALUES (%s, %s, 'ANALYSIS_ACCESS', 'MVP_TRIAL',
+                           now() + interval '10 days', now() + interval '40 days', 'ACTIVE')""",
+                (uuid4(), user["id"]),
+            )
         state = store.get_account_state(
             user["id"], customer_limit=20, window_seconds=86400,
         )
@@ -1148,6 +1156,7 @@ def test_account_state_uses_persisted_entitlement_and_current_usage(store):
         assert state["plan"] == "MVP_TRIAL"
         assert state["trial"]["active"] is True
         assert state["trial"]["status"] == "ACTIVE"
+        assert state["trial"]["starts_at"] < state["trial"]["expires_at"]
         assert state["usage"]["used"] == 7
         assert state["usage"]["limit"] == 20
         assert state["usage"]["remaining"] == 13
