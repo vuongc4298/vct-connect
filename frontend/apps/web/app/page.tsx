@@ -2,11 +2,12 @@
 
 import { SignInButton, SignUpButton, UserButton, useAuth } from "@clerk/nextjs";
 import { useEffect, useRef, useState, type FormEvent, type ReactNode } from "react";
-import { FIXTURE_URL, type Analysis } from "@vct/contracts";
-import { ApiError, getAnalysis, getGuestAnalysis, submitGuestAnalysis } from "@vct/api-client";
+import { FIXTURE_URL, type Analysis, type ReportV1 } from "@vct/contracts";
+import { ApiError, getAnalysis, getGuestAnalysis, getReport, submitGuestAnalysis } from "@vct/api-client";
 import { submitSelectedAnalysis } from "./analysis-request";
 import { analysisPresentation } from "./analysis-status";
 import { ExtractionEvidence, isFixtureResult } from "./extraction-evidence";
+import { FullReport } from "./full-report";
 
 const DEMO_SIGNALS = [
   { tone: "risk", title: "Thông tin pháp nhân chưa đầy đủ", body: "Kịch bản demo chưa có mã đăng ký kinh doanh để đối chiếu chéo." },
@@ -402,6 +403,9 @@ export default function Page() {
   const [savedPage, setSavedPage] = useState<File | null>(null);
   const [requestedMethod, setRequestedMethod] = useState<string | null>(null);
   const [analysis, setAnalysis] = useState<Analysis | null>(null);
+  const [report, setReport] = useState<ReportV1 | null>(null);
+  const [reportLoading, setReportLoading] = useState(false);
+  const [reportError, setReportError] = useState("");
   const [id, setId] = useState<string | null>(null);
   const [error, setError] = useState("");
   const [busy, setBusy] = useState(false);
@@ -419,7 +423,7 @@ export default function Page() {
   }
 
   useEffect(() => {
-    setId(null); setAnalysis(null); setError(""); setDelayed(false); setView("analysis"); setHistoryReady(false); setHistoryOwnerId(null); setHistoryStorageError(false);
+    setId(null); setAnalysis(null); setReport(null); setReportError(""); setReportLoading(false); setError(""); setDelayed(false); setView("analysis"); setHistoryReady(false); setHistoryOwnerId(null); setHistoryStorageError(false);
     clearSavedPage(); setRequestedMethod(null);
     if (!userId) { setHistory([]); setSelectedHistoryId(null); return; }
     const storageKey = `vct-connect-demo-history:${userId}`;
@@ -497,6 +501,34 @@ export default function Page() {
   }, [getToken, id, isSignedIn]);
 
   useEffect(() => {
+    if (!id || !isSignedIn || analysis?.status !== "COMPLETED") return;
+    let active = true;
+    setReportLoading(true);
+    setReportError("");
+    void getReport(id, { getToken }).then(
+      value => {
+        if (!active) return;
+        setReport(value);
+        setReportError("");
+      },
+      cause => {
+        if (!active) return;
+        setReport(null);
+        setReportError(
+          cause instanceof ApiError && cause.status === 404
+            ? "Phân tích này chưa có báo cáo đánh giá đã lưu. Chỉ hiển thị bằng chứng trích xuất hiện có."
+            : cause instanceof Error
+              ? cause.message
+              : "Không thể tải báo cáo đánh giá",
+        );
+      },
+    ).finally(() => {
+      if (active) setReportLoading(false);
+    });
+    return () => { active = false; };
+  }, [analysis?.status, getToken, id, isSignedIn]);
+
+  useEffect(() => {
     if (!id || analysis?.status !== "COMPLETED" || !historyReady || !isFixtureResult(analysis.result)) return;
     const fixture = analysis.result;
     setHistory(current => {
@@ -520,7 +552,7 @@ export default function Page() {
   async function submit(event: FormEvent) {
     event.preventDefault();
     clearAnalysisQuery();
-    setBusy(true); setError(""); setAnalysis(null); setId(null); setDelayed(false);
+    setBusy(true); setError(""); setAnalysis(null); setReport(null); setReportError(""); setReportLoading(false); setId(null); setDelayed(false);
     setRequestedMethod(savedPage ? "USER_UPLOAD" : url === FIXTURE_URL ? "FIXTURE" : "PUBLIC_HTTP");
     try {
       const submitted = await submitSelectedAnalysis(url, savedPage, { getToken });
@@ -540,6 +572,9 @@ export default function Page() {
     setView("analysis");
     setId(null);
     setAnalysis(null);
+    setReport(null);
+    setReportError("");
+    setReportLoading(false);
     setError("");
     setRequestedMethod(null);
     clearSavedPage();
@@ -565,8 +600,12 @@ export default function Page() {
         </section>
         {error && <div role="alert" className="error-banner"><span>!</span><div><strong>Không thể tiếp tục</strong><p>{error === "Analysis not found" ? "Không tìm thấy phân tích. Vui lòng gửi lại dữ liệu demo." : error}</p></div></div>}
         {id && <ProgressCard analysis={analysis} delayed={delayed} requestedMethod={requestedMethod} />}
-        {id && analysis?.status === "COMPLETED" && isFixtureResult(analysis.result) && <DemoReport analysisId={id} sourceUrl={analysis.result.source_url} />}
-        {id && analysis?.status === "COMPLETED" && !isFixtureResult(analysis.result) && <ExtractionEvidence analysis={analysis} />}
+        {id && analysis?.status === "COMPLETED" && reportLoading &&
+          <section className="report-loading" aria-live="polite"><i className="spinner" /><span>Đang tải báo cáo đánh giá đã lưu…</span></section>}
+        {id && analysis?.status === "COMPLETED" && report && <FullReport report={report} />}
+        {id && analysis?.status === "COMPLETED" && !reportLoading && !report && reportError &&
+          <div className="report-unavailable" role="status"><span>i</span><div><strong>Chưa có báo cáo đánh giá đầy đủ</strong><p>{reportError}</p></div></div>}
+        {id && analysis?.status === "COMPLETED" && !report && !isFixtureResult(analysis.result) && <ExtractionEvidence analysis={analysis} />}
         {!id && <section className="empty-guide"><div className="guide-icon">◎</div><h2>Một URL, bằng chứng rõ nguồn</h2><p>URL 1688, Taobao và Alibaba công khai được trích xuất khi truy cập được; URL mẫu chạy báo cáo fixture minh họa. Trang bị chặn sẽ hiển thị trạng thái rõ ràng.</p><div><span>1</span>Gửi URL<i /><span>2</span>Chờ xử lý<i /><span>3</span>Xem kết quả</div></section>}
       </main>}
     </div>
