@@ -241,15 +241,24 @@ function ProgressCard({ analysis, delayed, requestedMethod }: { analysis: Analys
   const presentation = analysisPresentation(analysis);
   const method = analysis?.extraction_method ?? requestedMethod;
   const liveExtraction = method === "PUBLIC_HTTP" || method === "PUBLIC_BROWSER" || method === "USER_UPLOAD" || method === "EXTENSION_DOM";
+  const stepClass = (step: number) => {
+    if (step === 0) return "done";
+    if (presentation.final) return "";
+    if (presentation.progressStep > step) return "done";
+    return presentation.progressStep === step ? "current" : "";
+  };
+  const stepSymbol = (step: number) => presentation.progressStep > step || presentation.complete ? "✓" : String(step + 1);
   return <section className="progress-card" aria-live="polite">
     <div className="progress-top"><div><span className={`status-orb ${presentation.orbClass}`}>{presentation.orbSymbol}</span><div><strong>{presentation.headline}</strong><p>{presentation.detail}</p></div></div><Pill tone={presentation.pillTone}>{presentation.pillLabel}</Pill></div>
-    <div className="steps">
-      <div className="done"><span>✓</span><strong>Đã nhận URL</strong><small>Kiểm tra nguồn</small></div><i />
-      <div className={presentation.complete ? "done" : presentation.final ? "" : "current"}><span>{presentation.complete ? "✓" : "2"}</span><strong>{liveExtraction ? "Trích xuất" : "Phân tích"}</strong><small>{liveExtraction ? "Đọc bằng chứng" : "Tổng hợp tín hiệu"}</small></div><i />
-      <div className={presentation.complete ? "done" : ""}><span>{presentation.complete ? "✓" : "3"}</span><strong>{liveExtraction ? "Bằng chứng" : "Báo cáo"}</strong><small>{liveExtraction ? "Độ phủ và nguồn" : "Đưa ra khuyến nghị"}</small></div>
+    <div className="steps report-steps" aria-label="Tiến độ phân tích">
+      <div className={stepClass(0)}><span>✓</span><strong>Đã nhận URL</strong><small>Kiểm tra nguồn</small></div><i />
+      <div className={stepClass(1)}><span>{stepSymbol(1)}</span><strong>{liveExtraction ? "Trích xuất" : "Chuẩn bị dữ liệu"}</strong><small>{liveExtraction ? "Đọc bằng chứng" : "Nạp dữ liệu"}</small></div><i />
+      <div className={stepClass(2)}><span>{stepSymbol(2)}</span><strong>Đánh giá</strong><small>Risk · Confidence · Coverage</small></div><i />
+      <div className={stepClass(3)}><span>{stepSymbol(3)}</span><strong>Báo cáo</strong><small>Lưu kết quả trước hoàn tất</small></div>
     </div>
+    {presentation.nextAction && <p className="progress-next-action"><strong>Bước tiếp theo:</strong> {presentation.nextAction}</p>}
     {presentation.retrying && analysis?.next_retry_at && <p className="delay-note">Lần thử tiếp theo dự kiến lúc {new Date(analysis.next_retry_at).toLocaleTimeString("vi-VN")}.</p>}
-    {delayed && !presentation.terminal && !presentation.retrying && <p className="delay-note">Quá trình đang lâu hơn dự kiến. VCT Connect sẽ tiếp tục kiểm tra.</p>}
+    {delayed && !presentation.terminal && !presentation.retrying && <p className="delay-note">Quá trình đang lâu hơn dự kiến. VCT Connect sẽ tiếp tục kiểm tra; không cần gửi lại yêu cầu.</p>}
   </section>;
 }
 
