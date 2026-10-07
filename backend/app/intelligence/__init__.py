@@ -8,6 +8,14 @@ from .contracts import (
     SupplierInterpretation,
 )
 from .interpretation import InterpretationRun, interpret_supplier_data
+from .identity import (
+    IDENTITY_SCHEMA_VERSION,
+    FactoryTraderAssessment,
+    IdentityEvidence,
+    aggregate_identity_evidence,
+    assess_supplier_identity,
+    supplier_identity_evidence,
+)
 from .provider import (
     EmbeddingProvider,
     EmbeddingResponse,
@@ -40,6 +48,8 @@ from .yescale import YESCALE_BASE_URL, YEScaleProvider
 __all__ = [
     "PIPELINE_VERSION", "PROMPT_VERSION", "SCHEMA_VERSION",
     "EvidenceSignal", "SupplierInterpretation", "InterpretationRun",
+    "IDENTITY_SCHEMA_VERSION", "FactoryTraderAssessment", "IdentityEvidence",
+    "aggregate_identity_evidence", "assess_supplier_identity", "supplier_identity_evidence",
     "EmbeddingProvider", "EmbeddingResponse", "LLMProvider", "ProviderResponse", "ProviderUsage",
     "REVIEW_SCHEMA_VERSION", "ComplaintTopic", "ReviewAnalysis",
     "ReviewEvidence", "ReviewPattern", "analyze_review_signals",
