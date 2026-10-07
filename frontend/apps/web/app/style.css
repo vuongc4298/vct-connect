@@ -397,6 +397,12 @@ button { cursor: pointer; }
 .account-usage-card p { margin: .65rem 0 .2rem; color: var(--muted); font-size: .68rem; }
 .account-usage-card small { color: #8b9893; font-size: .58rem; }
 
+.server-history-panel { position: static; overflow: hidden; }
+.server-history-list { max-height: none; }
+.server-history-entry { cursor: default; }
+.history-source-url { overflow: hidden; color: #7c8b85; font-size: .58rem; text-overflow: ellipsis; white-space: nowrap; }
+.history-open-button { justify-self: start; margin-top: .15rem; }
+
 /* Analysis history and supplier notes */
 .history-dashboard { width: min(1320px, calc(100% - 3rem)); }
 .history-notice { display: flex; align-items: flex-start; gap: .65rem; margin-bottom: 1rem; padding: .75rem .9rem; border: 1px solid #d8e7df; border-radius: 10px; color: #5d7168; background: #f2f8f5; }
