@@ -87,7 +87,10 @@ class Store:
                    WHERE user_id = %s
                      AND entitlement = 'ANALYSIS_ACCESS'
                      AND source = 'MVP_TRIAL'
-                   ORDER BY starts_at DESC
+                   ORDER BY (status = 'ACTIVE'
+                             AND starts_at <= now()
+                             AND (expires_at IS NULL OR expires_at > now())) DESC,
+                            starts_at DESC
                    LIMIT 1""",
                 (user_id,),
             ).fetchone()
