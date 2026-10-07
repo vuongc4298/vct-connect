@@ -179,3 +179,27 @@ export type GuestPreviewV1 = {
   limitations_vi: string[];
   registration_required: true;
 };
+
+
+export type AccountState = {
+  user: {
+    id: string;
+    email: string | null;
+    role: "CUSTOMER";
+  };
+  plan: "FREE" | "MVP_TRIAL";
+  trial: {
+    active: boolean;
+    starts_at: string | null;
+    expires_at: string | null;
+    status: string | null;
+  };
+  usage: {
+    used: number;
+    limit: number;
+    remaining: number;
+    window_seconds: number;
+    starts_at: string;
+    resets_at: string;
+  };
+};
