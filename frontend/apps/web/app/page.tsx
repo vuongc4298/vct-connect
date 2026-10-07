@@ -2,14 +2,15 @@
 
 import { SignInButton, SignUpButton, UserButton, useAuth } from "@clerk/nextjs";
 import { useEffect, useRef, useState, type FormEvent, type ReactNode } from "react";
-import { FIXTURE_URL, type AccountState, type Analysis, type GuestPreviewV1, type ReportV1 } from "@vct/contracts";
-import { ApiError, getAccountState, getAnalysis, getGuestAnalysis, getGuestPreview, getReport, submitGuestAnalysis } from "@vct/api-client";
+import { FIXTURE_URL, type AccountState, type Analysis, type AnalysisHistoryItem, type GuestPreviewV1, type ReportV1 } from "@vct/contracts";
+import { ApiError, getAccountState, getAnalysis, getAnalysisHistory, getGuestAnalysis, getGuestPreview, getReport, submitGuestAnalysis } from "@vct/api-client";
 import { submitSelectedAnalysis } from "./analysis-request";
 import { analysisPresentation } from "./analysis-status";
 import { ExtractionEvidence, isFixtureResult } from "./extraction-evidence";
 import { FullReport } from "./full-report";
 import { GuestPreview } from "./guest-preview";
 import { AccountStateView } from "./account-state";
+import { AnalysisHistory } from "./analysis-history";
 
 const DEMO_SIGNALS = [
   { tone: "risk", title: "Thông tin pháp nhân chưa đầy đủ", body: "Kịch bản demo chưa có mã đăng ký kinh doanh để đối chiếu chéo." },
@@ -432,11 +433,9 @@ export default function Page() {
   const [busy, setBusy] = useState(false);
   const [delayed, setDelayed] = useState(false);
   const [view, setView] = useState<WorkspaceView>("analysis");
-  const [history, setHistory] = useState<HistoryEntry[]>([]);
-  const [historyReady, setHistoryReady] = useState(false);
-  const [historyOwnerId, setHistoryOwnerId] = useState<string | null>(null);
-  const [historyStorageError, setHistoryStorageError] = useState(false);
-  const [selectedHistoryId, setSelectedHistoryId] = useState<string | null>(null);
+  const [analysisHistory, setAnalysisHistory] = useState<AnalysisHistoryItem[]>([]);
+  const [historyLoading, setHistoryLoading] = useState(false);
+  const [historyError, setHistoryError] = useState("");
   const [accountState, setAccountState] = useState<AccountState | null>(null);
   const [accountError, setAccountError] = useState("");
   const [accountLoading, setAccountLoading] = useState(false);
@@ -447,24 +446,27 @@ export default function Page() {
   }
 
   useEffect(() => {
-    setId(null); setAnalysis(null); setReport(null); setReportError(""); setReportLoading(false); setError(""); setDelayed(false); setView("analysis"); setHistoryReady(false); setHistoryOwnerId(null); setHistoryStorageError(false); setAccountState(null); setAccountError(""); setAccountLoading(false);
+    setId(null); setAnalysis(null); setReport(null); setReportError(""); setReportLoading(false); setError(""); setDelayed(false); setView("analysis");
+    setAnalysisHistory([]); setHistoryLoading(false); setHistoryError("");
+    setAccountState(null); setAccountError(""); setAccountLoading(false);
     clearSavedPage(); setRequestedMethod(null);
-    if (!userId) { setHistory([]); setSelectedHistoryId(null); return; }
-    const storageKey = `vct-connect-demo-history:${userId}`;
-    try {
-      const stored = window.localStorage.getItem(storageKey);
-      const parsed = stored ? JSON.parse(stored) : null;
-      const initial = Array.isArray(parsed) && parsed.length ? parsed as HistoryEntry[] : DEMO_HISTORY_SEED;
-      setHistory(initial);
-      setSelectedHistoryId(initial[0]?.id ?? null);
-    } catch {
-      setHistory(DEMO_HISTORY_SEED);
-      setSelectedHistoryId(DEMO_HISTORY_SEED[0].id);
-      setHistoryStorageError(true);
-    }
-    setHistoryOwnerId(userId);
-    setHistoryReady(true);
   }, [userId]);
+
+  useEffect(() => {
+    if (!isSignedIn || !userId || view !== "history") return;
+    let active = true;
+    setHistoryLoading(true);
+    setHistoryError("");
+    void getAnalysisHistory({ getToken }).then(
+      value => { if (active) setAnalysisHistory(value); },
+      cause => {
+        if (!active) return;
+        setAnalysisHistory([]);
+        setHistoryError(cause instanceof Error ? cause.message : "Không thể tải lịch sử phân tích");
+      },
+    ).finally(() => { if (active) setHistoryLoading(false); });
+    return () => { active = false; };
+  }, [getToken, isSignedIn, userId, view]);
 
   useEffect(() => {
     if (!isSignedIn || !userId || view !== "account") return;
@@ -501,16 +503,6 @@ export default function Page() {
     next.searchParams.delete("analysis");
     window.history.replaceState(null, "", `${next.pathname}${next.search}${next.hash}`);
   }
-
-  useEffect(() => {
-    if (!userId || !historyReady || historyOwnerId !== userId) return;
-    try {
-      window.localStorage.setItem(`vct-connect-demo-history:${userId}`, JSON.stringify(history));
-      setHistoryStorageError(false);
-    } catch {
-      setHistoryStorageError(true);
-    }
-  }, [history, historyOwnerId, historyReady, userId]);
 
   useEffect(() => {
     if (!id || !isSignedIn) return;
@@ -568,27 +560,6 @@ export default function Page() {
     return () => { active = false; };
   }, [analysis?.status, getToken, id, isSignedIn]);
 
-  useEffect(() => {
-    if (!id || analysis?.status !== "COMPLETED" || !historyReady || !isFixtureResult(analysis.result)) return;
-    const fixture = analysis.result;
-    setHistory(current => {
-      if (current.some(entry => entry.id === id)) return current;
-      const completedEntry: HistoryEntry = {
-        id,
-        supplier: "Developer Fixture Supplier",
-        platform: "1688",
-        sourceUrl: fixture.source_url,
-        analyzedAt: new Date().toISOString(),
-        riskScore: 64,
-        confidence: 72,
-        profile: "medium",
-        notes: "",
-        origin: "live",
-      };
-      return [completedEntry, ...current];
-    });
-  }, [analysis, historyReady, id, url]);
-
   async function submit(event: FormEvent) {
     event.preventDefault();
     clearAnalysisQuery();
@@ -603,8 +574,19 @@ export default function Page() {
     } finally { setBusy(false); }
   }
 
-  function updateHistoryNote(entryId: string, notes: string) {
-    setHistory(current => current.map(entry => entry.id === entryId ? { ...entry, notes } : entry));
+  function openHistoryAnalysis(item: AnalysisHistoryItem) {
+    const next = new URL(window.location.href);
+    next.searchParams.set("analysis", item.id);
+    window.history.replaceState(null, "", `${next.pathname}${next.search}${next.hash}`);
+    setView("analysis");
+    setId(item.id);
+    setAnalysis(null);
+    setReport(null);
+    setReportError("");
+    setReportLoading(false);
+    setError("");
+    setDelayed(false);
+    setRequestedMethod(item.extraction_method);
   }
 
   function showNewAnalysis() {
@@ -624,10 +606,10 @@ export default function Page() {
   if (!isSignedIn) return <Landing />;
 
   return <div className="product-shell">
-    <Sidebar view={view} historyCount={history.length} onViewChange={setView} />
+    <Sidebar view={view} historyCount={analysisHistory.length} onViewChange={setView} />
     <div className="workspace">
       <header className="workspace-header"><div><span>Không gian Pilot</span><i>/</i><strong>{view === "analysis" ? "Phân tích mới" : view === "history" ? "Lịch sử" : "Tài khoản"}</strong></div><nav className="mobile-nav" aria-label="Điều hướng di động"><button type="button" className={view === "analysis" ? "active" : ""} aria-current={view === "analysis" ? "page" : undefined} onClick={() => setView("analysis")}>Phân tích</button><button type="button" className={view === "history" ? "active" : ""} aria-current={view === "history" ? "page" : undefined} onClick={() => setView("history")}>Lịch sử</button><button type="button" className={view === "account" ? "active" : ""} aria-current={view === "account" ? "page" : undefined} onClick={() => setView("account")}>Tài khoản</button></nav><div className="header-tools"><button type="button" className="icon-button" aria-label="Thông báo">♢<i /></button><span className="language">VI</span><UserButton /></div></header>
-      {view === "history" ? <HistoryWorkspace history={history} selectedId={selectedHistoryId} storageError={historyStorageError} onSelect={setSelectedHistoryId} onNoteChange={updateHistoryNote} onNewAnalysis={showNewAnalysis} /> : view === "account" ? (accountState ? <AccountStateView state={accountState} /> : <main className="dashboard account-dashboard"><section className="account-card" aria-live="polite">{accountLoading ? <p>Đang tải trạng thái tài khoản…</p> : <p role={accountError ? "alert" : undefined}>{accountError || "Chưa có trạng thái tài khoản."}</p>}</section></main>) : <main className="dashboard" id="analysis">
+      {view === "history" ? <AnalysisHistory items={analysisHistory} loading={historyLoading} error={historyError} onOpen={openHistoryAnalysis} onNewAnalysis={showNewAnalysis} /> : view === "account" ? (accountState ? <AccountStateView state={accountState} /> : <main className="dashboard account-dashboard"><section className="account-card" aria-live="polite">{accountLoading ? <p>Đang tải trạng thái tài khoản…</p> : <p role={accountError ? "alert" : undefined}>{accountError || "Chưa có trạng thái tài khoản."}</p>}</section></main>) : <main className="dashboard" id="analysis">
         <section className="dashboard-intro"><div><Pill tone="good">BẢN DEMO TƯƠNG TÁC</Pill><h1>Phân tích nhà cung cấp</h1><p>Dán liên kết sản phẩm 1688, sản phẩm / cửa hàng Taobao hoặc sản phẩm / hồ sơ công ty Alibaba để xem bằng chứng công khai và độ phủ. URL mẫu hiển thị báo cáo rủi ro minh họa.</p></div>{(analysis?.status === "COMPLETED" || analysis?.status === "FAILED_FINAL") && <button type="button" className="button button-ghost" onClick={showNewAnalysis}>+ Phân tích mới</button>}</section>
         <section className="analyze-card">
           <form onSubmit={submit}>
