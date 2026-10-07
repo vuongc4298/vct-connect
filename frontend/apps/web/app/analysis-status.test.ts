@@ -121,10 +121,10 @@ for (const [status, reason, guidance] of [
     assert.equal(view.shouldPoll, false);
     assert.equal(view.complete, false);
     assert.equal(view.retrying, false);
-    assert.match(view.detail, guidance);
+    assert.match(view.nextAction ?? "", guidance);
     assert.ok(view.detail.includes(reason));
-    assert.doesNotMatch(view.detail, /Hệ thống sẽ tự động thử lại/);
-    assert.equal(extractionRecovery(status, reason), view.detail.split("URL này. ")[1]);
+    assert.doesNotMatch(view.nextAction ?? "", /Hệ thống sẽ tự động thử lại/);
+    assert.equal(extractionRecovery(status, reason), view.nextAction);
   });
 }
 
@@ -136,7 +136,45 @@ for (const status of ["SUCCESS", "PARTIAL"] satisfies ExtractionStatus[]) {
     });
     assert.equal(view.complete, true);
     assert.equal(view.shouldPoll, false);
-    assert.match(view.detail, /chưa có điểm rủi ro/);
+    assert.match(view.detail, /Báo cáo đánh giá đã lưu/);
+    assert.doesNotMatch(view.detail, /chưa có điểm rủi ro/);
     assert.equal(extractionRecovery(status), null);
   });
 }
+
+
+test("assessment and reporting states expose the real durable pipeline phases", () => {
+  const assessing = analysisPresentation({
+    status: "ASSESSING", attempt_count: 1, failure_code: null,
+    extraction_method: "PUBLIC_HTTP",
+  });
+  assert.equal(assessing.shouldPoll, true);
+  assert.equal(assessing.progressStep, 2);
+  assert.equal(assessing.pillLabel, "ĐANG ĐÁNH GIÁ");
+  assert.match(assessing.headline, /đánh giá bằng chứng/i);
+  assert.match(assessing.detail, /độ tin cậy.*độ phủ/i);
+
+  const reporting = analysisPresentation({
+    status: "REPORTING", attempt_count: 1, failure_code: null,
+    extraction_method: "PUBLIC_HTTP",
+  });
+  assert.equal(reporting.shouldPoll, true);
+  assert.equal(reporting.progressStep, 3);
+  assert.equal(reporting.pillLabel, "ĐANG LẬP BÁO CÁO");
+  assert.match(reporting.detail, /lưu báo cáo.*đánh dấu hoàn tất/i);
+});
+
+test("queued, retryable, and final states give an explicit next action without pretending completion", () => {
+  const queued = analysisPresentation({ status: "QUEUED", attempt_count: 0, failure_code: null });
+  assert.equal(queued.progressStep, 0);
+  assert.equal(queued.pillLabel, "ĐANG CHỜ");
+  assert.match(queued.detail, /Không cần gửi lại/);
+
+  const retrying = analysisPresentation({ status: "FAILED_RETRYABLE", attempt_count: 2, failure_code: "UPSTREAM" });
+  assert.match(retrying.nextAction ?? "", /Không cần gửi lại/);
+  assert.equal(retrying.complete, false);
+
+  const failed = analysisPresentation({ status: "FAILED_FINAL", attempt_count: 5, failure_code: "PROCESSING_ERROR" });
+  assert.match(failed.nextAction ?? "", /Tạo một phân tích mới/);
+  assert.equal(failed.complete, false);
+});
