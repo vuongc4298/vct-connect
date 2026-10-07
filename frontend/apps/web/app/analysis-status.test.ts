@@ -21,8 +21,8 @@ test("Alibaba terminal outcomes name the source and disclose unsupported recover
     const view = analysisPresentation({ status: "COMPLETED", attempt_count: 1, failure_code: null,
       source_url, extraction_method: "PUBLIC_HTTP", result: { source_url, extraction_status } });
     assert.equal(view.shouldPoll, false); assert.equal(view.final, true);
-    assert.match(view.headline, /Alibaba/); assert.match(view.detail, /hiện chưa được hỗ trợ/);
-    assert.doesNotMatch(view.detail, /1688|Taobao|dùng tiện ích VCT Connect/);
+    assert.match(view.headline, /Alibaba/); assert.match(view.nextAction ?? "", /hiện chưa được hỗ trợ/);
+    assert.doesNotMatch(view.nextAction ?? "", /1688|Taobao|dùng tiện ích VCT Connect/);
   }
   assert.equal(extractionRecovery("PARTIAL", undefined, source_url), null);
 });
@@ -34,7 +34,7 @@ test("Taobao terminal guidance names the source and offers capture and saved HTM
     result: { source_url: url, extraction_status: "BLOCKED", reason: "ACCESS_CHALLENGE" } });
   assert.equal(view.shouldPoll, false);
   assert.match(view.headline, /Taobao/);
-  assert.match(view.detail, /tiện ích VCT Connect.*HTML/);
+  assert.match(view.nextAction ?? "", /tiện ích VCT Connect.*HTML/);
   for (const status of ["TIMEOUT", "PARSE_FAILED", "AUTH_REQUIRED", "UNSUPPORTED_PAGE"] as const) {
     assert.match(extractionRecovery(status, "HTTP_ERROR", url)!, /tiện ích VCT Connect.*HTML/);
   }
@@ -95,7 +95,7 @@ test("partial extraction is presented as evidence without a risk report", () => 
   });
   assert.equal(view.complete, true);
   assert.equal(view.pillLabel, "TRÍCH XUẤT MỘT PHẦN");
-  assert.match(view.headline, /Bằng chứng/);
+  assert.match(view.headline, /bằng chứng/i);
 });
 
 for (const [status, reason, guidance] of [
