@@ -162,6 +162,30 @@ export function FullReport({ report }: { report: ReportV1 }) {
       </article>
     </div>
 
+    <section className="report-dimensions" aria-label="Các chiều rủi ro">
+      <div className="section-heading">
+        <div><span className="card-label">CÁC CHIỀU RỦI RO</span><h3>Điểm theo từng hạng mục</h3></div>
+        <span>{report.risk.dimensions.length} hạng mục</span>
+      </div>
+      <div className="report-dimension-list">
+        {report.risk.dimensions.map((item, index) => {
+          const dimension = typeof item.dimension === "string" ? item.dimension : `dimension-${index}`;
+          const dimensionRisk = typeof item.risk === "number" ? item.risk : null;
+          const confidence = typeof item.effective_confidence === "number" ? item.effective_confidence : null;
+          const ids = Array.isArray(item.evidence_ids)
+            ? item.evidence_ids.filter((value): value is string => typeof value === "string")
+            : [];
+          return <article className={`report-dimension ${dimensionRisk === null ? "unknown" : ""}`} key={dimension}>
+            <div><strong>{DIMENSIONS[dimension] ?? dimension}</strong><span>{dimensionRisk === null ? "Chưa đủ bằng chứng" : `${Math.round(dimensionRisk)}/100`}</span></div>
+            <div className="dimension-meta">
+              <small>Độ tin cậy hiệu dụng: {confidence === null ? "chưa xác định" : scorePercent(confidence)}</small>
+              {ids.length > 0 && <span>{ids.map(id => <a href={`#${evidenceAnchor(id)}`} key={id}>{id}</a>)}</span>}
+            </div>
+          </article>;
+        })}
+      </div>
+    </section>
+
     <div className="report-grid">
       <article className="identity-card">
         <div className="section-heading">
