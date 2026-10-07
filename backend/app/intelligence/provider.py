@@ -3,7 +3,7 @@ from __future__ import annotations
 
 from dataclasses import dataclass
 from decimal import Decimal
-from typing import Mapping, Protocol, Sequence
+from typing import Literal, Mapping, Protocol, Sequence
 
 
 @dataclass(frozen=True)
@@ -52,6 +52,28 @@ class LLMProvider(Protocol):
         metadata: Mapping[str, str] | None = None,
     ) -> ProviderResponse:
         """Return one non-streaming JSON-object completion."""
+
+
+@dataclass(frozen=True)
+class VisualInput:
+    media_id: str
+    data_url: str
+    detail: Literal["low", "high", "auto"] = "low"
+
+
+class MultimodalLLMProvider(Protocol):
+    def generate_multimodal_json(
+        self,
+        *,
+        model: str,
+        system_prompt: str,
+        user_prompt: str,
+        images: Sequence[VisualInput],
+        temperature: float,
+        max_tokens: int,
+        metadata: Mapping[str, str] | None = None,
+    ) -> ProviderResponse:
+        """Return one structured completion grounded in supplied image inputs."""
 
 
 class EmbeddingProvider(Protocol):
