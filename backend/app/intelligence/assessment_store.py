@@ -1,4 +1,4 @@
-"""Durable Story 3.7 assessment persistence and REPORTING handoff."""
+"""Durable assessment persistence and atomic REPORTING handoff."""
 from __future__ import annotations
 
 import json
