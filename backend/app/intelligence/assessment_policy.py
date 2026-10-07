@@ -77,6 +77,7 @@ def review_score_inputs(
 ) -> tuple[list[DimensionInput], list[dict], list[dict], float]:
     findings: list[dict] = []
     evidence: list[dict] = []
+    topic_evidence: list[dict] = []
     by_dimension: dict[str, list[RiskSignal]] = {}
     media_factors = media_review_factors(media_run)
     complaint_topics = (
@@ -94,7 +95,7 @@ def review_score_inputs(
             "payload": topic.model_dump(mode="json"),
         })
         for evidence_id in topic.evidence_ids:
-            evidence.append({
+            topic_evidence.append({
                 "evidence_id": evidence_id,
                 "source_kind": "REVIEW",
                 "source_field": "reviews",
@@ -187,6 +188,11 @@ def review_score_inputs(
             })
     if manipulation_signals:
         by_dimension["REVIEW_MANIPULATION"] = manipulation_signals
+
+    # Preserve existing suspicious-pattern evidence payloads when a review is
+    # also part of a recurring complaint topic. Final evidence dedupe is
+    # first-write-wins, so deferred topic linkage is appended afterward.
+    evidence.extend(topic_evidence)
 
     dimensions = [
         DimensionInput(
