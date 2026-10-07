@@ -8,7 +8,7 @@
   "scripts": {
     "dev": "npm run dev -w @vct/web",
     "build": "npm run build -w @vct/web && npm run build -w @vct/extension",
-    "test": "tsx --test packages/api-client/src/index.test.ts apps/web/app/analysis-request.test.ts apps/web/app/analysis-status.test.ts apps/web/app/extraction-evidence.test.tsx apps/web/app/full-report.test.tsx apps/web/app/guest-preview.test.tsx apps/web/app/api/_backend.test.ts apps/web/app/api/v1/guest-analyses/route.test.ts apps/extension/src/capture.test.ts apps/extension/src/capture-result.test.ts",
+    "test": "tsx --test packages/api-client/src/index.test.ts apps/web/app/analysis-request.test.ts apps/web/app/analysis-status.test.ts apps/web/app/extraction-evidence.test.tsx apps/web/app/full-report.test.tsx apps/web/app/guest-preview.test.tsx apps/web/app/account-state.test.tsx apps/web/app/api/_backend.test.ts apps/web/app/api/v1/guest-analyses/route.test.ts apps/extension/src/capture.test.ts apps/extension/src/capture-result.test.ts",
     "typecheck": "tsc -b packages/contracts packages/api-client apps/web apps/extension"
   },
   "devDependencies": {
