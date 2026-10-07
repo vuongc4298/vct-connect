@@ -32,6 +32,19 @@ from .reviews import (
     analyze_review_signals,
     analyze_supplier_reviews,
 )
+from .scoring import (
+    CONFIDENCE_FACTOR_WEIGHTS,
+    CRITICAL_RISK_FLOOR,
+    DIMENSION_WEIGHTS,
+    RISK_SCHEMA_VERSION,
+    SCORING_VERSION,
+    ConfidenceFactors,
+    DimensionInput,
+    DimensionResult,
+    RiskAssessment,
+    RiskSignal,
+    score_supplier_risk,
+)
 from .semantic_reviews import (
     DEFAULT_SEMANTIC_THRESHOLD,
     SEMANTIC_REVIEW_SCHEMA_VERSION,
@@ -58,5 +71,8 @@ __all__ = [
     "CombinedReviewPattern", "SemanticCluster", "SemanticReviewAssessment",
     "SemanticReviewRun", "StructuredReviewFinding", "cluster_near_duplicates",
     "interpret_reviews",
+    "CONFIDENCE_FACTOR_WEIGHTS", "CRITICAL_RISK_FLOOR", "DIMENSION_WEIGHTS",
+    "RISK_SCHEMA_VERSION", "SCORING_VERSION", "ConfidenceFactors", "DimensionInput",
+    "DimensionResult", "RiskAssessment", "RiskSignal", "score_supplier_risk",
     "YESCALE_BASE_URL", "YEScaleProvider", "interpret_supplier_data",
 ]
