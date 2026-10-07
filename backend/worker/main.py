@@ -337,7 +337,7 @@ def process_azure_once(
                     continue
 
                 # Persistence has committed. A settlement failure is replayable:
-                # redelivery observes COMPLETED and never recomputes the result.
+                # redelivery observes REPORTING/COMPLETED and never recomputes the result.
                 if clock() >= settle_deadline:
                     return True
                 _complete_message(receiver, message, analysis_id)
