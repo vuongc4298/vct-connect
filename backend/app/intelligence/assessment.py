@@ -73,9 +73,10 @@ def _review_score_inputs(
         assessment = review_analysis.assessment
         review_reliability = assessment.review_reliability
         review_confidence = assessment.confidence
-        for finding in assessment.findings:
+        for finding_index, finding in enumerate(assessment.findings):
+            stable_key = f"review:{finding_index}:{finding.category}:" + ",".join(finding.evidence_ids)
             findings.append({
-                "finding_key": "review:" + finding.category + ":" + ",".join(finding.evidence_ids),
+                "finding_key": stable_key,
                 "finding_type": "REVIEW_FINDING",
                 "dimension": _CATEGORY_DIMENSION.get(finding.category),
                 "severity": _SEVERITY[finding.severity],
@@ -85,7 +86,7 @@ def _review_score_inputs(
             dimension = _CATEGORY_DIMENSION.get(finding.category)
             if dimension is not None and finding.severity != "NONE":
                 by_dimension.setdefault(dimension, []).append(RiskSignal(
-                    evidence_id="review-finding:" + finding.category + ":" + ",".join(finding.evidence_ids),
+                    evidence_id="review-finding:" + stable_key,
                     dimension=dimension,
                     severity=_SEVERITY[finding.severity],
                     reliability=max(0.0, min(1.0, review_reliability * finding.confidence)),
