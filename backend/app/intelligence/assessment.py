@@ -50,7 +50,7 @@ def _reviews(supplier_data: Mapping[str, object]) -> list[dict]:
         text = item.get("text")
         if not isinstance(text, str) or not text.strip():
             continue
-        result.append({"evidence_id": f"review:{index}", **dict(item)})
+        result.append({**dict(item), "evidence_id": f"review:{index}"})
     return result
 
 
