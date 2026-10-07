@@ -84,6 +84,10 @@ def _run_assessment(
     )
 
 
+def _assessment_enabled(settings: Settings | None, assess) -> bool:
+    return assess is not None or bool(settings and settings.yescale_api_key)
+
+
 def _process_claim_payload(
     store: Store,
     claim: dict,
@@ -101,7 +105,7 @@ def _process_claim_payload(
         payload.get("extraction_status") in {"SUCCESS", "PARTIAL"}
         and isinstance(payload.get("supplier_data"), dict)
     )
-    if not extracted:
+    if not extracted or not _assessment_enabled(settings, assess):
         store.complete_processing(claim["analysis_id"], claim["token"], payload)
         return
 
