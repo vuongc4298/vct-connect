@@ -173,6 +173,7 @@ class AuthStore:
     def __init__(self):
         self.users = {}
         self.rows = {}
+        self.reports = {}
         self.outbox = []
 
     def resolve_user(self, clerk_user_id, email=None):
@@ -254,6 +255,17 @@ class AuthStore:
     def get_for_user(self, analysis_id, user_id):
         row = self.rows.get(analysis_id)
         return row if row and row["user_id"] == user_id else None
+
+    def get_report_for_user(self, analysis_id, user_id):
+        row = self.rows.get(analysis_id)
+        if (
+            row is None
+            or row.get("user_id") != user_id
+            or row.get("status") != "COMPLETED"
+        ):
+            return None
+        payload = self.reports.get(analysis_id)
+        return {"payload": payload, "created_at": "2026-10-07T00:00:00Z"} if payload else None
 
 
 def settings(public_key):
@@ -701,3 +713,48 @@ def test_admission_denial_returns_stable_429_without_queueing(signing_keys):
     assert guest.json() == customer.json() == {"detail": "Submission limit reached"}
     assert store.rows == {}
     assert store.outbox == []
+
+
+def test_full_report_endpoint_is_owner_only_and_not_public(signing_keys):
+    private, public = signing_keys
+    client, store = client_and_store(public)
+
+    owner_headers = auth_header(token(private, "report_owner"))
+    submitted = client.post(
+        "/api/v1/analyses",
+        headers=owner_headers,
+        json={"source_url": FIXTURE_URL},
+    )
+    assert submitted.status_code == 202
+    analysis_id = UUID(submitted.json()["id"])
+    store.rows[analysis_id]["status"] = "COMPLETED"
+    store.reports[analysis_id] = {
+        "schema_version": "report.v1",
+        "language": "vi",
+        "analysis_id": str(analysis_id),
+        "risk": {
+            "overall_risk": 55,
+            "label": "MODERATE",
+            "confidence": 0.8,
+            "coverage": 0.75,
+            "scoring_version": "v0.1.0",
+            "dimensions": [],
+        },
+    }
+
+    url = f"/api/v1/analyses/{analysis_id}/report"
+    assert client.get(url).status_code == 401
+    owner = client.get(url, headers=owner_headers)
+    assert owner.status_code == 200
+    assert owner.json()["schema_version"] == "report.v1"
+    assert owner.json()["risk"]["scoring_version"] == "v0.1.0"
+
+    other_headers = auth_header(token(private, "report_other"))
+    hidden = client.get(url, headers=other_headers)
+    assert hidden.status_code == 404
+    assert hidden.json() == {"detail": "Report not found"}
+
+    store.users["report_other"]["role"] = "ADMIN"
+    admin = client.get(url, headers=other_headers)
+    assert admin.status_code == 403
+    assert admin.json() == {"detail": "Forbidden"}
