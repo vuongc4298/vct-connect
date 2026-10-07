@@ -32,6 +32,9 @@ class Settings:
     customer_limit: int = 20
     admission_window_seconds: int = 86400
     public_browser_fallback: bool = False
+    yescale_api_key: str | None = None
+    yescale_model: str = "gpt-4o-mini"
+    yescale_embedding_model: str | None = None
 
     def __post_init__(self) -> None:
         if not 1 <= self.processing_max_attempts <= 10:
@@ -99,6 +102,9 @@ class Settings:
             customer_limit=_bounded_int("CUSTOMER_LIMIT", 20, 1, 100000),
             admission_window_seconds=_bounded_int("ADMISSION_WINDOW_SECONDS", 86400, 60, 31536000),
             public_browser_fallback=os.getenv("PUBLIC_BROWSER_FALLBACK", "false").lower() == "true",
+            yescale_api_key=os.getenv("YESCALE_API_KEY"),
+            yescale_model=os.getenv("YESCALE_MODEL", "gpt-4o-mini"),
+            yescale_embedding_model=os.getenv("YESCALE_EMBEDDING_MODEL") or None,
         )
         if transport == "azure" and not (
             settings.azure_service_bus_queue and (
