@@ -41,3 +41,14 @@ test("guest insufficient state explicitly refuses a low-risk interpretation", ()
   assert.match(html, /CHƯA ĐỦ THÔNG TIN/);
   assert.match(html, /Không có kết luận rủi ro thấp/);
 });
+
+
+test("stale guest preview explicitly warns that source evidence is old", () => {
+  const html = renderToStaticMarkup(<GuestPreview preview={{
+    ...base,
+    extracted_at: "2020-01-01T00:00:00Z",
+  }} />);
+  assert.match(html, /Dữ liệu nguồn đã cũ/);
+  assert.match(html, /không được dùng như xác nhận hiện trạng nhà cung cấp/);
+  assert.doesNotMatch(html, /RỦI RO THẤP/);
+});
