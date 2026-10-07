@@ -29,9 +29,6 @@ steps = [
           ADD CONSTRAINT llm_review_runs_run_kind_check CHECK (
             run_kind IN ('SUPPLIER_INTERPRETATION', 'REVIEW_INTERPRETATION')
           );
-        CREATE UNIQUE INDEX llm_review_runs_analysis_kind_key
-          ON llm_review_runs (analysis_id, run_kind);
-
         CREATE TABLE analysis_assessments (
           id UUID PRIMARY KEY,
           analysis_id UUID NOT NULL UNIQUE REFERENCES analyses(id) ON DELETE CASCADE,
@@ -62,6 +59,12 @@ steps = [
             risk_label IN ('LOW', 'MODERATE', 'HIGH', 'INSUFFICIENT_INFORMATION')
           )
         );
+
+        ALTER TABLE llm_review_runs
+          ADD COLUMN assessment_id UUID REFERENCES analysis_assessments(id) ON DELETE CASCADE;
+        CREATE UNIQUE INDEX llm_review_runs_assessment_kind_key
+          ON llm_review_runs (assessment_id, run_kind)
+          WHERE assessment_id IS NOT NULL;
 
         CREATE TABLE analysis_findings (
           id UUID PRIMARY KEY,
@@ -109,9 +112,9 @@ steps = [
         DROP INDEX analysis_findings_assessment_type_idx;
         DROP TABLE analysis_evidence;
         DROP TABLE analysis_findings;
+        DROP INDEX llm_review_runs_assessment_kind_key;
+        ALTER TABLE llm_review_runs DROP COLUMN assessment_id;
         DROP TABLE analysis_assessments;
-
-        DROP INDEX llm_review_runs_analysis_kind_key;
         ALTER TABLE llm_review_runs
           DROP CONSTRAINT llm_review_runs_run_kind_check,
           DROP COLUMN run_kind;
