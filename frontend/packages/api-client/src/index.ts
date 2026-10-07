@@ -1,5 +1,5 @@
 import type {
-  Analysis, ImportSavedPageResponse, ReportV1, SubmitAnalysisRequest, SubmitAnalysisResponse,
+  Analysis, GuestPreviewV1, ImportSavedPageResponse, ReportV1, SubmitAnalysisRequest, SubmitAnalysisResponse,
   SubmitGuestAnalysisRequest, SubmitGuestAnalysisResponse,
 } from "@vct/contracts";
 
@@ -130,6 +130,13 @@ export async function submitGuestAnalysis(
 
 export async function getGuestAnalysis(id: string): Promise<Analysis> {
   return request<Analysis>(`/api/v1/guest-analyses/${encodeURIComponent(id)}`, async () => ({
+    cache: "no-store",
+    credentials: "same-origin",
+  }));
+}
+
+export async function getGuestPreview(id: string): Promise<GuestPreviewV1> {
+  return request<GuestPreviewV1>(`/api/v1/guest-analyses/${encodeURIComponent(id)}/preview`, async () => ({
     cache: "no-store",
     credentials: "same-origin",
   }));
