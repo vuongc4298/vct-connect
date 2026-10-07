@@ -168,7 +168,8 @@ test("full report renders real score, identity, review, actions and evidence tra
   assert.match(html, /Chưa đủ bằng chứng/);
   assert.match(html, /href="#evidence-review-0"/);
   assert.match(html, /id="evidence-review-0"/);
-  assert.match(html, /Độ mới: bằng chứng thuộc ảnh chụp ngày/);
+  assert.match(html, /review:0/);
+  assert.match(html, /Độ mới:/);
   assert.match(html, /Mở trang nguồn 1688/);
 });
 
@@ -193,4 +194,31 @@ test("unsafe report source URL is never rendered as an outbound link", () => {
 
   assert.doesNotMatch(html, /href="https:\/\/127\.0\.0\.1/);
   assert.doesNotMatch(html, /Mở trang nguồn 1688/);
+});
+
+
+test("stale report snapshots are visibly labeled before buyer decisions", () => {
+  const report = reportFixture();
+  report.extracted_at = "2020-01-01T00:00:00Z";
+  const html = renderToStaticMarkup(<FullReport report={report} />);
+  assert.match(html, /Dữ liệu nguồn đã cũ/);
+  assert.match(html, /DỮ LIỆU CŨ/);
+  assert.match(html, /xác minh lại các thông tin có thể thay đổi/);
+});
+
+test("dangling historical evidence ids render as missing source, not fake anchors", () => {
+  const report = reportFixture();
+  report.key_risks[0].evidence_ids = ["missing:evidence"];
+  const html = renderToStaticMarkup(<FullReport report={report} />);
+  assert.match(html, /missing:evidence · thiếu nguồn/);
+  assert.doesNotMatch(html, /href="#evidence-missing-evidence"/);
+});
+
+
+test("internal scorer references are labeled without pretending to be source anchors", () => {
+  const report = reportFixture();
+  report.risk.dimensions[0].evidence_ids = ["review-finding:quality"];
+  const html = renderToStaticMarkup(<FullReport report={report} />);
+  assert.match(html, /review-finding:quality · tham chiếu chấm điểm/);
+  assert.doesNotMatch(html, /href="#evidence-review-finding-quality"/);
 });

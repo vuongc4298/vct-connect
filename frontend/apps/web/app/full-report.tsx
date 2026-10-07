@@ -1,6 +1,7 @@
 import React from "react";
 import type { ReportEvidence, ReportFinding, ReportV1 } from "@vct/contracts";
 import { safeSourceUrl } from "./source-url";
+import { reportFreshness } from "./report-freshness";
 
 const DIMENSIONS: Record<string, string> = {
   PRODUCT_QUALITY: "Chất lượng sản phẩm",
@@ -33,15 +34,6 @@ function scorePercent(value: number) {
   return `${Math.round(value * 100)}%`;
 }
 
-function freshness(value: string) {
-  const date = new Date(value);
-  if (Number.isNaN(date.valueOf())) return "Thời điểm thu thập chưa xác định";
-  return new Intl.DateTimeFormat("vi-VN", {
-    dateStyle: "medium",
-    timeStyle: "short",
-  }).format(date);
-}
-
 function riskLabel(report: ReportV1) {
   switch (report.risk.label) {
     case "LOW": return { text: "RỦI RO THẤP", tone: "good" as const };
@@ -69,7 +61,7 @@ function findingTitle(finding: ReportFinding) {
     ?? finding.finding_type.replaceAll("_", " ");
 }
 
-function FindingCard({ finding }: { finding: ReportFinding }) {
+function FindingCard({ finding, availableEvidenceIds }: { finding: ReportFinding; availableEvidenceIds: Set<string> }) {
   const statement = payloadText(finding.payload);
   return <article className="report-finding">
     <div className="report-finding-head">
@@ -81,7 +73,9 @@ function FindingCard({ finding }: { finding: ReportFinding }) {
     {finding.evidence_ids.length > 0 && <div className="finding-evidence">
       <span>Bằng chứng</span>
       {finding.evidence_ids.map(id =>
-        <a key={id} href={`#${evidenceAnchor(id)}`}>{id}</a>
+        availableEvidenceIds.has(id)
+          ? <a key={id} href={`#${evidenceAnchor(id)}`}>{id}</a>
+          : <span className="missing-evidence-ref" key={id}>{id} · thiếu nguồn</span>
       )}
     </div>}
   </article>;
@@ -89,6 +83,7 @@ function FindingCard({ finding }: { finding: ReportFinding }) {
 
 function EvidenceCard({ evidence, extractedAt }: { evidence: ReportEvidence; extractedAt: string }) {
   const text = payloadText(evidence.payload);
+  const freshness = reportFreshness(extractedAt);
   return <article className="report-source" id={evidenceAnchor(evidence.evidence_id)}>
     <div className="report-source-head">
       <code>{evidence.evidence_id}</code>
@@ -96,7 +91,7 @@ function EvidenceCard({ evidence, extractedAt }: { evidence: ReportEvidence; ext
     </div>
     {evidence.source_field && <p><strong>Trường nguồn:</strong> {evidence.source_field}</p>}
     {text && <p>{text}</p>}
-    <small>Độ mới: bằng chứng thuộc ảnh chụp ngày {freshness(extractedAt)}</small>
+    <small>Độ mới: {freshness.stale ? "DỮ LIỆU CŨ · " : ""}{freshness.label}</small>
   </article>;
 }
 
@@ -114,6 +109,8 @@ export function FullReport({ report }: { report: ReportV1 }) {
   const factory = report.factory_trader;
   const review = report.review_summary;
   const overall = report.risk.overall_risk;
+  const sourceFreshness = reportFreshness(report.extracted_at);
+  const availableEvidenceIds = new Set(report.evidence.map(item => item.evidence_id));
   const reviewReliability = typeof review.review_reliability === "number"
     ? review.review_reliability
     : typeof review.reliability === "number" ? review.reliability : null;
@@ -134,9 +131,14 @@ export function FullReport({ report }: { report: ReportV1 }) {
       <div className="report-ref">
         <small>MÃ PHÂN TÍCH</small>
         <code>{report.analysis_id.slice(0, 8).toUpperCase()}</code>
-        <small>Thu thập {freshness(report.extracted_at)}</small>
+        <small>Thu thập {sourceFreshness.label}</small>
       </div>
     </header>
+
+    {sourceFreshness.stale && <div className="report-stale-warning" role="status">
+      <strong>Dữ liệu nguồn đã cũ</strong>
+      <p>Ảnh chụp bằng chứng đã hơn 30 ngày{sourceFreshness.ageDays !== null ? ` (${sourceFreshness.ageDays} ngày)` : ""}. Hãy xác minh lại các thông tin có thể thay đổi trước khi đặt hàng.</p>
+    </div>}
 
     <div className={`report-decision ${report.risk.label === "INSUFFICIENT_INFORMATION" ? "insufficient" : ""}`}>
       <article>
@@ -180,7 +182,11 @@ export function FullReport({ report }: { report: ReportV1 }) {
             <div><strong>{DIMENSIONS[dimension] ?? dimension}</strong><span>{dimensionRisk === null ? "Chưa đủ bằng chứng" : `${Math.round(dimensionRisk)}/100`}</span></div>
             <div className="dimension-meta">
               <small>Độ tin cậy hiệu dụng: {confidence === null ? "chưa xác định" : scorePercent(confidence)}</small>
-              {ids.length > 0 && <span>{ids.map(id => <a href={`#${evidenceAnchor(id)}`} key={id}>{id}</a>)}</span>}
+              {ids.length > 0 && <span>{ids.map(id =>
+                availableEvidenceIds.has(id)
+                  ? <a href={`#${evidenceAnchor(id)}`} key={id}>{id}</a>
+                  : <span className="scoring-reference" key={id}>{id} · tham chiếu chấm điểm</span>
+              )}</span>}
             </div>
           </article>;
         })}
@@ -222,7 +228,7 @@ export function FullReport({ report }: { report: ReportV1 }) {
         </div>
         <div className="report-finding-list">
           {report.key_risks.length
-            ? report.key_risks.map(finding => <FindingCard finding={finding} key={finding.finding_key} />)
+            ? report.key_risks.map(finding => <FindingCard finding={finding} availableEvidenceIds={availableEvidenceIds} key={finding.finding_key} />)
             : <p className="report-empty-copy">Không có phát hiện rủi ro có căn cứ trong dữ liệu hiện tại. Điều này không đồng nghĩa với rủi ro bằng 0.</p>}
         </div>
       </article>
@@ -233,7 +239,7 @@ export function FullReport({ report }: { report: ReportV1 }) {
         </div>
         <div className="report-finding-list">
           {report.positive_signals.length
-            ? report.positive_signals.map(finding => <FindingCard finding={finding} key={finding.finding_key} />)
+            ? report.positive_signals.map(finding => <FindingCard finding={finding} availableEvidenceIds={availableEvidenceIds} key={finding.finding_key} />)
             : <p className="report-empty-copy">Chưa có tín hiệu tích cực đủ căn cứ để hiển thị.</p>}
         </div>
       </article>
@@ -267,7 +273,7 @@ export function FullReport({ report }: { report: ReportV1 }) {
         <div><span className="card-label">NGUỒN VÀ BẰNG CHỨNG</span><h3>Truy vết phát hiện</h3></div>
         <span>{report.evidence.length} mục</span>
       </div>
-      <p className="report-source-freshness">Ảnh chụp dữ liệu dùng cho báo cáo: {freshness(report.extracted_at)}.</p>
+      <p className="report-source-freshness">Ảnh chụp dữ liệu dùng cho báo cáo: {sourceFreshness.label}{sourceFreshness.stale ? " · DỮ LIỆU CŨ" : ""}.</p>
       <div className="report-source-list">
         {report.evidence.map(item => <EvidenceCard evidence={item} extractedAt={report.extracted_at} key={item.evidence_id} />)}
       </div>

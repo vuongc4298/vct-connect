@@ -1,5 +1,6 @@
 import React from "react";
 import type { GuestPreviewV1 } from "@vct/contracts";
+import { reportFreshness } from "./report-freshness";
 
 function pct(value: number) {
   return `${Math.round(value * 100)}%`;
@@ -8,13 +9,14 @@ function pct(value: number) {
 export function GuestPreview({ preview }: { preview: GuestPreviewV1 }) {
   const insufficient = preview.information_state === "INSUFFICIENT_INFORMATION";
   const missing = preview.missing_source_fields.length + preview.missing_risk_dimensions.length;
+  const freshness = reportFreshness(preview.extracted_at);
 
   return <section className="guest-preview-card" aria-label="Bản xem trước đánh giá dành cho khách">
     <div className="guest-preview-head">
       <div>
         <span className="card-label">BẢN XEM TRƯỚC DÀNH CHO KHÁCH</span>
         <h2>{preview.supplier_name ?? "Nhà cung cấp chưa xác định"}</h2>
-        <p>{preview.platform} · Chỉ hiển thị độ phủ, độ tin cậy và giới hạn dữ liệu.</p>
+        <p>{preview.platform} · Thu thập {freshness.label} · Chỉ hiển thị độ phủ, độ tin cậy và giới hạn dữ liệu.</p>
       </div>
       <span className={`guest-preview-state ${insufficient ? "insufficient" : ""}`}>
         {insufficient ? "CHƯA ĐỦ THÔNG TIN" : "BẢN XEM TRƯỚC GIỚI HẠN"}
@@ -33,6 +35,11 @@ export function GuestPreview({ preview }: { preview: GuestPreviewV1 }) {
         <i><b style={{ width: pct(preview.coverage) }} /></i>
       </article>
     </div>
+
+    {freshness.stale && <div className="guest-preview-stale" role="status">
+      <strong>Dữ liệu nguồn đã cũ</strong>
+      <p>Ảnh chụp đã hơn 30 ngày{freshness.ageDays !== null ? ` (${freshness.ageDays} ngày)` : ""}. Bản xem trước này không được dùng như xác nhận hiện trạng nhà cung cấp.</p>
+    </div>}
 
     <div className="guest-preview-warning">
       <strong>{insufficient ? "Không có kết luận rủi ro thấp khi dữ liệu chưa đủ." : "Điểm rủi ro và phát hiện chi tiết không được công khai trong bản xem trước."}</strong>

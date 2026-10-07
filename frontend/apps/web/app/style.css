@@ -262,6 +262,11 @@ button { cursor: pointer; }
 .finding-evidence > span { color: #87958f; font-size: .54rem; font-weight: 800; text-transform: uppercase; }
 .finding-evidence a { padding: .2rem .4rem; border-radius: 5px; color: #27634d; background: #e9f4ee; font: 700 .55rem var(--font-ui); text-decoration: none; }
 .finding-evidence a:hover, .finding-evidence a:focus-visible { text-decoration: underline; }
+.missing-evidence-ref { padding: .2rem .4rem; border-radius: 5px; color: #9a4a43; background: #fdecea; font-size: .55rem; font-weight: 750; }
+.scoring-reference { display: inline-block; padding: .2rem .4rem; border-radius: 5px; color: #687871; background: #eef2f0; font-size: .53rem; font-weight: 700; }
+.report-stale-warning { margin: 0; padding: .8rem 1rem; border: 1px solid #edcf9b; border-radius: 10px; color: #79541f; background: #fff8e8; }
+.report-stale-warning strong { font-size: .72rem; }
+.report-stale-warning p { margin: .25rem 0 0; font-size: .64rem; line-height: 1.45; }
 .report-empty-copy { margin: 1rem 0 0; color: var(--muted); font-size: .68rem; line-height: 1.5; }
 .report-actions { padding: 1.35rem; border: 1px solid var(--line); border-radius: 14px; background: #fff; }
 .report-actions li strong { font-weight: 650; line-height: 1.5; }
@@ -297,7 +302,10 @@ button { cursor: pointer; }
 .guest-preview-metrics strong { display: block; margin: .15rem 0 .45rem; font-size: 1.35rem; }
 .guest-preview-metrics i { display: block; height: 6px; border-radius: 99px; background: #e1e9e5; overflow: hidden; }
 .guest-preview-metrics i b { display: block; height: 100%; border-radius: inherit; background: var(--green); }
-.guest-preview-warning, .guest-preview-limit { padding: .8rem; border-radius: 10px; background: #fff8ed; }
+.guest-preview-warning, .guest-preview-limit, .guest-preview-stale { padding: .8rem; border-radius: 10px; background: #fff8ed; }
+.guest-preview-stale { color: #79541f; border: 1px solid #edcf9b; background: #fff8e8; }
+.guest-preview-stale strong { font-size: .7rem; }
+.guest-preview-stale p { margin: .25rem 0 0; font-size: .64rem; line-height: 1.45; }
 .guest-preview-warning strong, .guest-preview-limit strong { font-size: .7rem; }
 .guest-preview-warning p, .guest-preview-limit p { margin: .25rem 0 0; color: #78654d; font-size: .64rem; line-height: 1.45; }
 .guest-preview-missing { display: grid; grid-template-columns: 1fr 1fr; gap: .7rem; }

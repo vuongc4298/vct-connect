@@ -755,6 +755,7 @@ def test_full_report_endpoint_is_owner_only_and_not_public(signing_keys):
 
     url = f"/api/v1/analyses/{analysis_id}/report"
     assert client.get(url).status_code == 401
+    assert client.get(url, headers={"x-vct-guest-key": "a" * 64}).status_code == 401
     owner = client.get(url, headers=owner_headers)
     assert owner.status_code == 200
     assert owner.json()["schema_version"] == "report.v1"
@@ -823,3 +824,5 @@ def test_guest_preview_is_browser_scoped_and_never_exposes_full_report(signing_k
     assert "evidence" not in body
     assert "recommended_actions_vi" not in body
     assert client.get(url, headers={"x-vct-guest-key": "b" * 64}).status_code == 404
+    customer_only = client.get(url, headers=auth_header(token(signing_keys[0], "preview_customer")))
+    assert customer_only.status_code == 404

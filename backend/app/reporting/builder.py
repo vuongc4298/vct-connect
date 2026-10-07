@@ -212,6 +212,18 @@ def build_report(
     positives = [
         item for item in report_findings if item.finding_type in _POSITIVE_TYPES
     ]
+
+    material_findings = key_risks + positives
+    for finding in material_findings:
+        missing_evidence = [
+            evidence_id for evidence_id in finding.evidence_ids
+            if evidence_id not in evidence_by_id
+        ]
+        if missing_evidence:
+            raise ValueError(
+                "Report finding references missing evidence: "
+                + ", ".join(sorted(missing_evidence))
+            )
     used = {item.finding_key for item in key_risks + positives}
     other = [item for item in report_findings if item.finding_key not in used]
 
