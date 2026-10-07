@@ -263,6 +263,7 @@ button { cursor: pointer; }
 .finding-evidence a { padding: .2rem .4rem; border-radius: 5px; color: #27634d; background: #e9f4ee; font: 700 .55rem var(--font-ui); text-decoration: none; }
 .finding-evidence a:hover, .finding-evidence a:focus-visible { text-decoration: underline; }
 .missing-evidence-ref { padding: .2rem .4rem; border-radius: 5px; color: #9a4a43; background: #fdecea; font-size: .55rem; font-weight: 750; }
+.scoring-reference { display: inline-block; padding: .2rem .4rem; border-radius: 5px; color: #687871; background: #eef2f0; font-size: .53rem; font-weight: 700; }
 .report-stale-warning { margin: 0; padding: .8rem 1rem; border: 1px solid #edcf9b; border-radius: 10px; color: #79541f; background: #fff8e8; }
 .report-stale-warning strong { font-size: .72rem; }
 .report-stale-warning p { margin: .25rem 0 0; font-size: .64rem; line-height: 1.45; }
