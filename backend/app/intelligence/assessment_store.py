@@ -8,6 +8,7 @@ from uuid import UUID, uuid4
 from backend.app.storage import LeaseLost, Store
 
 from .assessment import AssessmentBundle
+from .media import MediaInterpretationRun
 from .semantic_reviews import SemanticReviewRun
 
 
@@ -127,6 +128,51 @@ def _review_model_run(bundle: AssessmentBundle) -> dict | None:
     }
 
 
+def _media_model_run(bundle: AssessmentBundle) -> dict | None:
+    run = bundle.media_run
+    if run is None or run.provider_response is None:
+        return None
+    response = run.provider_response
+    cost = response.usage.cost_usd
+    return {
+        "run_kind": "MEDIA_INTERPRETATION",
+        "provider": response.provider,
+        "provider_request_id": response.request_id,
+        "model": response.requested_model,
+        "model_version": response.response_model,
+        "prompt_version": run.prompt_version,
+        "pipeline_version": run.pipeline_version,
+        "schema_version": run.schema_version,
+        "settings": response.settings,
+        "input_sha256": run.input_sha256,
+        "input_payload": run.input_payload,
+        "output": run.assessment.model_dump(mode="json"),
+        "confidence": run.assessment.confidence,
+        "prompt_tokens": response.usage.prompt_tokens,
+        "completion_tokens": response.usage.completion_tokens,
+        "total_tokens": response.usage.total_tokens,
+        "cost_usd": _cost_value(cost),
+        "cost_status": "REPORTED" if cost is not None else "UNAVAILABLE",
+        "latency_ms": response.latency_ms,
+        "raw_usage": response.usage.raw,
+        "finish_reason": response.finish_reason,
+        "created_at": run.created_at,
+    }
+
+
+def _media_payload(bundle: AssessmentBundle) -> dict | None:
+    run = bundle.media_run
+    if run is None:
+        return None
+    return {
+        "assessment": run.assessment.model_dump(mode="json"),
+        "input_sha256": run.input_sha256,
+        "prompt_version": run.prompt_version,
+        "pipeline_version": run.pipeline_version,
+        "schema_version": run.schema_version,
+    }
+
+
 def _review_payload(bundle: AssessmentBundle) -> dict:
     value = bundle.review_analysis
     if isinstance(value, SemanticReviewRun):
@@ -163,7 +209,9 @@ def persist_assessment_and_handoff(
     assessment_id = uuid4()
     supplier_run = _supplier_model_run(bundle)
     review_run = _review_model_run(bundle)
+    media_run = _media_model_run(bundle)
     review_payload = _review_payload(bundle)
+    media_payload = _media_payload(bundle)
 
     with store.connect() as conn:
         with conn.transaction():
@@ -192,17 +240,19 @@ def persist_assessment_and_handoff(
             conn.execute(
                 """INSERT INTO analysis_assessments (
                        id, analysis_id, supplier_snapshot_id, scoring_version,
-                       supplier_interpretation, review_analysis, identity_assessment,
-                       risk_assessment, confidence, data_coverage, overall_risk, risk_label
+                       supplier_interpretation, review_analysis, media_analysis,
+                       identity_assessment, risk_assessment, confidence, data_coverage,
+                       overall_risk, risk_label
                    ) VALUES (
                        %s, %s, %s, %s, %s::jsonb, %s::jsonb, %s::jsonb,
-                       %s::jsonb, %s, %s, %s, %s
+                       %s::jsonb, %s::jsonb, %s, %s, %s, %s
                    )""",
                 (
                     assessment_id, analysis_id, supplier_snapshot_id,
                     bundle.risk.scoring_version,
                     json.dumps(bundle.supplier_run.interpretation.model_dump(mode="json"), ensure_ascii=False),
                     json.dumps(review_payload, ensure_ascii=False),
+                    json.dumps(media_payload, ensure_ascii=False) if media_payload is not None else None,
                     json.dumps(bundle.identity.model_dump(mode="json"), ensure_ascii=False),
                     json.dumps(bundle.risk.model_dump(mode="json"), ensure_ascii=False),
                     bundle.risk.confidence,
@@ -212,7 +262,7 @@ def persist_assessment_and_handoff(
                 ),
             )
 
-            for model_run in [supplier_run, review_run]:
+            for model_run in [supplier_run, review_run, media_run]:
                 if model_run is None:
                     continue
                 conn.execute(
