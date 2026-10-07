@@ -44,6 +44,26 @@ function reportFixture(label: ReportV1["risk"]["label"] = "MODERATE"): ReportV1 
           review_manipulation_adjustment: 0,
           evidence_ids: [],
         },
+        {
+          dimension: "PRICING",
+          configured_weight: 0.10,
+          risk: 42,
+          base_confidence: 0.6,
+          effective_confidence: 0.6,
+          review_derived_share: 0,
+          review_manipulation_adjustment: 0,
+          evidence_ids: [],
+        },
+        {
+          dimension: "COMMUNICATION",
+          configured_weight: 0.05,
+          risk: 35,
+          base_confidence: 0.55,
+          effective_confidence: 0.55,
+          review_derived_share: 0,
+          review_manipulation_adjustment: 0,
+          evidence_ids: [],
+        },
       ],
     },
     factory_trader: {
@@ -140,6 +160,10 @@ test("full report renders real score, identity, review, actions and evidence tra
   assert.match(html, /Chưa có chứng nhận được xác minh/);
   assert.match(html, /Chất lượng sản phẩm/);
   assert.match(html, /Giao hàng/);
+  assert.match(html, /Giá và điều khoản/);
+  assert.match(html, /Giao tiếp/);
+  assert.doesNotMatch(html, />PRICING</);
+  assert.doesNotMatch(html, />COMMUNICATION</);
   assert.match(html, /Chưa đủ bằng chứng/);
   assert.match(html, /href="#evidence-review-0"/);
   assert.match(html, /id="evidence-review-0"/);
