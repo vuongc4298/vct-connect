@@ -176,8 +176,8 @@ export async function addWatchlist(
 
 export async function removeWatchlist(
   entryId: string, auth: RequestAuth,
-): Promise<void> {
-  return request<void>(`/api/v1/watchlist/${encodeURIComponent(entryId)}`, async () => ({
+): Promise<{ removed: true }> {
+  return request<{ removed: true }>(`/api/v1/watchlist/${encodeURIComponent(entryId)}`, async () => ({
     method: "DELETE",
     headers: await authorizationHeaders(auth),
   }));
