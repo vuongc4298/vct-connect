@@ -1,10 +1,7 @@
 import React from "react";
 import type { GuestPreviewV1 } from "@vct/contracts";
 import { reportFreshness } from "./report-freshness";
-
-function pct(value: number) {
-  return `${Math.round(value * 100)}%`;
-}
+import { reportPercent } from "./report-presentation";
 
 export function GuestPreview({ preview }: { preview: GuestPreviewV1 }) {
   const insufficient = preview.information_state === "INSUFFICIENT_INFORMATION";
@@ -26,13 +23,13 @@ export function GuestPreview({ preview }: { preview: GuestPreviewV1 }) {
     <div className="guest-preview-metrics">
       <article>
         <span>Độ tin cậy</span>
-        <strong>{pct(preview.confidence)}</strong>
-        <i><b style={{ width: pct(preview.confidence) }} /></i>
+        <strong>{reportPercent(preview.confidence)}</strong>
+        <i><b style={{ width: reportPercent(preview.confidence) }} /></i>
       </article>
       <article>
         <span>Độ phủ dữ liệu</span>
-        <strong>{pct(preview.coverage)}</strong>
-        <i><b style={{ width: pct(preview.coverage) }} /></i>
+        <strong>{reportPercent(preview.coverage)}</strong>
+        <i><b style={{ width: reportPercent(preview.coverage) }} /></i>
       </article>
     </div>
 
