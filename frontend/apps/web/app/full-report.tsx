@@ -182,7 +182,11 @@ export function FullReport({ report }: { report: ReportV1 }) {
             <div><strong>{DIMENSIONS[dimension] ?? dimension}</strong><span>{dimensionRisk === null ? "Chưa đủ bằng chứng" : `${Math.round(dimensionRisk)}/100`}</span></div>
             <div className="dimension-meta">
               <small>Độ tin cậy hiệu dụng: {confidence === null ? "chưa xác định" : scorePercent(confidence)}</small>
-              {ids.length > 0 && <span>{ids.map(id => <a href={`#${evidenceAnchor(id)}`} key={id}>{id}</a>)}</span>}
+              {ids.length > 0 && <span>{ids.map(id =>
+                availableEvidenceIds.has(id)
+                  ? <a href={`#${evidenceAnchor(id)}`} key={id}>{id}</a>
+                  : <span className="scoring-reference" key={id}>{id} · tham chiếu chấm điểm</span>
+              )}</span>}
             </div>
           </article>;
         })}
