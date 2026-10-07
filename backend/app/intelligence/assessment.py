@@ -7,7 +7,8 @@ from typing import Mapping, Sequence
 
 from .identity import FactoryTraderAssessment, assess_supplier_identity
 from .interpretation import InterpretationRun, interpret_supplier_data
-from .provider import EmbeddingProvider, LLMProvider
+from .media import MediaInterpretationRun, ReviewMediaInput, interpret_review_media
+from .provider import EmbeddingProvider, LLMProvider, MultimodalLLMProvider
 from .reviews import ReviewAnalysis, analyze_review_signals
 from .scoring import (
     ConfidenceFactors,
@@ -20,6 +21,12 @@ from .semantic_reviews import SemanticReviewRun, interpret_reviews
 
 
 _SEVERITY = {"NONE": 0.0, "LOW": 25.0, "MEDIUM": 55.0, "HIGH": 80.0}
+_MEDIA_MULTIPLIER = {
+    "SUPPORTS": 1.10,
+    "PARTIALLY_SUPPORTS": 1.00,
+    "CONTRADICTS": 0.50,
+    "CANNOT_DETERMINE": 1.00,
+}
 _CATEGORY_DIMENSION = {
     "QUALITY": "PRODUCT_QUALITY",
     "PRODUCT_MISMATCH": "PRODUCT_QUALITY",
@@ -33,6 +40,7 @@ _CATEGORY_DIMENSION = {
 class AssessmentBundle:
     supplier_run: InterpretationRun
     review_analysis: ReviewAnalysis | SemanticReviewRun
+    media_run: MediaInterpretationRun | None
     identity: FactoryTraderAssessment
     risk: RiskAssessment
     findings: tuple[dict, ...]
@@ -63,12 +71,29 @@ def _aggregate_review_count(supplier_data: Mapping[str, object]) -> int | None:
     return None
 
 
+def _media_review_factors(media_run: MediaInterpretationRun | None) -> dict[str, float]:
+    if media_run is None:
+        return {}
+    grouped: dict[str, list[float]] = {}
+    for finding in media_run.assessment.findings:
+        base = _MEDIA_MULTIPLIER[finding.consistency]
+        factor = 1.0 + (base - 1.0) * finding.confidence
+        grouped.setdefault(finding.review_evidence_id, []).append(factor)
+    return {
+        evidence_id: sum(values) / len(values)
+        for evidence_id, values in grouped.items()
+        if values
+    }
+
+
 def _review_score_inputs(
     review_analysis: ReviewAnalysis | SemanticReviewRun,
+    media_run: MediaInterpretationRun | None = None,
 ) -> tuple[list[DimensionInput], list[dict], list[dict], float]:
     findings: list[dict] = []
     evidence: list[dict] = []
     by_dimension: dict[str, list[RiskSignal]] = {}
+    media_factors = _media_review_factors(media_run)
     if isinstance(review_analysis, SemanticReviewRun):
         assessment = review_analysis.assessment
         review_reliability = assessment.review_reliability
@@ -89,7 +114,18 @@ def _review_score_inputs(
                     evidence_id="review-finding:" + stable_key,
                     dimension=dimension,
                     severity=_SEVERITY[finding.severity],
-                    reliability=max(0.0, min(1.0, review_reliability * finding.confidence)),
+                    reliability=max(
+                        0.0,
+                        min(
+                            1.0,
+                            review_reliability
+                            * finding.confidence
+                            * (
+                                sum(media_factors.get(evidence_id, 1.0) for evidence_id in finding.evidence_ids)
+                                / len(finding.evidence_ids)
+                            ),
+                        ),
+                    ),
                     source_kind="MODEL_INTERPRETATION",
                     review_derived=True,
                     explanation=finding.statement_vi,
@@ -99,6 +135,15 @@ def _review_score_inputs(
         review_reliability = review_analysis.reliability
         review_confidence = review_analysis.reliability
         patterns = review_analysis.suspicious_patterns
+
+    if media_factors:
+        review_reliability = max(
+            0.0,
+            min(
+                1.0,
+                review_reliability * (sum(media_factors.values()) / len(media_factors)),
+            ),
+        )
 
     manipulation_signals: list[RiskSignal] = []
     for index, pattern in enumerate(patterns):
@@ -176,6 +221,34 @@ def _identity_records(identity: FactoryTraderAssessment) -> tuple[list[dict], li
     return findings, evidence, dimensions
 
 
+def _media_records(
+    media_run: MediaInterpretationRun | None,
+) -> tuple[list[dict], list[dict]]:
+    if media_run is None:
+        return [], []
+    findings = [
+        {
+            "finding_key": f"media:{index}:{finding.media_id}",
+            "finding_type": "MEDIA_CONSISTENCY",
+            "dimension": None,
+            "severity": None,
+            "confidence": finding.confidence,
+            "payload": finding.model_dump(mode="json"),
+        }
+        for index, finding in enumerate(media_run.assessment.findings)
+    ]
+    evidence = [
+        {
+            "evidence_id": f"media:{item.media_id}",
+            "source_kind": "REVIEW_MEDIA",
+            "source_field": "reviews",
+            "payload": item.model_dump(mode="json"),
+        }
+        for item in media_run.assessment.provenance
+    ]
+    return findings, evidence
+
+
 def _supplier_records(run: InterpretationRun) -> tuple[list[dict], list[dict]]:
     findings: list[dict] = []
     evidence: list[dict] = []
@@ -211,6 +284,9 @@ def build_assessment(
     model: str,
     embedding_provider: EmbeddingProvider | None = None,
     embedding_model: str | None = None,
+    media: Sequence[ReviewMediaInput] | None = None,
+    multimodal_provider: MultimodalLLMProvider | None = None,
+    multimodal_model: str | None = None,
     metadata: Mapping[str, str] | None = None,
 ) -> AssessmentBundle:
     supplier_run = interpret_supplier_data(
@@ -237,14 +313,31 @@ def build_assessment(
             aggregate_review_count=aggregate_count,
         )
 
+    media_run: MediaInterpretationRun | None = None
+    if media:
+        if multimodal_provider is None or not multimodal_model:
+            raise ValueError("permitted review media requires a configured multimodal provider/model")
+        review_text_by_id = {
+            review["evidence_id"]: str(review["text"])
+            for review in reviews
+        }
+        media_run = interpret_review_media(
+            review_text_by_id,
+            media,
+            provider=multimodal_provider,
+            model=multimodal_model,
+            metadata=metadata,
+        )
+
     identity = assess_supplier_identity(supplier_data)
     dimensions, review_findings, review_evidence, review_reliability = _review_score_inputs(
-        review_analysis
+        review_analysis, media_run
     )
     identity_findings, identity_evidence, identity_dimensions = _identity_records(identity)
     dimensions.extend(identity_dimensions)
 
     supplier_findings, supplier_evidence = _supplier_records(supplier_run)
+    media_findings, media_evidence = _media_records(media_run)
     coverage = float(supplier_data.get("completeness") or 0.0)
     reliabilities = [supplier_run.interpretation.confidence]
     if reviews:
@@ -264,13 +357,14 @@ def build_assessment(
         ),
     )
 
-    findings = supplier_findings + review_findings + identity_findings
+    findings = supplier_findings + review_findings + media_findings + identity_findings
     evidence_by_id: dict[str, dict] = {}
-    for item in supplier_evidence + review_evidence + identity_evidence:
+    for item in supplier_evidence + review_evidence + media_evidence + identity_evidence:
         evidence_by_id.setdefault(item["evidence_id"], item)
     return AssessmentBundle(
         supplier_run=supplier_run,
         review_analysis=review_analysis,
+        media_run=media_run,
         identity=identity,
         risk=risk,
         findings=tuple(findings),
