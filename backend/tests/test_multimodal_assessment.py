@@ -6,7 +6,7 @@ import pytest
 from backend.app.intelligence.assessment import build_assessment
 from backend.app.intelligence.contracts import SCHEMA_VERSION
 from backend.app.intelligence.media import MEDIA_SCHEMA_VERSION, ReviewMediaInput
-from backend.app.intelligence.provider import ProviderResponse, ProviderUsage
+from backend.app.intelligence.provider import EmbeddingResponse, ProviderResponse, ProviderUsage
 
 
 PNG_DATA = "data:image/png;base64,aGVsbG8="
@@ -67,6 +67,18 @@ class FixtureProvider:
             latency_ms=10,
             finish_reason="stop",
             settings={"temperature": kwargs["temperature"], "max_tokens": kwargs["max_tokens"]},
+        )
+
+    def embed_texts(self, **kwargs):
+        return EmbeddingResponse(
+            provider="FAKE",
+            request_id="embed-1",
+            requested_model=kwargs["model"],
+            response_model="fixture-embedding-v1",
+            vectors=((1.0, 0.0), (0.0, 1.0)),
+            usage=ProviderUsage(20, 0, 20, Decimal("0.0002"), {"total_tokens": 20}),
+            latency_ms=5,
+            settings={"encoding_format": "float"},
         )
 
     def generate_multimodal_json(self, **kwargs):
@@ -162,6 +174,8 @@ def test_contradicting_permitted_media_reduces_review_derived_quality_risk_weigh
         supplier_fixture(),
         provider=baseline_provider,
         model="fixture-chat",
+        embedding_provider=baseline_provider,
+        embedding_model="fixture-embedding",
     )
 
     media_provider = FixtureProvider(media_consistency="CONTRADICTS")
@@ -169,6 +183,8 @@ def test_contradicting_permitted_media_reduces_review_derived_quality_risk_weigh
         supplier_fixture(),
         provider=media_provider,
         model="fixture-chat",
+        embedding_provider=media_provider,
+        embedding_model="fixture-embedding",
         media=media_fixture(),
         multimodal_provider=media_provider,
         multimodal_model="fixture-vision",
