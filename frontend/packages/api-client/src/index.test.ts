@@ -1,7 +1,7 @@
 import assert from "node:assert/strict";
 import test from "node:test";
 
-import { ApiError, getAccountState, getAnalysis, getGuestAnalysis, getGuestPreview, importSavedPage, submitAnalysis, submitGuestAnalysis } from "./index";
+import { ApiError, getAccountState, getAnalysis, getAnalysisHistory, getGuestAnalysis, getGuestPreview, importSavedPage, submitAnalysis, submitGuestAnalysis } from "./index";
 
 test("saved page import sends the file with bearer authorization and rejects oversized files", async () => {
   const originalFetch = globalThis.fetch;
@@ -114,6 +114,42 @@ test("account state requires a fresh bearer token and never sends guest credenti
   assert.equal(sent?.headers.get("Authorization"), "Bearer account-token");
   assert.equal(sent?.headers.get("x-vct-guest-key"), null);
   assert.equal(sent?.credentials, undefined);
+});
+
+
+test("analysis history uses bearer identity and returns the owner list", async () => {
+  const originalFetch = globalThis.fetch;
+  let sent: { url: string; headers: Headers } | undefined;
+  globalThis.fetch = async (input, init) => {
+    sent = { url: String(input), headers: new Headers(init?.headers) };
+    return Response.json([{
+      id: "history-1",
+      source_url: "https://detail.1688.com/offer/123456789012.html",
+      status: "COMPLETED",
+      created_at: "2026-10-08T00:00:00Z",
+      completed_at: "2026-10-08T00:01:00Z",
+      mode: "ACCOUNT_PUBLIC",
+      extraction_method: "PUBLIC_HTTP",
+      scoring_version: "v0.1.0",
+      supplier_name: "Fixture Supplier",
+      platform: "1688",
+      report_available: true,
+      risk_label: "MODERATE",
+      overall_risk: 58,
+      confidence: 0.72,
+      coverage: 0.75,
+    }]);
+  };
+  try {
+    const items = await getAnalysisHistory({ getToken: async () => "history-token" });
+    assert.equal(items.length, 1);
+    assert.equal(items[0]?.report_available, true);
+  } finally {
+    globalThis.fetch = originalFetch;
+  }
+  assert.equal(sent?.url, "/api/v1/analyses");
+  assert.equal(sent?.headers.get("Authorization"), "Bearer history-token");
+  assert.equal(sent?.headers.get("x-vct-guest-key"), null);
 });
 
 test("guest submission and polling use cookie credentials without bearer identity", async () => {
