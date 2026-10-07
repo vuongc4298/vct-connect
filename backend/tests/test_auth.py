@@ -267,6 +267,17 @@ class AuthStore:
         payload = self.reports.get(analysis_id)
         return {"payload": payload, "created_at": "2026-10-07T00:00:00Z"} if payload else None
 
+    def get_report_for_guest(self, analysis_id, guest_key):
+        row = self.rows.get(analysis_id)
+        if (
+            row is None
+            or row.get("guest_key") != guest_key
+            or row.get("status") != "COMPLETED"
+        ):
+            return None
+        payload = self.reports.get(analysis_id)
+        return {"payload": payload, "created_at": "2026-10-07T00:00:00Z"} if payload else None
+
 
 def settings(public_key):
     return Settings(
@@ -758,3 +769,57 @@ def test_full_report_endpoint_is_owner_only_and_not_public(signing_keys):
     admin = client.get(url, headers=other_headers)
     assert admin.status_code == 403
     assert admin.json() == {"detail": "Forbidden"}
+
+
+def test_guest_preview_is_browser_scoped_and_never_exposes_full_report(signing_keys):
+    _, public = signing_keys
+    client, store = client_and_store(public)
+    key = "a" * 64
+    submitted = client.post(
+        "/api/v1/guest-analyses",
+        headers={"x-vct-guest-key": key},
+        json={"source_url": FIXTURE_URL},
+    )
+    assert submitted.status_code == 202
+    analysis_id = UUID(submitted.json()["id"])
+    store.rows[analysis_id]["status"] = "COMPLETED"
+    store.reports[analysis_id] = {
+        "schema_version": "report.v1",
+        "language": "vi",
+        "analysis_id": str(analysis_id),
+        "platform": "1688",
+        "supplier_name": "Guest Supplier",
+        "extracted_at": "2026-10-07T00:00:00Z",
+        "risk": {
+            "overall_risk": 63,
+            "label": "MODERATE",
+            "confidence": 0.62,
+            "coverage": 0.48,
+            "scoring_version": "v0.1.0",
+            "dimensions": [{"dimension": "DELIVERY", "risk": 70}],
+        },
+        "key_risks": [{"secret": "must not leak"}],
+        "evidence": [{"secret": "must not leak"}],
+        "missing_data": {
+            "source_fields": ["certifications"],
+            "risk_dimensions": ["AFTER_SALES"],
+            "uncertainties_vi": ["Chưa xác minh nhà xưởng."],
+        },
+        "limitations_vi": ["Dữ liệu công khai có giới hạn."],
+        "recommended_actions_vi": ["Private full-report action"],
+    }
+    url = f"/api/v1/guest-analyses/{analysis_id}/preview"
+    preview = client.get(url, headers={"x-vct-guest-key": key})
+    assert preview.status_code == 200
+    body = preview.json()
+    assert body["schema_version"] == "guest-preview.v1"
+    assert body["confidence"] == 0.62
+    assert body["coverage"] == 0.48
+    assert body["information_state"] == "LIMITED_PREVIEW"
+    assert body["registration_required"] is True
+    assert "overall_risk" not in body
+    assert "risk" not in body
+    assert "key_risks" not in body
+    assert "evidence" not in body
+    assert "recommended_actions_vi" not in body
+    assert client.get(url, headers={"x-vct-guest-key": "b" * 64}).status_code == 404

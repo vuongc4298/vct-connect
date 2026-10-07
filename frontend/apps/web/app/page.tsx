@@ -2,12 +2,13 @@
 
 import { SignInButton, SignUpButton, UserButton, useAuth } from "@clerk/nextjs";
 import { useEffect, useRef, useState, type FormEvent, type ReactNode } from "react";
-import { FIXTURE_URL, type Analysis, type ReportV1 } from "@vct/contracts";
-import { ApiError, getAnalysis, getGuestAnalysis, getReport, submitGuestAnalysis } from "@vct/api-client";
+import { FIXTURE_URL, type Analysis, type GuestPreviewV1, type ReportV1 } from "@vct/contracts";
+import { ApiError, getAnalysis, getGuestAnalysis, getGuestPreview, getReport, submitGuestAnalysis } from "@vct/api-client";
 import { submitSelectedAnalysis } from "./analysis-request";
 import { analysisPresentation } from "./analysis-status";
 import { ExtractionEvidence, isFixtureResult } from "./extraction-evidence";
 import { FullReport } from "./full-report";
+import { GuestPreview } from "./guest-preview";
 
 const DEMO_SIGNALS = [
   { tone: "risk", title: "Thông tin pháp nhân chưa đầy đủ", body: "Kịch bản demo chưa có mã đăng ký kinh doanh để đối chiếu chéo." },
@@ -121,6 +122,7 @@ function Pill({ children, tone = "neutral" }: { children: ReactNode; tone?: "neu
 function Landing() {
   const [guestId, setGuestId] = useState<string | null>(null);
   const [guestAnalysis, setGuestAnalysis] = useState<Analysis | null>(null);
+  const [guestPreview, setGuestPreview] = useState<GuestPreviewV1 | null>(null);
   const [guestError, setGuestError] = useState("");
   const [guestBusy, setGuestBusy] = useState(false);
 
@@ -132,6 +134,14 @@ function Landing() {
       try {
         const current = await getGuestAnalysis(guestId!);
         if (active) { setGuestAnalysis(current); setGuestError(""); }
+        if (current.status === "COMPLETED") {
+          try {
+            const preview = await getGuestPreview(guestId!);
+            if (active) setGuestPreview(preview);
+          } catch (cause) {
+            if (active) setGuestError(cause instanceof Error ? cause.message : "Không thể tải bản xem trước");
+          }
+        }
         if (!analysisPresentation(current).shouldPoll) return;
       } catch (cause) {
         if (active) setGuestError(cause instanceof Error ? cause.message : "Không thể tải phân tích");
@@ -145,7 +155,7 @@ function Landing() {
 
   async function submitGuest(event: FormEvent) {
     event.preventDefault();
-    setGuestBusy(true); setGuestError(""); setGuestAnalysis(null); setGuestId(null);
+    setGuestBusy(true); setGuestError(""); setGuestAnalysis(null); setGuestPreview(null); setGuestId(null);
     try {
       const submitted = await submitGuestAnalysis({ source_url: FIXTURE_URL });
       setGuestId(submitted.id);
@@ -179,13 +189,13 @@ function Landing() {
         </form>
         {guestError && <p role="alert" className="error-banner">{guestError}</p>}
         {guestId && <ProgressCard analysis={guestAnalysis} delayed={false} requestedMethod={null} />}
-        {guestId && guestAnalysis?.status === "COMPLETED" &&
-          <section className="progress-card" aria-label="Bản xem trước cho khách">
-            <h2>Bản xem trước công khai</h2>
-            <p>Nhà cung cấp demo: {isFixtureResult(guestAnalysis.result) ? guestAnalysis.result.supplier_name : "Chưa xác định"}</p>
-            <p>Dữ liệu fixture minh họa. Chưa có đánh giá rủi ro hoặc bằng chứng thực tế.</p>
-            <SignUpButton><button type="button" className="button button-primary">Đăng ký để xem luồng báo cáo đầy đủ</button></SignUpButton>
-          </section>}
+        {guestId && guestAnalysis?.status === "COMPLETED" && guestPreview && <>
+          <GuestPreview preview={guestPreview} />
+          <div className="guest-preview-cta">
+            <SignUpButton><button type="button" className="button button-primary">Đăng ký để xem báo cáo đầy đủ</button></SignUpButton>
+            <span>Đăng nhập và dùng tiện ích để có thêm bằng chứng khi trang nguồn hạn chế truy cập.</span>
+          </div>
+        </>}
         <div className="trust-row">
           <div><strong>01</strong><span>luồng demo hoàn chỉnh</span></div>
           <div><strong>&lt; 2 phút</strong><span>mục tiêu phân tích</span></div>

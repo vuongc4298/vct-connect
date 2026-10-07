@@ -223,6 +223,21 @@ class Store:
                 (analysis_id, key_hash),
             ).fetchone()
 
+    def get_report_for_guest(self, analysis_id: UUID, guest_key: str) -> dict | None:
+        """Return a completed report only to the guest browser that created the analysis."""
+        key_hash = sha256(guest_key.encode()).hexdigest()
+        with self.connect() as conn:
+            return conn.execute(
+                """SELECT r.payload, r.created_at
+                   FROM reports r
+                   JOIN analyses a ON a.id = r.analysis_id
+                   WHERE a.id = %s AND a.guest_key_hash = %s
+                     AND a.actor_type = 'GUEST'
+                     AND a.status = 'COMPLETED'
+                     AND a.created_at >= now() - 2592000 * interval '1 second'""",
+                (analysis_id, key_hash),
+            ).fetchone()
+
     def claim_outbox(self, lease_seconds: int, max_attempts: int) -> dict | None:
         token = uuid4()
         with self.connect() as conn:
