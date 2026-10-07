@@ -1,7 +1,7 @@
 import assert from "node:assert/strict";
 import test from "node:test";
 
-import { ApiError, getAnalysis, getGuestAnalysis, getGuestPreview, importSavedPage, submitAnalysis, submitGuestAnalysis } from "./index";
+import { ApiError, getAccountState, getAnalysis, getGuestAnalysis, getGuestPreview, importSavedPage, submitAnalysis, submitGuestAnalysis } from "./index";
 
 test("saved page import sends the file with bearer authorization and rejects oversized files", async () => {
   const originalFetch = globalThis.fetch;
@@ -85,6 +85,35 @@ test("adds a fresh bearer token to submission and polling requests", async () =>
     requests.map(request => request.headers.get("Authorization")),
     ["Bearer session-token", "Bearer session-token"],
   );
+});
+
+
+test("account state requires a fresh bearer token and never sends guest credentials", async () => {
+  const originalFetch = globalThis.fetch;
+  let sent: { url: string; headers: Headers; credentials?: RequestCredentials } | undefined;
+  globalThis.fetch = async (input, init) => {
+    sent = { url: String(input), headers: new Headers(init?.headers), credentials: init?.credentials };
+    return Response.json({
+      user: { id: "user-id", email: "owner@example.test", role: "CUSTOMER" },
+      plan: "FREE",
+      trial: { active: false, starts_at: null, expires_at: null, status: null },
+      usage: {
+        used: 2, limit: 20, remaining: 18, window_seconds: 86400,
+        starts_at: "2026-10-07T00:00:00Z", resets_at: "2026-10-08T00:00:00Z",
+      },
+    });
+  };
+  try {
+    const state = await getAccountState({ getToken: async () => "account-token" });
+    assert.equal(state.plan, "FREE");
+    assert.equal(state.usage.remaining, 18);
+  } finally {
+    globalThis.fetch = originalFetch;
+  }
+  assert.equal(sent?.url, "/api/v1/me");
+  assert.equal(sent?.headers.get("Authorization"), "Bearer account-token");
+  assert.equal(sent?.headers.get("x-vct-guest-key"), null);
+  assert.equal(sent?.credentials, undefined);
 });
 
 test("guest submission and polling use cookie credentials without bearer identity", async () => {

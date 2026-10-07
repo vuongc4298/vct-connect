@@ -2,13 +2,14 @@
 
 import { SignInButton, SignUpButton, UserButton, useAuth } from "@clerk/nextjs";
 import { useEffect, useRef, useState, type FormEvent, type ReactNode } from "react";
-import { FIXTURE_URL, type Analysis, type GuestPreviewV1, type ReportV1 } from "@vct/contracts";
-import { ApiError, getAnalysis, getGuestAnalysis, getGuestPreview, getReport, submitGuestAnalysis } from "@vct/api-client";
+import { FIXTURE_URL, type AccountState, type Analysis, type GuestPreviewV1, type ReportV1 } from "@vct/contracts";
+import { ApiError, getAccountState, getAnalysis, getGuestAnalysis, getGuestPreview, getReport, submitGuestAnalysis } from "@vct/api-client";
 import { submitSelectedAnalysis } from "./analysis-request";
 import { analysisPresentation } from "./analysis-status";
 import { ExtractionEvidence, isFixtureResult } from "./extraction-evidence";
 import { FullReport } from "./full-report";
 import { GuestPreview } from "./guest-preview";
+import { AccountStateView } from "./account-state";
 
 const DEMO_SIGNALS = [
   { tone: "risk", title: "Thông tin pháp nhân chưa đầy đủ", body: "Kịch bản demo chưa có mã đăng ký kinh doanh để đối chiếu chéo." },
@@ -16,7 +17,7 @@ const DEMO_SIGNALS = [
   { tone: "positive", title: "Lịch sử hoạt động ổn định", body: "Hồ sơ minh hoạ thể hiện hoạt động liên tục và phản hồi khách hàng đều." },
 ] as const;
 
-type WorkspaceView = "analysis" | "history";
+type WorkspaceView = "analysis" | "history" | "account";
 type EvidenceTone = "risk" | "watch" | "positive";
 type EvidenceProfile = "low" | "medium" | "high";
 
@@ -232,6 +233,7 @@ function Sidebar({ view, historyCount, onViewChange }: { view: WorkspaceView; hi
     <nav className="side-nav" aria-label="Điều hướng sản phẩm">
       <button type="button" aria-label="Phân tích mới" className={view === "analysis" ? "active" : ""} aria-current={view === "analysis" ? "page" : undefined} onClick={() => onViewChange("analysis")}><span>◇</span><span className="nav-label">Phân tích mới</span></button>
       <button type="button" aria-label={`Lịch sử, ${historyCount} mục`} className={view === "history" ? "active" : ""} aria-current={view === "history" ? "page" : undefined} onClick={() => onViewChange("history")}><span>◷</span><span className="nav-label">Lịch sử</span><span className="nav-count">{historyCount}</span></button>
+      <button type="button" aria-label="Tài khoản" className={view === "account" ? "active" : ""} aria-current={view === "account" ? "page" : undefined} onClick={() => onViewChange("account")}><span>◎</span><span className="nav-label">Tài khoản</span></button>
     </nav>
     <div className="sidebar-footer"><span>?</span><div><strong>Trung tâm trợ giúp</strong><small>Hướng dẫn sử dụng</small></div></div>
   </aside>;
@@ -435,6 +437,9 @@ export default function Page() {
   const [historyOwnerId, setHistoryOwnerId] = useState<string | null>(null);
   const [historyStorageError, setHistoryStorageError] = useState(false);
   const [selectedHistoryId, setSelectedHistoryId] = useState<string | null>(null);
+  const [accountState, setAccountState] = useState<AccountState | null>(null);
+  const [accountError, setAccountError] = useState("");
+  const [accountLoading, setAccountLoading] = useState(false);
 
   function clearSavedPage() {
     setSavedPage(null);
@@ -442,7 +447,7 @@ export default function Page() {
   }
 
   useEffect(() => {
-    setId(null); setAnalysis(null); setReport(null); setReportError(""); setReportLoading(false); setError(""); setDelayed(false); setView("analysis"); setHistoryReady(false); setHistoryOwnerId(null); setHistoryStorageError(false);
+    setId(null); setAnalysis(null); setReport(null); setReportError(""); setReportLoading(false); setError(""); setDelayed(false); setView("analysis"); setHistoryReady(false); setHistoryOwnerId(null); setHistoryStorageError(false); setAccountState(null); setAccountError(""); setAccountLoading(false);
     clearSavedPage(); setRequestedMethod(null);
     if (!userId) { setHistory([]); setSelectedHistoryId(null); return; }
     const storageKey = `vct-connect-demo-history:${userId}`;
@@ -460,6 +465,22 @@ export default function Page() {
     setHistoryOwnerId(userId);
     setHistoryReady(true);
   }, [userId]);
+
+  useEffect(() => {
+    if (!isSignedIn || !userId || view !== "account") return;
+    let active = true;
+    setAccountLoading(true);
+    setAccountError("");
+    void getAccountState({ getToken }).then(
+      value => { if (active) setAccountState(value); },
+      cause => {
+        if (!active) return;
+        setAccountState(null);
+        setAccountError(cause instanceof Error ? cause.message : "Không thể tải trạng thái tài khoản");
+      },
+    ).finally(() => { if (active) setAccountLoading(false); });
+    return () => { active = false; };
+  }, [getToken, isSignedIn, userId, view]);
 
   useEffect(() => {
     if (!userId) return;
@@ -605,8 +626,8 @@ export default function Page() {
   return <div className="product-shell">
     <Sidebar view={view} historyCount={history.length} onViewChange={setView} />
     <div className="workspace">
-      <header className="workspace-header"><div><span>Không gian Pilot</span><i>/</i><strong>{view === "analysis" ? "Phân tích mới" : "Lịch sử"}</strong></div><nav className="mobile-nav" aria-label="Điều hướng di động"><button type="button" className={view === "analysis" ? "active" : ""} aria-current={view === "analysis" ? "page" : undefined} onClick={() => setView("analysis")}>Phân tích</button><button type="button" className={view === "history" ? "active" : ""} aria-current={view === "history" ? "page" : undefined} onClick={() => setView("history")}>Lịch sử</button></nav><div className="header-tools"><button type="button" className="icon-button" aria-label="Thông báo">♢<i /></button><span className="language">VI</span><UserButton /></div></header>
-      {view === "history" ? <HistoryWorkspace history={history} selectedId={selectedHistoryId} storageError={historyStorageError} onSelect={setSelectedHistoryId} onNoteChange={updateHistoryNote} onNewAnalysis={showNewAnalysis} /> : <main className="dashboard" id="analysis">
+      <header className="workspace-header"><div><span>Không gian Pilot</span><i>/</i><strong>{view === "analysis" ? "Phân tích mới" : view === "history" ? "Lịch sử" : "Tài khoản"}</strong></div><nav className="mobile-nav" aria-label="Điều hướng di động"><button type="button" className={view === "analysis" ? "active" : ""} aria-current={view === "analysis" ? "page" : undefined} onClick={() => setView("analysis")}>Phân tích</button><button type="button" className={view === "history" ? "active" : ""} aria-current={view === "history" ? "page" : undefined} onClick={() => setView("history")}>Lịch sử</button><button type="button" className={view === "account" ? "active" : ""} aria-current={view === "account" ? "page" : undefined} onClick={() => setView("account")}>Tài khoản</button></nav><div className="header-tools"><button type="button" className="icon-button" aria-label="Thông báo">♢<i /></button><span className="language">VI</span><UserButton /></div></header>
+      {view === "history" ? <HistoryWorkspace history={history} selectedId={selectedHistoryId} storageError={historyStorageError} onSelect={setSelectedHistoryId} onNoteChange={updateHistoryNote} onNewAnalysis={showNewAnalysis} /> : view === "account" ? (accountState ? <AccountStateView state={accountState} /> : <main className="dashboard account-dashboard"><section className="account-card" aria-live="polite">{accountLoading ? <p>Đang tải trạng thái tài khoản…</p> : <p role={accountError ? "alert" : undefined}>{accountError || "Chưa có trạng thái tài khoản."}</p>}</section></main>) : <main className="dashboard" id="analysis">
         <section className="dashboard-intro"><div><Pill tone="good">BẢN DEMO TƯƠNG TÁC</Pill><h1>Phân tích nhà cung cấp</h1><p>Dán liên kết sản phẩm 1688, sản phẩm / cửa hàng Taobao hoặc sản phẩm / hồ sơ công ty Alibaba để xem bằng chứng công khai và độ phủ. URL mẫu hiển thị báo cáo rủi ro minh họa.</p></div>{(analysis?.status === "COMPLETED" || analysis?.status === "FAILED_FINAL") && <button type="button" className="button button-ghost" onClick={showNewAnalysis}>+ Phân tích mới</button>}</section>
         <section className="analyze-card">
           <form onSubmit={submit}>

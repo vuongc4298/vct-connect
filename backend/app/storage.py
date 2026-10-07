@@ -66,6 +66,72 @@ class Store:
                     ).fetchone()
         return row
 
+    def get_account_state(
+        self, user_id: UUID, *, customer_limit: int, window_seconds: int,
+    ) -> dict | None:
+        """Return the signed-in customer's current plan, trial and admission usage."""
+        with self.connect() as conn:
+            user = conn.execute(
+                """SELECT id, clerk_user_id, email, role
+                   FROM users WHERE id = %s""",
+                (user_id,),
+            ).fetchone()
+            if user is None:
+                return None
+            trial = conn.execute(
+                """SELECT entitlement, source, starts_at, expires_at, status,
+                          (status = 'ACTIVE'
+                           AND starts_at <= now()
+                           AND (expires_at IS NULL OR expires_at > now())) AS active
+                   FROM entitlements
+                   WHERE user_id = %s
+                     AND entitlement = 'ANALYSIS_ACCESS'
+                     AND source = 'MVP_TRIAL'
+                   ORDER BY (status = 'ACTIVE'
+                             AND starts_at <= now()
+                             AND (expires_at IS NULL OR expires_at > now())) DESC,
+                            starts_at DESC
+                   LIMIT 1""",
+                (user_id,),
+            ).fetchone()
+            usage = conn.execute(
+                """WITH current_window AS (
+                     SELECT floor(extract(epoch FROM now()) / %s)::bigint AS n
+                   )
+                   SELECT COALESCE(ac.used, 0)::int AS used,
+                          to_timestamp(cw.n * %s) AS starts_at,
+                          to_timestamp((cw.n + 1) * %s) AS resets_at
+                   FROM current_window cw
+                   LEFT JOIN admission_counters ac
+                     ON ac.scope = 'CUSTOMER'
+                    AND ac.subject = %s
+                    AND ac.window_number = cw.n""",
+                (window_seconds, window_seconds, window_seconds, str(user_id)),
+            ).fetchone()
+        used = int(usage["used"])
+        return {
+            "user": {
+                "id": user["id"],
+                "email": user["email"],
+                "role": user["role"],
+            },
+            "plan": "MVP_TRIAL" if trial and trial["active"] else "FREE",
+            "trial": {
+                "active": bool(trial and trial["active"]),
+                "starts_at": trial["starts_at"] if trial else None,
+                "expires_at": trial["expires_at"] if trial else None,
+                "status": trial["status"] if trial else None,
+            },
+            "usage": {
+                "used": used,
+                "limit": customer_limit,
+                "remaining": max(customer_limit - used, 0),
+                "window_seconds": window_seconds,
+                "starts_at": usage["starts_at"],
+                "resets_at": usage["resets_at"],
+            },
+        }
+
     @staticmethod
     def _event(
         conn,
