@@ -319,6 +319,33 @@ class AuthStore:
         payload = self.reports.get(analysis_id)
         return {"payload": payload, "created_at": "2026-10-07T00:00:00Z"} if payload else None
 
+    def list_watchlist(self, user_id):
+        return [item for item in getattr(self, "watchlist", {}).values() if item["user_id"] == user_id]
+
+    def add_watchlist_from_analysis(self, user_id, analysis_id):
+        row = self.rows.get(analysis_id)
+        if row is None or row.get("user_id") != user_id:
+            return None
+        if not hasattr(self, "watchlist"):
+            self.watchlist = {}
+        supplier_id = row.get("supplier_id", analysis_id)
+        for item in self.watchlist.values():
+            if item["user_id"] == user_id and item["supplier_id"] == supplier_id:
+                return {"id": item["id"], "created_at": item["created_at"]}
+        entry_id = uuid4()
+        item = {"id": entry_id, "user_id": user_id, "supplier_id": supplier_id, "created_at": "2026-10-08T00:00:00Z"}
+        self.watchlist[entry_id] = item
+        return {"id": entry_id, "created_at": item["created_at"]}
+
+    def remove_watchlist_entry(self, user_id, entry_id):
+        if not hasattr(self, "watchlist"):
+            return False
+        item = self.watchlist.get(entry_id)
+        if item is None or item["user_id"] != user_id:
+            return False
+        del self.watchlist[entry_id]
+        return True
+
     def get_report_for_guest(self, analysis_id, guest_key):
         row = self.rows.get(analysis_id)
         if (
@@ -971,3 +998,30 @@ def test_analysis_history_is_customer_only_and_owner_scoped(signing_keys):
     store.users["history_other"]["role"] = "ADMIN"
     forbidden = client.get("/api/v1/analyses", headers=other_headers)
     assert forbidden.status_code == 403
+
+
+def test_watchlist_is_owner_scoped_and_deduplicates_supplier(signing_keys):
+    private, public = signing_keys
+    client, store = client_and_store(public)
+    owner_headers = auth_header(token(private, "watch_owner"))
+    other_headers = auth_header(token(private, "watch_other"))
+
+    submitted = client.post("/api/v1/analyses", headers=owner_headers, json={"source_url": FIXTURE_URL})
+    assert submitted.status_code == 202
+    analysis_id = UUID(submitted.json()["id"])
+    owner_id = store.users["watch_owner"]["id"]
+    store.rows[analysis_id]["supplier_id"] = uuid4()
+
+    first = client.post(f"/api/v1/watchlist/{analysis_id}", headers=owner_headers)
+    second = client.post(f"/api/v1/watchlist/{analysis_id}", headers=owner_headers)
+    assert first.status_code == second.status_code == 201
+    assert first.json()["id"] == second.json()["id"]
+    assert len(client.get("/api/v1/watchlist", headers=owner_headers).json()) == 1
+    assert client.get("/api/v1/watchlist", headers=other_headers).json() == []
+    assert client.post(f"/api/v1/watchlist/{analysis_id}", headers=other_headers).status_code == 404
+
+    entry_id = first.json()["id"]
+    assert client.delete(f"/api/v1/watchlist/{entry_id}", headers=other_headers).status_code == 404
+    removed = client.delete(f"/api/v1/watchlist/{entry_id}", headers=owner_headers)
+    assert removed.status_code == 200 and removed.json() == {"removed": True}
+    assert client.get("/api/v1/watchlist", headers=owner_headers).json() == []
