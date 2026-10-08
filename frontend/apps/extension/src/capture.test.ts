@@ -1,6 +1,6 @@
 import assert from "node:assert/strict";
 import test from "node:test";
-import { captureSelectedDom, supportedOffer, type TaobaoCapture } from "./capture";
+import { assertPermittedEvidence, captureSelectedDom, supportedOffer, type TaobaoCapture } from "./capture";
 
 const OFFER_URL = "https://detail.1688.com/offer/996518024136.html";
 
@@ -275,4 +275,23 @@ test("recommended shop names and metrics outside audited supplier ancestry are e
     assert.equal(capture.fields.supplier_name, "Actual supplier");
     assert.doesNotMatch(JSON.stringify(capture), /Unrelated|UNRELATED/);
   });
+});
+
+
+test("client privacy guard rejects credential-shaped selected evidence before submission", () => {
+  for (const value of [
+    { fields: { product_title: "password=secret" } },
+    { fields: { supplier_name: "session=abc123" } },
+    { fields: { product_title: "csrftoken=abc123" } },
+    { fields: { product_title: "sid=abc123" } },
+    { fields: { product_title: "foo=bar; sessionid=secret" } },
+    { cookie: "session=secret" },
+  ]) {
+    assert.throws(() => assertPermittedEvidence(value), /sensitive page state/);
+  }
+  assert.doesNotThrow(() => assertPermittedEvidence({
+    source_url: OFFER_URL,
+    offer_id: "996518024136",
+    fields: { product_title: "Public title", supplier_name: "Public supplier" },
+  }));
 });
