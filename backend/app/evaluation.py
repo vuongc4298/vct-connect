@@ -31,7 +31,7 @@ def list_blind_cases(store: Store, reviewer_id: UUID, limit: int = 20) -> list[d
     return [dict(row) for row in rows]
 
 
-def submit_blind_label(store: Store, reviewer_id: UUID, run_id: UUID, ordinal: int, sentiment: str) -> dict | None:
+def submit_blind_label(store: Store, reviewer_id: UUID, run_id: UUID, ordinal: int, annotation: dict) -> dict | None:
     if ordinal < 0:
         return None
     with store.connect() as conn:
@@ -63,17 +63,21 @@ def submit_blind_label(store: Store, reviewer_id: UUID, run_id: UUID, ordinal: i
             label_id = uuid4()
             inserted = conn.execute(
                 """INSERT INTO review_evaluation_labels
-                     (id, run_id, review_ordinal, reviewer_id, sentiment)
-                   VALUES (%s, %s, %s, %s, %s)
+                     (id, run_id, review_ordinal, reviewer_id, sentiment, complaint_category,
+                      severity, suspicious_indicators, correctness, human_confidence, notes)
+                   VALUES (%s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s)
                    ON CONFLICT (run_id, review_ordinal, reviewer_id) DO NOTHING
                    RETURNING id""",
-                (label_id, run_id, ordinal, reviewer_id, sentiment),
+                (label_id, run_id, ordinal, reviewer_id,
+                 annotation["sentiment"], annotation["complaint_category"], annotation["severity"],
+                 annotation["suspicious_indicators"], annotation["correctness"],
+                 annotation["human_confidence"], annotation["notes"]),
             ).fetchone()
             if inserted is None:
                 raise ValueError("Case already labeled")
             return {
                 "label_id": label_id, "run_id": run_id, "review_ordinal": ordinal,
-                "sentiment": sentiment, "review_text": case["review_text"],
+                "annotation": annotation, "sentiment": annotation["sentiment"], "review_text": case["review_text"],
                 "model_output": case["model_output"], "model": case["model"],
                 "prompt_version": case["prompt_version"], "schema_version": case["schema_version"],
             }
