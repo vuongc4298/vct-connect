@@ -183,7 +183,7 @@ def test_taobao_queue_persistence_owner_modes_and_immutable_replay(store, monkey
         monkeypatch.setattr("backend.worker.main.extract_taobao", lambda source_url, **kwargs: parse_taobao_page(html, source_url, **kwargs))
         assert process_local_once(store)
         row = client.get(f"{endpoint}/{analysis_id}", headers=headers).json()
-        assert row["status"] == ("ASSESSING" if browser else "COMPLETED") and row["supplier_data"]["platform"] == "TAOBAO"
+        assert row["status"] == "COMPLETED" and row["supplier_data"]["platform"] == "TAOBAO"
         assert row["supplier_data"]["analysis_mode"] == ("GUEST_PUBLIC" if guest else "ACCOUNT_PUBLIC")
         assert row["supplier_data"]["completeness_denominator"] == list(EVIDENCE_FIELDS)
         payload = {**row["result"], "supplier_data": row["supplier_data"], "raw_payload": row["raw_evidence"], "reviews": row["reviews"]}
@@ -519,7 +519,7 @@ def test_taobao_user_evidence_atomic_ownership_replay_quota_and_shared_metadata(
             persist = store.import_customer_page
         analysis_id = persist(url, owner["id"], payload, customer_limit=1, window_seconds=86400)
         row = store.get_for_user(analysis_id, owner["id"])
-        assert row["status"] == "COMPLETED" and row["supplier_data"]["platform"] == "TAOBAO"
+        assert row["status"] == ("ASSESSING" if browser else "COMPLETED") and row["supplier_data"]["platform"] == "TAOBAO"
         if browser and not shop:
             expected = [{"text": "Original captured review", "source_url": url}]
             assert row["supplier_data"]["reviews"] == expected
