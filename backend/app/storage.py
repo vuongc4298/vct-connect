@@ -456,7 +456,7 @@ class Store:
             """UPDATE analyses
                SET status = 'FAILED_FINAL', failure_code = 'OUTBOX_PUBLISH_EXHAUSTED',
                    final_disposition = 'PUBLICATION_FAILED', next_retry_at = NULL
-               WHERE id = %s AND status = 'QUEUED'
+               WHERE id = %s AND status IN ('QUEUED', 'ASSESSING')
                RETURNING attempt_count""",
             (analysis_id,),
         ).fetchone()
@@ -695,13 +695,14 @@ class Store:
 
     def capture_customer_page(
         self, source_url: str, user_id: UUID, payload: dict, *,
-        customer_limit: int, window_seconds: int,
+        customer_limit: int, window_seconds: int, azure: bool = False,
     ) -> UUID:
-        """Admit and persist selected browser evidence atomically without a queue."""
+        """Persist selected browser evidence, then queue extracted snapshots for assessment/reporting."""
         reject_sensitive_page_state(payload.get("raw_payload", {}))
         supplier_data = payload.get("supplier_data")
+        extracted = payload.get("extraction_status") in {"SUCCESS", "PARTIAL"}
         if payload.get("source_url") != source_url or (
-            payload.get("extraction_status") in {"SUCCESS", "PARTIAL"}
+            extracted
             and (not isinstance(supplier_data, dict)
                  or supplier_data.get("extraction_method") != "EXTENSION_DOM"
                  or supplier_data.get("analysis_mode") != "EXTENSION_ENHANCED"
@@ -732,7 +733,17 @@ class Store:
                     (token, analysis_id),
                 )
                 self._event(conn, analysis_id, "PROCESSING", 1)
-                self._complete_processing(conn, analysis_id, token, payload)
+                outcome = self._complete_processing(
+                    conn, analysis_id, token, payload, handoff_to_assessment=extracted
+                )
+                if outcome == "assessing":
+                    if azure:
+                        conn.execute(
+                            "INSERT INTO analysis_outbox (analysis_id, message_id) VALUES (%s, %s)",
+                            (analysis_id, analysis_id),
+                        )
+                    else:
+                        conn.execute("INSERT INTO local_queue (analysis_id) VALUES (%s)", (analysis_id,))
         return analysis_id
 
     def renormalize_customer_snapshot(
