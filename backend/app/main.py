@@ -116,6 +116,7 @@ def create_app(
                 principal.user_id,
                 customer_limit=settings.customer_limit,
                 window_seconds=settings.admission_window_seconds,
+                azure=settings.queue_transport == "azure",
             )
         except Exception as exc:
             raise HTTPException(status_code=503, detail="Database unavailable") from exc
@@ -293,8 +294,11 @@ def create_app(
             raise HTTPException(status_code=429, detail="Submission limit reached") from exc
         except Exception as exc:
             raise HTTPException(status_code=503, detail="Database unavailable") from exc
-        return {"id": analysis_id, "status": "COMPLETED",
-                "extraction_status": payload["extraction_status"]}
+        return {
+            "id": analysis_id,
+            "status": "ASSESSING" if payload["extraction_status"] in {"SUCCESS", "PARTIAL"} else "COMPLETED",
+            "extraction_status": payload["extraction_status"],
+        }
 
     @app.post("/api/v1/guest-analyses", status_code=202)
     def submit_guest(body: Submission, request: Request):
