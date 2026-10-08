@@ -455,7 +455,8 @@ class Store:
         analysis = conn.execute(
             """UPDATE analyses
                SET status = 'FAILED_FINAL', failure_code = 'OUTBOX_PUBLISH_EXHAUSTED',
-                   final_disposition = 'PUBLICATION_FAILED', next_retry_at = NULL
+                   final_disposition = 'PUBLICATION_FAILED', next_retry_at = NULL,
+                   processing_claim_token = NULL, processing_claimed_until = NULL
                WHERE id = %s AND status IN ('QUEUED', 'ASSESSING')
                RETURNING attempt_count""",
             (analysis_id,),
