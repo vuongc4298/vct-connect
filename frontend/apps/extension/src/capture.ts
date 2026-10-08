@@ -202,3 +202,26 @@ export function captureSelectedDom(): SelectedCapture {
     },
   };
 }
+
+
+const SENSITIVE_PAGE_STATE = /(?:\b(?:password|passwd|cookie|set-cookie|access[_-]?token|refresh[_-]?token|session[_-]?(?:id|key|token)|session|sid|auth|csrf|xsrf|csrftoken|jwt|token|jsessionid|asp\.net_sessionid|phpsessid|_m_h5_tk|_tb_token_|x5sec)\b\s*[:=]|\bbearer\s+[a-z0-9._~+/-]{8,})/i;
+const COOKIE_PAIR = /\b[a-z0-9_.-]{2,64}=[^;\s]+;\s*[a-z0-9_.-]{2,64}=/i;
+
+export function assertPermittedEvidence(value: unknown): void {
+  if (typeof value === "string") {
+    if (SENSITIVE_PAGE_STATE.test(value) || COOKIE_PAIR.test(value)) {
+      throw new Error("Selected evidence contains sensitive page state");
+    }
+    return;
+  }
+  if (Array.isArray(value)) {
+    for (const item of value) assertPermittedEvidence(item);
+    return;
+  }
+  if (value && typeof value === "object") {
+    for (const [key, item] of Object.entries(value)) {
+      assertPermittedEvidence(key);
+      assertPermittedEvidence(item);
+    }
+  }
+}
