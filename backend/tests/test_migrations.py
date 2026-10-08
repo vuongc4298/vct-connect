@@ -257,6 +257,7 @@ def test_fresh_apply_failure_rollback_and_reapply_are_reproducible(
         ("0012_multimodal_assessments", True),
         ("0013_reports", True),
         ("0014_watchlist", True),
+        ("0015_review_evaluation_labels", True),
     ]
 
 
