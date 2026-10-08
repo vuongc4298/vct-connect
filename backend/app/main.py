@@ -116,7 +116,6 @@ def create_app(
                 principal.user_id,
                 customer_limit=settings.customer_limit,
                 window_seconds=settings.admission_window_seconds,
-                azure=settings.queue_transport == "azure",
             )
         except Exception as exc:
             raise HTTPException(status_code=503, detail="Database unavailable") from exc
@@ -289,6 +288,7 @@ def create_app(
                 payload["source_url"], principal.user_id, payload,
                 customer_limit=settings.customer_limit,
                 window_seconds=settings.admission_window_seconds,
+                azure=settings.queue_transport == "azure",
             )
         except AdmissionDenied as exc:
             raise HTTPException(status_code=429, detail="Submission limit reached") from exc
