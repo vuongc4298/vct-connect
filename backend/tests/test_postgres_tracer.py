@@ -109,7 +109,7 @@ def test_alibaba_mocked_public_queue_owner_and_immutable_replay(store, monkeypat
     try:
         assert process_local_once(store)
         row = client.get(f"{endpoint}/{analysis_id}", headers=headers).json()
-        assert row["status"] == "ASSESSING" and row["supplier_data"]["platform"] == "ALIBABA"
+        assert row["status"] == "COMPLETED" and row["supplier_data"]["platform"] == "ALIBABA"
         assert row["supplier_data"]["analysis_mode"] == ("GUEST_PUBLIC" if guest else "ACCOUNT_PUBLIC")
         assert row["supplier_data"]["platform_supplier_id"] == ("dgxuandele.en.alibaba.com" if profile else "beautiy.en.alibaba.com")
         assert len(row["reviews"]) == (0 if profile else 1)
@@ -183,7 +183,7 @@ def test_taobao_queue_persistence_owner_modes_and_immutable_replay(store, monkey
         monkeypatch.setattr("backend.worker.main.extract_taobao", lambda source_url, **kwargs: parse_taobao_page(html, source_url, **kwargs))
         assert process_local_once(store)
         row = client.get(f"{endpoint}/{analysis_id}", headers=headers).json()
-        assert row["status"] == "COMPLETED" and row["supplier_data"]["platform"] == "TAOBAO"
+        assert row["status"] == ("ASSESSING" if browser else "COMPLETED") and row["supplier_data"]["platform"] == "TAOBAO"
         assert row["supplier_data"]["analysis_mode"] == ("GUEST_PUBLIC" if guest else "ACCOUNT_PUBLIC")
         assert row["supplier_data"]["completeness_denominator"] == list(EVIDENCE_FIELDS)
         payload = {**row["result"], "supplier_data": row["supplier_data"], "raw_payload": row["raw_evidence"], "reviews": row["reviews"]}
@@ -526,18 +526,20 @@ def test_taobao_user_evidence_atomic_ownership_replay_quota_and_shared_metadata(
             assert row["reviews"] == expected
             assert row["raw_evidence"]["selected_fields"]["reviews"] == [{"text": "  Original captured review  ", "original_length": 28}]
         assert store.get_for_user(analysis_id, other["id"]) is None
-        assert store.complete_processing(analysis_id, uuid4(), payload) == "replay"
-        changed = json.loads(json.dumps(payload))
-        changed["raw_payload"]["different"] = True
-        with pytest.raises(ResultConflict):
-            store.complete_processing(analysis_id, uuid4(), changed)
+        if not browser:
+            assert store.complete_processing(analysis_id, uuid4(), payload) == "replay"
+            changed = json.loads(json.dumps(payload))
+            changed["raw_payload"]["different"] = True
+            with pytest.raises(ResultConflict):
+                store.complete_processing(analysis_id, uuid4(), changed)
         with pytest.raises(AdmissionDenied):
             persist(url, owner["id"], payload, customer_limit=1, window_seconds=86400)
         with store.connect() as conn:
             supplier = conn.execute("SELECT name FROM suppliers WHERE platform = 'TAOBAO' AND platform_supplier_id = '2895982467'").fetchone()
             assert supplier["name"] == "Shared supplier"
             assert conn.execute("SELECT count(*) AS total FROM analyses WHERE user_id = %s", (owner["id"],)).fetchone()["total"] == 2
-            assert not conn.execute("SELECT 1 FROM local_queue WHERE analysis_id = %s", (analysis_id,)).fetchone()
+            queued = conn.execute("SELECT 1 FROM local_queue WHERE analysis_id = %s", (analysis_id,)).fetchone()
+            assert (queued is not None) is browser
             assert not conn.execute("SELECT 1 FROM analysis_outbox WHERE analysis_id = %s", (analysis_id,)).fetchone()
     finally:
         if analysis_id:
@@ -717,7 +719,7 @@ def test_extension_capture_persists_owner_scoped_snapshot_and_queues_assessment(
             url, owner["id"], payload, customer_limit=1, window_seconds=86400,
         )
         row = store.get_for_user(analysis_id, owner["id"])
-        assert row["status"] == "COMPLETED"
+        assert row["status"] == "ASSESSING"
         assert row["mode"] == "EXTENSION_ENHANCED"
         assert row["extraction_method"] == "EXTENSION_DOM"
         assert row["supplier_data"]["products"][0]["title"] == "Visible dress"
