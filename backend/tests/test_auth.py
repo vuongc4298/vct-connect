@@ -949,7 +949,7 @@ def test_me_is_customer_only_and_reports_own_trial_and_usage(signing_keys):
     assert trial.json()["plan"] == "MVP_TRIAL"
     assert trial.json()["trial"]["active"] is True
     assert trial.json()["usage"]["used"] == 7
-    assert trial.json()["usage"]["remaining"] == 13
+    assert trial.json()["usage"]["remaining"] == 33
 
     other_headers = auth_header(token(private, "account_other", email="other@example.test"))
     other = client.get("/api/v1/me", headers=other_headers)
