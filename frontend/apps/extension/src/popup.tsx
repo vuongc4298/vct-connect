@@ -3,7 +3,7 @@ import { ApiError, getAnalysis, submitBrowserEvidence } from "@vct/api-client";
 import type { Analysis } from "@vct/contracts";
 import React, { useEffect, useState } from "react";
 import { createRoot } from "react-dom/client";
-import { captureSelectedDom, supportedOffer } from "./capture";
+import { assertPermittedEvidence, captureSelectedDom, supportedOffer } from "./capture";
 import { restoreLastCapture, saveOpenAndLoadResult, type LastCapture } from "./capture-result";
 import { canSubmitEnhancedEvidence, classifyExtensionPage, extensionGate, type ExtensionPageState } from "./extension-shell";
 
@@ -95,6 +95,7 @@ function App() {
       if (!evidence || offer.offerId !== ("offer_id" in evidence ? evidence.offer_id : evidence.source_id) || offer.sourceUrl !== evidence.source_url) {
         throw new Error("The active offer changed; try again");
       }
+      assertPermittedEvidence(evidence);
       let created;
       try {
         created = await submitBrowserEvidence(
