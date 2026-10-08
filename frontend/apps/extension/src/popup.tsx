@@ -1,15 +1,11 @@
 import { ClerkProvider, UserButton, useAuth } from "@clerk/chrome-extension";
+import { ApiError, getAnalysis } from "@vct/api-client";
+import type { Analysis } from "@vct/contracts";
 import React, { useEffect, useState } from "react";
 import { createRoot } from "react-dom/client";
 import { captureSelectedDom, supportedOffer } from "./capture";
 import { restoreLastCapture, saveOpenAndLoadResult, type LastCapture } from "./capture-result";
-
-type Result = {
-  id: string;
-  status: string;
-  supplier_data: { completeness: number; missing_fields: string[]; supplier_name: string | null } | null;
-  result: { extraction_status: string; reason?: string } | null;
-};
+import { canSubmitEnhancedEvidence, classifyExtensionPage, extensionGate, type ExtensionPageState } from "./extension-shell";
 
 const LAST_CAPTURE_KEY = "lastCapture";
 
@@ -36,9 +32,20 @@ function App() {
   const { getToken, isLoaded, isSignedIn, userId } = useAuth();
   const [busy, setBusy] = useState(false);
   const [error, setError] = useState("");
-  const [result, setResult] = useState<Result | null>(null);
+  const [result, setResult] = useState<Analysis | null>(null);
   const [lastCapture, setLastCapture] = useState<LastCapture | null>(null);
+  const [page, setPage] = useState<ExtensionPageState>({ status: "checking" });
   const [signInDelayed, setSignInDelayed] = useState(false);
+
+  useEffect(() => {
+    let active = true;
+    void chrome.tabs.query({ active: true, currentWindow: true }).then(([tab]) => {
+      if (active) setPage(classifyExtensionPage(tab?.url));
+    }).catch(() => {
+      if (active) setPage({ status: "unsupported" });
+    });
+    return () => { active = false; };
+  }, []);
 
   useEffect(() => {
     if (isLoaded) { setSignInDelayed(false); return; }
@@ -60,13 +67,22 @@ function App() {
   }, [isLoaded, userId]);
 
   async function loadResult(analysisId: string) {
-    const token = await getToken({ skipCache: true });
-    if (!token) throw new Error("Sign in before loading the result");
-    const status = await fetchWithTimeout(`${VCT_WEB_ORIGIN}/api/v1/analyses/${encodeURIComponent(analysisId)}`, {
-      headers: { Authorization: `Bearer ${token}` }, cache: "no-store",
-    });
-    if (!status.ok) throw new Error(`Could not load result (${status.status}). Sign into the same VCT Connect account.`);
-    setResult(await status.json());
+    try {
+      const analysis = await getAnalysis(
+        analysisId,
+        { getToken: () => getToken({ skipCache: true }) },
+        { origin: VCT_WEB_ORIGIN, timeoutMs: 45_000 },
+      );
+      setResult(analysis);
+    } catch (cause) {
+      if (cause instanceof ApiError) {
+        if (cause.status === 401 || cause.status === 403 || cause.status === 404) {
+          throw new Error("Could not load result. Sign into the same VCT Connect account.");
+        }
+        if (cause.status === 408) throw new Error("Result lookup timed out. Retry loading the last result.");
+      }
+      throw cause;
+    }
   }
 
   async function retryResult() {
@@ -77,9 +93,12 @@ function App() {
     finally { setBusy(false); }
   }
 
+  const gate = extensionGate({ authLoaded: isLoaded, signedIn: Boolean(isSignedIn), page });
+
   async function capture() {
     setBusy(true); setError(""); setResult(null);
     try {
+      if (!canSubmitEnhancedEvidence(gate)) throw new Error("Sign in on a supported source page before analyzing");
       const [tab] = await chrome.tabs.query({ active: true, currentWindow: true });
       const offer = tab?.url ? supportedOffer(tab.url) : null;
       if (!tab?.id || !offer) throw new Error("Open a supported 1688 offer or Taobao item/shop first");
@@ -113,24 +132,38 @@ function App() {
     } finally { setBusy(false); }
   }
 
+  const extractionStatus = result?.result && "extraction_status" in result.result
+    ? result.result.extraction_status
+    : result?.status;
+  const extractionReason = result?.result && "reason" in result.result && typeof result.result.reason === "string"
+    ? result.result.reason
+    : undefined;
+
   return <main>
     <h1>VCT Connect</h1>
-    <p>Capture selected visible evidence from the active 1688 offer or Taobao item/shop.</p>
-    {!isLoaded ? <>
+    <p>Analyze selected visible evidence from a supported 1688 offer or Taobao item/shop.</p>
+    {page.status === "supported"
+      ? <p className="page-state">Supported page detected · {page.kind}</p>
+      : page.status === "unsupported"
+        ? <p className="page-state">This page is not supported. Open a 1688 offer or Taobao item/shop.</p>
+        : <p className="page-state">Checking the active page…</p>}
+    {gate === "loading-auth" ? <>
       <p>{signInDelayed ? "Sign-in is taking longer than expected. Sign in on the web, then close and reopen this popup." : "Checking your VCT Connect session…"}</p>
       {signInDelayed && <button onClick={() => void openWebSignIn()}>Open VCT Connect</button>}
-    </> : !isSignedIn ? <>
+    </> : gate === "signed-out" ? <>
       <button onClick={() => void openWebSignIn()}>Sign in on VCT Connect</button>
       <p>Finish sign-in in the web tab, then return to the source page and reopen this popup. Use the same Chrome profile.</p>
     </> : <>
       <UserButton />
-      <p><button disabled={busy} onClick={() => void capture()}>{busy ? "Working…" : "Capture this page"}</button></p>
+      {gate === "checking-page" && <p>Checking whether this page can be analyzed…</p>}
+      {gate === "unsupported-page" && <p>Enhanced analysis is disabled on unsupported pages.</p>}
+      {gate === "ready" && <p><button disabled={busy} onClick={() => void capture()}>{busy ? "Working…" : "Analyze this page"}</button></p>}
     </>}
     {error && <p className="error" role="alert">{error}</p>}
     {isSignedIn && result && <div className="status">
-      <strong>{result.result?.extraction_status ?? result.status}</strong>
+      <strong>{extractionStatus}</strong>
       {result.supplier_data ? <p>{result.supplier_data.supplier_name || "Supplier name missing"}<br />Coverage: {Math.round(result.supplier_data.completeness * 100)}%<br />Missing: {result.supplier_data.missing_fields.join(", ") || "none"}</p>
-        : <p>No selected supplier or product evidence was visible. {result.result?.reason}</p>}
+        : <p>No selected supplier or product evidence was visible. {extractionReason}</p>}
       <small>User-provided browser evidence. No risk score is available.</small>
     </div>}
     {isSignedIn && lastCapture && <div className="status">
