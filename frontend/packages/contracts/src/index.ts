@@ -248,6 +248,6 @@ export type AddWatchlistResponse = {
 
 export type CaptureAnalysisResponse = {
   id: string;
-  status: "COMPLETED";
+  status: "ASSESSING" | "COMPLETED";
   extraction_status: ExtractionStatus;
 };
