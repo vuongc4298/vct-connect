@@ -109,7 +109,7 @@ def test_alibaba_mocked_public_queue_owner_and_immutable_replay(store, monkeypat
     try:
         assert process_local_once(store)
         row = client.get(f"{endpoint}/{analysis_id}", headers=headers).json()
-        assert row["status"] == "COMPLETED" and row["supplier_data"]["platform"] == "ALIBABA"
+        assert row["status"] == "ASSESSING" and row["supplier_data"]["platform"] == "ALIBABA"
         assert row["supplier_data"]["analysis_mode"] == ("GUEST_PUBLIC" if guest else "ACCOUNT_PUBLIC")
         assert row["supplier_data"]["platform_supplier_id"] == ("dgxuandele.en.alibaba.com" if profile else "beautiy.en.alibaba.com")
         assert len(row["reviews"]) == (0 if profile else 1)
@@ -703,7 +703,7 @@ def test_saved_page_import_is_atomic_owner_scoped_and_quota_limited(store):
         remove_user(store, other["clerk_user_id"])
 
 
-def test_extension_capture_persists_owner_scoped_snapshot_without_queue(store):
+def test_extension_capture_persists_owner_scoped_snapshot_and_queues_assessment(store):
     owner = store.resolve_user(f"extension_owner_{uuid4().hex}")
     other = store.resolve_user(f"extension_other_{uuid4().hex}")
     url = "https://detail.1688.com/offer/996518024136.html"
@@ -724,7 +724,7 @@ def test_extension_capture_persists_owner_scoped_snapshot_without_queue(store):
         assert row["raw_evidence"]["provenance"] == "USER_PROVIDED_BROWSER_EVIDENCE"
         assert store.get_for_user(analysis_id, other["id"]) is None
         with store.connect() as conn:
-            assert conn.execute("SELECT 1 FROM local_queue WHERE analysis_id = %s", (analysis_id,)).fetchone() is None
+            assert conn.execute("SELECT 1 FROM local_queue WHERE analysis_id = %s", (analysis_id,)).fetchone() is not None
             assert conn.execute("SELECT 1 FROM analysis_outbox WHERE analysis_id = %s", (analysis_id,)).fetchone() is None
         with pytest.raises(AdmissionDenied):
             store.capture_customer_page(url, owner["id"], payload,
