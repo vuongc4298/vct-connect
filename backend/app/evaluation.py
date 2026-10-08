@@ -61,12 +61,16 @@ def submit_blind_label(store: Store, reviewer_id: UUID, run_id: UUID, ordinal: i
             if case is None:
                 return None
             label_id = uuid4()
-            conn.execute(
+            inserted = conn.execute(
                 """INSERT INTO review_evaluation_labels
                      (id, run_id, review_ordinal, reviewer_id, sentiment)
-                   VALUES (%s, %s, %s, %s, %s)""",
+                   VALUES (%s, %s, %s, %s, %s)
+                   ON CONFLICT (run_id, review_ordinal, reviewer_id) DO NOTHING
+                   RETURNING id""",
                 (label_id, run_id, ordinal, reviewer_id, sentiment),
-            )
+            ).fetchone()
+            if inserted is None:
+                raise ValueError("Case already labeled")
             return {
                 "label_id": label_id, "run_id": run_id, "review_ordinal": ordinal,
                 "sentiment": sentiment, "review_text": case["review_text"],
