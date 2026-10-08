@@ -810,7 +810,7 @@ def test_extension_capture_merges_only_same_owner_page_and_rejects_secrets(store
         repeated_row = client.get(f"/api/v1/analyses/{repeated_id}", headers=headers).json()
         assert len(repeated_row["reviews"]) == 1
         assert len(repeated_row["supplier_data"]["products"]) == 1
-        assert repeated_row["raw_evidence"]["merged_from_snapshot_id"] == merged["supplier_snapshot_id"]
+        assert repeated_row["raw_evidence"]["merged_from_snapshot_id"] == str(prior["supplier_snapshot_id"])
         with store.connect() as conn:
             used = conn.execute("SELECT used FROM admission_counters WHERE scope = 'CUSTOMER' AND subject = %s",
                                 (subject,)).fetchone()["used"]
