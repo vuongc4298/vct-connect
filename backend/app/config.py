@@ -30,6 +30,7 @@ class Settings:
     guest_browser_limit: int = 3
     guest_global_limit: int = 100
     customer_limit: int = 20
+    trial_customer_limit: int = 40
     admission_window_seconds: int = 86400
     public_browser_fallback: bool = False
     yescale_api_key: str | None = None
@@ -43,7 +44,7 @@ class Settings:
             raise ValueError(
                 "PROCESSING_LEASE_SECONDS must be at least AZURE_LOCK_RENEWAL_SECONDS"
             )
-        for name in ("guest_browser_limit", "guest_global_limit", "customer_limit", "admission_window_seconds"):
+        for name in ("guest_browser_limit", "guest_global_limit", "customer_limit", "trial_customer_limit", "admission_window_seconds"):
             if getattr(self, name) < 1:
                 raise ValueError(f"{name} must be positive")
 
@@ -100,6 +101,7 @@ class Settings:
             guest_browser_limit=_bounded_int("GUEST_BROWSER_LIMIT", 3, 1, 10000),
             guest_global_limit=_bounded_int("GUEST_GLOBAL_LIMIT", 100, 1, 1000000),
             customer_limit=_bounded_int("CUSTOMER_LIMIT", 20, 1, 100000),
+            trial_customer_limit=_bounded_int("TRIAL_CUSTOMER_LIMIT", 40, 1, 100000),
             admission_window_seconds=_bounded_int("ADMISSION_WINDOW_SECONDS", 86400, 60, 31536000),
             public_browser_fallback=os.getenv("PUBLIC_BROWSER_FALLBACK", "false").lower() == "true",
             yescale_api_key=os.getenv("YESCALE_API_KEY"),
