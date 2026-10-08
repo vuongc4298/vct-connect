@@ -1151,7 +1151,7 @@ def test_account_state_uses_persisted_entitlement_and_current_usage(store):
                 (uuid4(), user["id"]),
             )
         state = store.get_account_state(
-            user["id"], customer_limit=20, window_seconds=86400,
+            user["id"], customer_limit=20, trial_limit=40, window_seconds=86400,
         )
         assert state is not None
         assert state["user"]["email"] == "pilot@example.test"
@@ -1160,8 +1160,8 @@ def test_account_state_uses_persisted_entitlement_and_current_usage(store):
         assert state["trial"]["status"] == "ACTIVE"
         assert state["trial"]["starts_at"] < state["trial"]["expires_at"]
         assert state["usage"]["used"] == 7
-        assert state["usage"]["limit"] == 20
-        assert state["usage"]["remaining"] == 13
+        assert state["usage"]["limit"] == 40
+        assert state["usage"]["remaining"] == 33
 
         with store.connect() as conn:
             conn.execute(
@@ -1169,11 +1169,13 @@ def test_account_state_uses_persisted_entitlement_and_current_usage(store):
                 (entitlement_id,),
             )
         expired = store.get_account_state(
-            user["id"], customer_limit=20, window_seconds=86400,
+            user["id"], customer_limit=20, trial_limit=40, window_seconds=86400,
         )
         assert expired["plan"] == "FREE"
         assert expired["trial"]["active"] is False
         assert expired["trial"]["status"] == "ACTIVE"
+        assert expired["usage"]["limit"] == 20
+        assert expired["usage"]["remaining"] == 13
     finally:
         with store.connect() as conn:
             with conn.transaction():
