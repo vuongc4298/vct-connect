@@ -34,9 +34,13 @@ Before the request leaves the extension, the selected JSON is recursively checke
 
 The capture implementation does not read source-site cookies, storage, full HTML, page globals or arbitrary scripts. No new source-site host permission is added.
 
-## Merge behavior
+## Merge and assessment handoff
 
 No merge algorithm or evidence schema changes are introduced by this story. Story 2.6 remains the source of truth for same-owner/same-page baseline selection, immutable prior snapshots, item bounds, field/item provenance and secret rejection.
+
+For successful/partial extension extraction, the merged snapshot is persisted first and the analysis transitions to `ASSESSING`. The same analysis is then placed on the local queue or durable Azure outbox. Worker replay sees the existing snapshot and resumes at assessment instead of recrawling the source page, then proceeds through REPORTING to the immutable report. Non-extracted capture results remain terminal extraction results.
+
+Outbox publication exhaustion now also finalizes pre-extracted ASSESSING work, while a late broker delivery can reopen through the existing publication-recovery path and resume from the stored snapshot.
 
 ## Verification
 
@@ -45,5 +49,6 @@ No merge algorithm or evidence schema changes are introduced by this story. Stor
 - the shared API client sends exactly the selected JSON plus VCT bearer authorization;
 - the extension-to-VCT request explicitly omits browser credentials;
 - oversized capture payloads are refused before fetch;
-- existing backend merge, ownership, deduplication and secret-rejection suites remain unchanged and in CI;
+- successful captures persist the snapshot and enqueue assessment/reporting without source recrawl;
+- existing backend merge, ownership, deduplication and secret-rejection suites remain in CI;
 - repository CI is the merge gate.
