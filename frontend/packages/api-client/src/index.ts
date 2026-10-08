@@ -1,5 +1,5 @@
 import type {
-  AccountState, AddWatchlistResponse, Analysis, AnalysisHistoryItem, GuestPreviewV1, ImportSavedPageResponse, ReportV1, SubmitAnalysisRequest, SubmitAnalysisResponse, WatchlistEntry,
+  AccountState, AddWatchlistResponse, Analysis, AnalysisHistoryItem, CaptureAnalysisResponse, GuestPreviewV1, ImportSavedPageResponse, ReportV1, SubmitAnalysisRequest, SubmitAnalysisResponse, WatchlistEntry,
   SubmitGuestAnalysisRequest, SubmitGuestAnalysisResponse,
 } from "@vct/contracts";
 
@@ -197,4 +197,29 @@ export async function removeWatchlist(
     method: "DELETE",
     headers: await authorizationHeaders(auth),
   }));
+}
+
+
+export async function submitBrowserEvidence(
+  body: object,
+  auth: RequestAuth,
+  options?: ApiRequestOptions,
+): Promise<CaptureAnalysisResponse> {
+  const serialized = JSON.stringify(body);
+  if (new TextEncoder().encode(serialized).length > 16_384) {
+    throw new ApiError("Selected evidence exceeds 16 KB", 413);
+  }
+  return request<CaptureAnalysisResponse>(
+    endpoint("/api/v1/analyses/capture", options),
+    async () => ({
+      method: "POST",
+      credentials: "omit",
+      headers: {
+        "Content-Type": "application/json",
+        ...await authorizationHeaders(auth),
+      },
+      body: serialized,
+    }),
+    options?.timeoutMs,
+  );
 }

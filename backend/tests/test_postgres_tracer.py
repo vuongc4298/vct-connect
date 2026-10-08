@@ -519,25 +519,27 @@ def test_taobao_user_evidence_atomic_ownership_replay_quota_and_shared_metadata(
             persist = store.import_customer_page
         analysis_id = persist(url, owner["id"], payload, customer_limit=1, window_seconds=86400)
         row = store.get_for_user(analysis_id, owner["id"])
-        assert row["status"] == "COMPLETED" and row["supplier_data"]["platform"] == "TAOBAO"
+        assert row["status"] == ("ASSESSING" if browser else "COMPLETED") and row["supplier_data"]["platform"] == "TAOBAO"
         if browser and not shop:
             expected = [{"text": "Original captured review", "source_url": url}]
             assert row["supplier_data"]["reviews"] == expected
             assert row["reviews"] == expected
             assert row["raw_evidence"]["selected_fields"]["reviews"] == [{"text": "  Original captured review  ", "original_length": 28}]
         assert store.get_for_user(analysis_id, other["id"]) is None
-        assert store.complete_processing(analysis_id, uuid4(), payload) == "replay"
-        changed = json.loads(json.dumps(payload))
-        changed["raw_payload"]["different"] = True
-        with pytest.raises(ResultConflict):
-            store.complete_processing(analysis_id, uuid4(), changed)
+        if not browser:
+            assert store.complete_processing(analysis_id, uuid4(), payload) == "replay"
+            changed = json.loads(json.dumps(payload))
+            changed["raw_payload"]["different"] = True
+            with pytest.raises(ResultConflict):
+                store.complete_processing(analysis_id, uuid4(), changed)
         with pytest.raises(AdmissionDenied):
             persist(url, owner["id"], payload, customer_limit=1, window_seconds=86400)
         with store.connect() as conn:
             supplier = conn.execute("SELECT name FROM suppliers WHERE platform = 'TAOBAO' AND platform_supplier_id = '2895982467'").fetchone()
             assert supplier["name"] == "Shared supplier"
             assert conn.execute("SELECT count(*) AS total FROM analyses WHERE user_id = %s", (owner["id"],)).fetchone()["total"] == 2
-            assert not conn.execute("SELECT 1 FROM local_queue WHERE analysis_id = %s", (analysis_id,)).fetchone()
+            queued = conn.execute("SELECT 1 FROM local_queue WHERE analysis_id = %s", (analysis_id,)).fetchone()
+            assert (queued is not None) is browser
             assert not conn.execute("SELECT 1 FROM analysis_outbox WHERE analysis_id = %s", (analysis_id,)).fetchone()
     finally:
         if analysis_id:
@@ -703,7 +705,7 @@ def test_saved_page_import_is_atomic_owner_scoped_and_quota_limited(store):
         remove_user(store, other["clerk_user_id"])
 
 
-def test_extension_capture_persists_owner_scoped_snapshot_without_queue(store):
+def test_extension_capture_persists_owner_scoped_snapshot_and_queues_assessment(store):
     owner = store.resolve_user(f"extension_owner_{uuid4().hex}")
     other = store.resolve_user(f"extension_other_{uuid4().hex}")
     url = "https://detail.1688.com/offer/996518024136.html"
@@ -717,14 +719,14 @@ def test_extension_capture_persists_owner_scoped_snapshot_without_queue(store):
             url, owner["id"], payload, customer_limit=1, window_seconds=86400,
         )
         row = store.get_for_user(analysis_id, owner["id"])
-        assert row["status"] == "COMPLETED"
+        assert row["status"] == "ASSESSING"
         assert row["mode"] == "EXTENSION_ENHANCED"
         assert row["extraction_method"] == "EXTENSION_DOM"
         assert row["supplier_data"]["products"][0]["title"] == "Visible dress"
         assert row["raw_evidence"]["provenance"] == "USER_PROVIDED_BROWSER_EVIDENCE"
         assert store.get_for_user(analysis_id, other["id"]) is None
         with store.connect() as conn:
-            assert conn.execute("SELECT 1 FROM local_queue WHERE analysis_id = %s", (analysis_id,)).fetchone() is None
+            assert conn.execute("SELECT 1 FROM local_queue WHERE analysis_id = %s", (analysis_id,)).fetchone() is not None
             assert conn.execute("SELECT 1 FROM analysis_outbox WHERE analysis_id = %s", (analysis_id,)).fetchone() is None
         with pytest.raises(AdmissionDenied):
             store.capture_customer_page(url, owner["id"], payload,
@@ -810,7 +812,7 @@ def test_extension_capture_merges_only_same_owner_page_and_rejects_secrets(store
         repeated_row = client.get(f"/api/v1/analyses/{repeated_id}", headers=headers).json()
         assert len(repeated_row["reviews"]) == 1
         assert len(repeated_row["supplier_data"]["products"]) == 1
-        assert repeated_row["raw_evidence"]["merged_from_snapshot_id"] == merged["supplier_snapshot_id"]
+        assert repeated_row["raw_evidence"]["merged_from_snapshot_id"] == str(prior["supplier_snapshot_id"])
         with store.connect() as conn:
             used = conn.execute("SELECT used FROM admission_counters WHERE scope = 'CUSTOMER' AND subject = %s",
                                 (subject,)).fetchone()["used"]

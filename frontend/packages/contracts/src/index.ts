@@ -244,3 +244,10 @@ export type AddWatchlistResponse = {
   id: string;
   created_at: string;
 };
+
+
+export type CaptureAnalysisResponse = {
+  id: string;
+  status: "ASSESSING" | "COMPLETED";
+  extraction_status: ExtractionStatus;
+};

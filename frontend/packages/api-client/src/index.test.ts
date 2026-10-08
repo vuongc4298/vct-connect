@@ -1,7 +1,7 @@
 import assert from "node:assert/strict";
 import test from "node:test";
 
-import { ApiError, getAccountState, getAnalysis, getAnalysisHistory, getGuestAnalysis, getGuestPreview, importSavedPage, submitAnalysis, submitGuestAnalysis } from "./index";
+import { ApiError, getAccountState, getAnalysis, getAnalysisHistory, getGuestAnalysis, getGuestPreview, importSavedPage, submitAnalysis, submitBrowserEvidence, submitGuestAnalysis } from "./index";
 
 test("saved page import sends the file with bearer authorization and rejects oversized files", async () => {
   const originalFetch = globalThis.fetch;
@@ -308,4 +308,59 @@ test("analysis lookup can target the trusted web origin for extension use", asyn
   }
   assert.equal(sent?.url, "https://vct.example.test/api/v1/analyses/analysis-extension");
   assert.equal(sent?.headers.get("Authorization"), "Bearer extension-token");
+});
+
+
+test("selected browser evidence uses bearer auth and omits browser credentials", async () => {
+  const originalFetch = globalThis.fetch;
+  let sent: { url: string; headers: Headers; body: string; credentials?: RequestCredentials } | undefined;
+  globalThis.fetch = async (input, init) => {
+    sent = {
+      url: String(input),
+      headers: new Headers(init?.headers),
+      body: String(init?.body ?? ""),
+      credentials: init?.credentials,
+    };
+    return Response.json({ id: "capture-id", status: "COMPLETED", extraction_status: "PARTIAL" }, { status: 201 });
+  };
+  const evidence = {
+    source_url: "https://detail.1688.com/offer/996518024136.html",
+    offer_id: "996518024136",
+    fields: { product_title: "Public title", supplier_name: "Public supplier" },
+  };
+  try {
+    const created = await submitBrowserEvidence(
+      evidence,
+      { getToken: async () => "fresh-extension-token" },
+      { origin: "https://vct.example", timeoutMs: 45_000 },
+    );
+    assert.equal(created.id, "capture-id");
+    assert.equal(sent?.url, "https://vct.example/api/v1/analyses/capture");
+    assert.equal(sent?.headers.get("Authorization"), "Bearer fresh-extension-token");
+    assert.equal(sent?.headers.get("Content-Type"), "application/json");
+    assert.equal(sent?.credentials, "omit");
+    assert.deepEqual(JSON.parse(sent?.body ?? "{}"), evidence);
+    assert.doesNotMatch(sent?.body ?? "", /cookie|password|session|token/i);
+  } finally {
+    globalThis.fetch = originalFetch;
+  }
+});
+
+test("selected browser evidence refuses an oversized request before network access", async () => {
+  const originalFetch = globalThis.fetch;
+  let calls = 0;
+  globalThis.fetch = async () => { calls += 1; throw new Error("must not fetch"); };
+  try {
+    await assert.rejects(
+      submitBrowserEvidence(
+        { source_url: "https://detail.1688.com/offer/996518024136.html", fields: { product_title: "x".repeat(17_000) } },
+        { getToken: async () => "token" },
+        { origin: "https://vct.example" },
+      ),
+      (error: unknown) => error instanceof ApiError && error.status === 413,
+    );
+    assert.equal(calls, 0);
+  } finally {
+    globalThis.fetch = originalFetch;
+  }
 });

@@ -1,9 +1,9 @@
 import { ClerkProvider, UserButton, useAuth } from "@clerk/chrome-extension";
-import { ApiError, getAnalysis } from "@vct/api-client";
+import { ApiError, getAnalysis, submitBrowserEvidence } from "@vct/api-client";
 import type { Analysis } from "@vct/contracts";
 import React, { useEffect, useState } from "react";
 import { createRoot } from "react-dom/client";
-import { captureSelectedDom, supportedOffer } from "./capture";
+import { assertPermittedEvidence, captureSelectedDom, supportedOffer } from "./capture";
 import { restoreLastCapture, saveOpenAndLoadResult, type LastCapture } from "./capture-result";
 import { canSubmitEnhancedEvidence, classifyExtensionPage, extensionGate, type ExtensionPageState } from "./extension-shell";
 
@@ -11,21 +11,6 @@ const LAST_CAPTURE_KEY = "lastCapture";
 
 function openWebSignIn() {
   return chrome.tabs.create({ url: `${VCT_WEB_ORIGIN}/` });
-}
-
-async function fetchWithTimeout(url: string, init: RequestInit): Promise<Response> {
-  const controller = new AbortController();
-  const timer = setTimeout(() => controller.abort(), 45_000);
-  try {
-    return await fetch(url, { ...init, signal: controller.signal });
-  } catch (cause) {
-    if (controller.signal.aborted) throw new Error(init.method === "POST"
-      ? "Capture timed out. It may have been saved; submitting again may use another quota slot."
-      : "Result lookup timed out. Retry loading the last result.");
-    throw cause;
-  } finally {
-    clearTimeout(timer);
-  }
 }
 
 function App() {
@@ -110,15 +95,20 @@ function App() {
       if (!evidence || offer.offerId !== ("offer_id" in evidence ? evidence.offer_id : evidence.source_id) || offer.sourceUrl !== evidence.source_url) {
         throw new Error("The active offer changed; try again");
       }
-      const body = JSON.stringify(evidence);
-      if (new TextEncoder().encode(body).length > 16_384) throw new Error("Selected evidence exceeds 16 KB");
-      const response = await fetchWithTimeout(`${VCT_WEB_ORIGIN}/api/v1/analyses/capture`, {
-        method: "POST", headers: { "Content-Type": "application/json", Authorization: `Bearer ${token}` },
-        body,
-      });
-      const created = await response.json();
-      if (!response.ok) throw new Error(typeof created.detail === "string" ? created.detail : `Capture failed (${response.status})`);
-      if (typeof created.id !== "string") throw new Error("Capture returned no result ID");
+      assertPermittedEvidence(evidence);
+      let created;
+      try {
+        created = await submitBrowserEvidence(
+          evidence,
+          { getToken: async () => token },
+          { origin: VCT_WEB_ORIGIN, timeoutMs: 45_000 },
+        );
+      } catch (cause) {
+        if (cause instanceof ApiError && cause.status === 408) {
+          throw new Error("Capture timed out. It may have been saved; submitting again may use another quota slot.");
+        }
+        throw cause;
+      }
       const last = { analysisId: created.id, sourceUrl: evidence.source_url, ownerId: userId };
       setLastCapture(last);
       await saveOpenAndLoadResult(last, {
