@@ -1032,3 +1032,49 @@ def test_watchlist_is_owner_scoped_and_deduplicates_supplier(signing_keys):
     removed = client.delete(f"/api/v1/watchlist/{entry_id}", headers=owner_headers)
     assert removed.status_code == 200 and removed.json() == {"removed": True}
     assert client.get("/api/v1/watchlist", headers=owner_headers).json() == []
+
+
+def test_blind_review_label_reviewer_only_and_post_submit_reveal(signing_keys, monkeypatch):
+    private, public = signing_keys
+    client, store = client_and_store(public)
+    endpoint = "/api/v1/internal/review-cases"
+    run_id = uuid4()
+    called = []
+
+    def cases(_store, _reviewer_id):
+        called.append("list")
+        return [{"run_id": str(run_id), "ordinal": 0, "review_text": "Goods arrived late",
+                 "rating": "2", "source_url": FIXTURE_URL}]
+
+    def label(_store, _reviewer_id, requested_run_id, ordinal, sentiment):
+        called.append("submit")
+        assert requested_run_id == run_id and ordinal == 0 and sentiment == "NEGATIVE"
+        if called.count("submit") > 1:
+            raise ValueError("Case already labeled")
+        return {"label_id": str(uuid4()), "run_id": str(run_id),
+                "review_ordinal": 0, "sentiment": sentiment, "review_text": "Goods arrived late",
+                "model_output": {"findings": []}, "model": "pinned-model",
+                "prompt_version": "v1", "schema_version": "review-interpretation.v1"}
+
+    monkeypatch.setattr("backend.app.main.list_blind_cases", cases)
+    monkeypatch.setattr("backend.app.main.submit_blind_label", label)
+    customer = auth_header(token(private, "blind_customer"))
+    assert client.get(endpoint).status_code == 401
+    assert client.get(endpoint, headers=customer).status_code == 403
+
+    reviewer = auth_header(token(private, "blind_reviewer"))
+    assert client.get("/api/v1/me", headers=reviewer).status_code == 200
+    store.users["blind_reviewer"]["role"] = "INTERNAL_REVIEWER"
+    assert client.get(endpoint, headers=reviewer).status_code == 200
+    initial = client.get(endpoint, headers=reviewer).json()
+    assert len(initial) == 1
+    assert "model_output" not in initial[0]
+    assert "model" not in initial[0]
+    route = f"{endpoint}/{run_id}/0/label"
+    assert client.post(route, json={"sentiment": "BAD"}, headers=reviewer).status_code == 422
+    assert client.post(route, json={"sentiment": "NEGATIVE"}, headers=customer).status_code == 403
+    response = client.post(route, json={"sentiment": "NEGATIVE"}, headers=reviewer)
+    assert response.status_code == 201
+    assert response.json()["model_output"] == {"findings": []}
+    assert client.post(route, json={"sentiment": "NEGATIVE"}, headers=reviewer).status_code == 409
+    assert called.count("submit") == 2
