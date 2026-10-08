@@ -7,7 +7,8 @@ from typing import Annotated
 from fastapi import Depends, FastAPI, HTTPException, Request
 from fastapi.responses import JSONResponse
 from starlette.concurrency import run_in_threadpool
-from pydantic import BaseModel, ValidationError, field_validator
+from pydantic import BaseModel, ValidationError, Field, field_validator
+from typing import Literal
 from .auth import (
     ADMIN,
     ALL_ROLES,
@@ -48,13 +49,19 @@ class Submission(BaseModel):
 
 
 class BlindReviewLabel(BaseModel):
-    sentiment: str
+    sentiment: Literal["POSITIVE", "NEGATIVE", "NEUTRAL", "MIXED", "UNCERTAIN"]
+    complaint_category: Literal["QUALITY", "DELIVERY", "AFTER_SALES", "PRODUCT_MISMATCH", "PACKAGING", "OTHER", "NONE", "UNCERTAIN"]
+    severity: Literal["NONE", "LOW", "MEDIUM", "HIGH", "UNCERTAIN"]
+    suspicious_indicators: list[Literal["EXACT_DUPLICATE_TEXT", "TIMING_BURST", "RATING_TEXT_MISMATCH", "REVIEW_VOLUME_INCONSISTENCY", "SEMANTIC_NEAR_DUPLICATE", "OTHER"]] = Field(default_factory=list, max_length=6)
+    correctness: Literal["CORRECT", "PARTIALLY_CORRECT", "INCORRECT", "UNCERTAIN"]
+    human_confidence: float = Field(ge=0, le=1)
+    notes: str = Field(default="", max_length=2000)
 
-    @field_validator("sentiment")
+    @field_validator("suspicious_indicators")
     @classmethod
-    def allowed_sentiment(cls, value: str) -> str:
-        if value not in {"POSITIVE", "NEGATIVE", "NEUTRAL", "MIXED", "UNCERTAIN"}:
-            raise ValueError("Invalid sentiment label")
+    def unique_indicators(cls, value: list[str]) -> list[str]:
+        if len(set(value)) != len(value):
+            raise ValueError("Suspicious indicators must be unique")
         return value
 
 def create_app(
@@ -138,7 +145,7 @@ def create_app(
         principal: Annotated[Principal, Depends(require_roles(INTERNAL_REVIEWER))],
     ):
         try:
-            comparison = submit_blind_label(store, principal.user_id, run_id, ordinal, body.sentiment)
+            comparison = submit_blind_label(store, principal.user_id, run_id, ordinal, body.model_dump())
         except ValueError as exc:
             raise HTTPException(status_code=409, detail="Case already labeled") from exc
         except Exception as exc:

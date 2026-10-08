@@ -1046,13 +1046,13 @@ def test_blind_review_label_reviewer_only_and_post_submit_reveal(signing_keys, m
         return [{"run_id": str(run_id), "ordinal": 0, "review_text": "Goods arrived late",
                  "rating": "2", "source_url": FIXTURE_URL}]
 
-    def label(_store, _reviewer_id, requested_run_id, ordinal, sentiment):
+    def label(_store, _reviewer_id, requested_run_id, ordinal, annotation):
         called.append("submit")
-        assert requested_run_id == run_id and ordinal == 0 and sentiment == "NEGATIVE"
+        assert requested_run_id == run_id and ordinal == 0 and annotation["sentiment"] == "NEGATIVE"
         if called.count("submit") > 1:
             raise ValueError("Case already labeled")
         return {"label_id": str(uuid4()), "run_id": str(run_id),
-                "review_ordinal": 0, "sentiment": sentiment, "review_text": "Goods arrived late",
+                "review_ordinal": 0, "annotation": annotation, "sentiment": annotation["sentiment"], "review_text": "Goods arrived late",
                 "model_output": {"findings": []}, "model": "pinned-model",
                 "prompt_version": "v1", "schema_version": "review-interpretation.v1"}
 
@@ -1071,10 +1071,16 @@ def test_blind_review_label_reviewer_only_and_post_submit_reveal(signing_keys, m
     assert "model_output" not in initial[0]
     assert "model" not in initial[0]
     route = f"{endpoint}/{run_id}/0/label"
+    complete_label = {"sentiment": "NEGATIVE", "complaint_category": "DELIVERY",
+        "severity": "HIGH", "suspicious_indicators": [], "correctness": "UNCERTAIN",
+        "human_confidence": 0.75, "notes": "Delivery delay supported by review text"}
     assert client.post(route, json={"sentiment": "BAD"}, headers=reviewer).status_code == 422
-    assert client.post(route, json={"sentiment": "NEGATIVE"}, headers=customer).status_code == 403
-    response = client.post(route, json={"sentiment": "NEGATIVE"}, headers=reviewer)
+    assert client.post(route, json=complete_label, headers=customer).status_code == 403
+    response = client.post(route, json=complete_label, headers=reviewer)
     assert response.status_code == 201
     assert response.json()["model_output"] == {"findings": []}
-    assert client.post(route, json={"sentiment": "NEGATIVE"}, headers=reviewer).status_code == 409
+    assert response.json()["annotation"] == complete_label
+    assert client.post(route, json={**complete_label, "human_confidence": 2}, headers=reviewer).status_code == 422
+    assert client.post(route, json={**complete_label, "suspicious_indicators": ["FAKE"]}, headers=reviewer).status_code == 422
+    assert client.post(route, json=complete_label, headers=reviewer).status_code == 409
     assert called.count("submit") == 2
