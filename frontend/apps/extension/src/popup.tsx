@@ -1,11 +1,12 @@
 import { ClerkProvider, UserButton, useAuth } from "@clerk/chrome-extension";
-import { ApiError, getAnalysis, submitBrowserEvidence } from "@vct/api-client";
-import type { Analysis } from "@vct/contracts";
+import { ApiError, getAnalysis, getReport, submitBrowserEvidence } from "@vct/api-client";
+import type { Analysis, ReportV1 } from "@vct/contracts";
 import React, { useEffect, useState } from "react";
 import { createRoot } from "react-dom/client";
 import { assertPermittedEvidence, captureSelectedDom, supportedOffer } from "./capture";
 import { restoreLastCapture, saveOpenAndLoadResult, type LastCapture } from "./capture-result";
 import { canSubmitEnhancedEvidence, classifyExtensionPage, extensionGate, type ExtensionPageState } from "./extension-shell";
+import { extensionVerdict } from "./extension-verdict";
 
 const LAST_CAPTURE_KEY = "lastCapture";
 
@@ -18,6 +19,7 @@ function App() {
   const [busy, setBusy] = useState(false);
   const [error, setError] = useState("");
   const [result, setResult] = useState<Analysis | null>(null);
+  const [report, setReport] = useState<ReportV1 | null>(null);
   const [lastCapture, setLastCapture] = useState<LastCapture | null>(null);
   const [page, setPage] = useState<ExtensionPageState>({ status: "checking" });
   const [signInDelayed, setSignInDelayed] = useState(false);
@@ -41,6 +43,7 @@ function App() {
   useEffect(() => {
     setLastCapture(null);
     setResult(null);
+    setReport(null);
     setError("");
     if (!isLoaded || !userId) { setLastCapture(null); return; }
     let active = true;
@@ -59,6 +62,15 @@ function App() {
         { origin: VCT_WEB_ORIGIN, timeoutMs: 45_000 },
       );
       setResult(analysis);
+      if (analysis.status === "COMPLETED") {
+        try {
+          const full = await getReport(analysisId, { getToken: () => getToken({ skipCache: true }) }, { origin: VCT_WEB_ORIGIN, timeoutMs: 45_000 });
+          setReport(full);
+        } catch (cause) {
+          if (!(cause instanceof ApiError && cause.status === 404)) throw cause;
+          setReport(null);
+        }
+      }
     } catch (cause) {
       if (cause instanceof ApiError) {
         if (cause.status === 401 || cause.status === 403 || cause.status === 404) {
@@ -79,9 +91,10 @@ function App() {
   }
 
   const gate = extensionGate({ authLoaded: isLoaded, signedIn: Boolean(isSignedIn), page });
+  const verdict = extensionVerdict(result, report);
 
   async function capture() {
-    setBusy(true); setError(""); setResult(null);
+    setBusy(true); setError(""); setResult(null); setReport(null);
     try {
       if (!canSubmitEnhancedEvidence(gate)) throw new Error("Sign in on a supported source page before analyzing");
       const [tab] = await chrome.tabs.query({ active: true, currentWindow: true });
@@ -122,12 +135,16 @@ function App() {
     } finally { setBusy(false); }
   }
 
-  const extractionStatus = result?.result && "extraction_status" in result.result
-    ? result.result.extraction_status
-    : result?.status;
-  const extractionReason = result?.result && "reason" in result.result && typeof result.result.reason === "string"
-    ? result.result.reason
-    : undefined;
+  useEffect(() => {
+    if (!isSignedIn || !lastCapture || !result || !verdict.poll) return;
+    let active = true;
+    const timer = setInterval(() => {
+      if (active) void loadResult(lastCapture.analysisId).catch(cause => {
+        if (active) setError(cause instanceof Error ? cause.message : "Could not update analysis");
+      });
+    }, 3000);
+    return () => { active = false; clearInterval(timer); };
+  }, [isSignedIn, lastCapture?.analysisId, result?.status]);
 
   return <main>
     <h1>VCT Connect</h1>
@@ -150,11 +167,12 @@ function App() {
       {gate === "ready" && <p><button disabled={busy} onClick={() => void capture()}>{busy ? "Working…" : "Analyze this page"}</button></p>}
     </>}
     {error && <p className="error" role="alert">{error}</p>}
-    {isSignedIn && result && <div className="status">
-      <strong>{extractionStatus}</strong>
-      {result.supplier_data ? <p>{result.supplier_data.supplier_name || "Supplier name missing"}<br />Coverage: {Math.round(result.supplier_data.completeness * 100)}%<br />Missing: {result.supplier_data.missing_fields.join(", ") || "none"}</p>
-        : <p>No selected supplier or product evidence was visible. {extractionReason}</p>}
-      <small>User-provided browser evidence. No risk score is available.</small>
+    {isSignedIn && result && <div className="status" aria-live="polite">
+      <strong>{verdict.headline}</strong>
+      <p>{verdict.detail}</p>
+      {result.supplier_data && <p>{result.supplier_data.supplier_name || "Supplier name missing"} · Extraction coverage: {Math.round(result.supplier_data.completeness * 100)}%</p>}
+      {verdict.riskLabel && <p>Risk: {verdict.riskLabel}{verdict.confidence !== null ? ` · Confidence: ${Math.round(verdict.confidence * 100)}%` : ""}{verdict.coverage !== null ? ` · Coverage: ${Math.round(verdict.coverage * 100)}%` : ""}</p>}
+      {result.status === "COMPLETED" && verdict.riskLabel === null && <small>No scored report available. Missing evidence is not low risk.</small>}
     </div>}
     {isSignedIn && lastCapture && <div className="status">
       <small>Last page: {lastCapture.sourceUrl}</small>

@@ -108,11 +108,11 @@ export async function getAnalysis(
   }), options?.timeoutMs);
 }
 
-export async function getReport(id: string, auth: RequestAuth): Promise<ReportV1> {
-  return request<ReportV1>(`/api/v1/analyses/${encodeURIComponent(id)}/report`, async () => ({
+export async function getReport(id: string, auth: RequestAuth, options?: ApiRequestOptions): Promise<ReportV1> {
+  return request<ReportV1>(endpoint(`/api/v1/analyses/${encodeURIComponent(id)}/report`, options), async () => ({
     cache: "no-store",
     headers: await authorizationHeaders(auth),
-  }));
+  }), options?.timeoutMs);
 }
 
 export async function importSavedPage(
