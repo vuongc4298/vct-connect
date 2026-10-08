@@ -3,7 +3,7 @@ import test from "node:test";
 import type { Analysis, ReportV1 } from "@vct/contracts";
 import { extensionVerdict } from "./extension-verdict";
 
-const base = { status: "ASSESSING", result: null, failure_code: null } as Analysis;
+const base = { id: "owned-analysis", status: "ASSESSING", result: null, failure_code: null } as Analysis;
 test("extension polls nonterminal states and stops on final states", () => {
   for (const status of ["QUEUED","PROCESSING","ASSESSING","REPORTING","FAILED_RETRYABLE"] as const) {
     assert.equal(extensionVerdict({ ...base, status }, null).poll, true);
@@ -19,7 +19,7 @@ test("missing report never implies low risk", () => {
   assert.equal(v.coverage, null);
 });
 test("insufficient information stays distinct from low risk", () => {
-  const report = { risk: { label: "INSUFFICIENT_INFORMATION", overall_risk: null, confidence: 0.32, coverage: 0.21 }} as ReportV1;
+  const report = { analysis_id: "owned-analysis", risk: { label: "INSUFFICIENT_INFORMATION", overall_risk: null, confidence: 0.32, coverage: 0.21 }} as ReportV1;
   const v = extensionVerdict({ ...base, status: "COMPLETED" }, report);
   assert.equal(v.riskLabel, "Insufficient information");
   assert.equal(v.confidence, 0.32);
@@ -30,4 +30,17 @@ test("blocked extraction remains an unscored terminal state", () => {
   assert.equal(v.poll, false);
   assert.equal(v.headline, "Source evidence unavailable");
   assert.equal(v.riskLabel, null);
+});
+
+test("foreign or stale reports never display a verdict", () => {
+  const foreign = {
+    analysis_id: "someone-else",
+    risk: { label: "LOW", overall_risk: 2, confidence: 0.95, coverage: 0.9 },
+  } as ReportV1;
+  const wrongOwner = extensionVerdict({ ...base, status: "COMPLETED" }, foreign);
+  assert.equal(wrongOwner.riskLabel, null);
+  assert.equal(wrongOwner.confidence, null);
+  const stale = extensionVerdict({ ...base, status: "ASSESSING" }, { ...foreign, analysis_id: base.id });
+  assert.equal(stale.riskLabel, null);
+  assert.equal(stale.coverage, null);
 });
