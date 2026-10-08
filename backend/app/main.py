@@ -115,6 +115,7 @@ def create_app(
             state = store.get_account_state(
                 principal.user_id,
                 customer_limit=settings.customer_limit,
+                trial_limit=settings.trial_customer_limit,
                 window_seconds=settings.admission_window_seconds,
             )
         except Exception as exc:
@@ -177,6 +178,7 @@ def create_app(
                 body.source_url, principal.user_id,
                 azure=settings.queue_transport == "azure",
                 customer_limit=settings.customer_limit,
+                trial_limit=settings.trial_customer_limit,
                 window_seconds=settings.admission_window_seconds,
             )
         except AdmissionDenied as exc:
@@ -243,6 +245,7 @@ def create_app(
                 store.import_customer_page,
                 source_url, principal.user_id, payload,
                 customer_limit=settings.customer_limit,
+                trial_limit=settings.trial_customer_limit,
                 window_seconds=settings.admission_window_seconds,
             )
         except AdmissionDenied as exc:
@@ -287,6 +290,7 @@ def create_app(
                 store.capture_customer_page,
                 payload["source_url"], principal.user_id, payload,
                 customer_limit=settings.customer_limit,
+                trial_limit=settings.trial_customer_limit,
                 window_seconds=settings.admission_window_seconds,
                 azure=settings.queue_transport == "azure",
             )

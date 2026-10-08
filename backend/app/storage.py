@@ -66,8 +66,30 @@ class Store:
                     ).fetchone()
         return row
 
+    @staticmethod
+    def _trial_active(conn, user_id: UUID) -> bool:
+        return bool(conn.execute(
+            """SELECT EXISTS (
+                 SELECT 1 FROM entitlements
+                 WHERE user_id = %s
+                   AND entitlement = 'ANALYSIS_ACCESS'
+                   AND source = 'MVP_TRIAL'
+                   AND status = 'ACTIVE'
+                   AND starts_at <= now()
+                   AND (expires_at IS NULL OR expires_at > now())
+               ) AS active""",
+            (user_id,),
+        ).fetchone()["active"])
+
+    @classmethod
+    def _customer_quota(cls, conn, user_id: UUID, free_limit: int, trial_limit: int | None) -> int:
+        if trial_limit is None:
+            return free_limit
+        return trial_limit if cls._trial_active(conn, user_id) else free_limit
+
     def get_account_state(
         self, user_id: UUID, *, customer_limit: int, window_seconds: int,
+        trial_limit: int | None = None,
     ) -> dict | None:
         """Return the signed-in customer's current plan, trial and admission usage."""
         with self.connect() as conn:
@@ -109,6 +131,7 @@ class Store:
                 (window_seconds, window_seconds, window_seconds, str(user_id)),
             ).fetchone()
         used = int(usage["used"])
+        effective_limit = trial_limit if trial and trial["active"] and trial_limit is not None else customer_limit
         return {
             "user": {
                 "id": user["id"],
@@ -124,8 +147,8 @@ class Store:
             },
             "usage": {
                 "used": used,
-                "limit": customer_limit,
-                "remaining": max(customer_limit - used, 0),
+                "limit": effective_limit,
+                "remaining": max(effective_limit - used, 0),
                 "window_seconds": window_seconds,
                 "starts_at": usage["starts_at"],
                 "resets_at": usage["resets_at"],
@@ -184,6 +207,7 @@ class Store:
         guest_key_hash: str | None = None, actor_type: str = "LEGACY",
         browser_limit: int | None = None, global_limit: int | None = None,
         customer_limit: int | None = None, window_seconds: int = 86400,
+        trial_limit: int | None = None,
     ) -> UUID:
         analysis_id = uuid4()
         with self.connect() as conn:
@@ -194,7 +218,8 @@ class Store:
                     self._admit(conn, "GUEST_GLOBAL", "all", global_limit, window_seconds)
                 elif actor_type == "CUSTOMER":
                     assert user_id is not None and customer_limit is not None
-                    self._admit(conn, "CUSTOMER", str(user_id), customer_limit, window_seconds)
+                    self._admit(conn, "CUSTOMER", str(user_id),
+                                self._customer_quota(conn, user_id, customer_limit, trial_limit), window_seconds)
                 self._insert_analysis(
                     conn, analysis_id, source_url, user_id,
                     guest_key_hash=guest_key_hash, actor_type=actor_type,
@@ -227,11 +252,12 @@ class Store:
 
     def submit_customer(
         self, source_url: str, user_id: UUID, *, azure: bool,
-        customer_limit: int, window_seconds: int,
+        customer_limit: int, window_seconds: int, trial_limit: int | None = None,
     ) -> UUID:
         return self._submit(
             source_url, user_id, azure=azure, actor_type="CUSTOMER",
             customer_limit=customer_limit, window_seconds=window_seconds,
+            trial_limit=trial_limit,
         )
 
     _SELECT = """
@@ -666,7 +692,7 @@ class Store:
 
     def import_customer_page(
         self, source_url: str, user_id: UUID, payload: dict, *,
-        customer_limit: int, window_seconds: int,
+        customer_limit: int, window_seconds: int, trial_limit: int | None = None,
     ) -> UUID:
         """Admit and persist an in-memory upload in one transaction, without a queue."""
         supplier_data = payload.get("supplier_data")
@@ -697,6 +723,7 @@ class Store:
     def capture_customer_page(
         self, source_url: str, user_id: UUID, payload: dict, *,
         customer_limit: int, window_seconds: int, azure: bool = False,
+        trial_limit: int | None = None,
     ) -> UUID:
         """Persist selected browser evidence, then queue extracted snapshots for assessment/reporting."""
         reject_sensitive_page_state(payload.get("raw_payload", {}))
@@ -749,7 +776,7 @@ class Store:
 
     def renormalize_customer_snapshot(
         self, source_analysis_id: UUID, user_id: UUID, *,
-        customer_limit: int, window_seconds: int,
+        customer_limit: int, window_seconds: int, trial_limit: int | None = None,
     ) -> UUID:
         """Create an owned analysis from retained public fields without a crawl."""
         with self.connect() as conn:

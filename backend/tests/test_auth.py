@@ -192,13 +192,14 @@ class AuthStore:
             row["email"] = email
         return row.copy()
 
-    def get_account_state(self, user_id, *, customer_limit, window_seconds):
+    def get_account_state(self, user_id, *, customer_limit, window_seconds, trial_limit=None):
         user = next((row for row in self.users.values() if row["id"] == user_id), None)
         if user is None:
             return None
         trial = self.account_trials.get(user_id)
         used = self.account_usage.get(user_id, 0)
         active = bool(trial and trial.get("active"))
+        effective_limit = trial_limit if active and trial_limit is not None else customer_limit
         return {
             "user": {"id": user_id, "email": user.get("email"), "role": user["role"]},
             "plan": "MVP_TRIAL" if active else "FREE",
@@ -210,8 +211,8 @@ class AuthStore:
             },
             "usage": {
                 "used": used,
-                "limit": customer_limit,
-                "remaining": max(customer_limit - used, 0),
+                "limit": effective_limit,
+                "remaining": max(effective_limit - used, 0),
                 "window_seconds": window_seconds,
                 "starts_at": "2026-10-07T00:00:00Z",
                 "resets_at": "2026-10-08T00:00:00Z",
@@ -245,10 +246,10 @@ class AuthStore:
         }
         return analysis_id
 
-    def submit_customer(self, source_url, user_id, *, azure, customer_limit, window_seconds):
+    def submit_customer(self, source_url, user_id, *, azure, customer_limit, window_seconds, trial_limit=None):
         return self.submit_azure(source_url, user_id) if azure else self.submit_local(source_url, user_id)
 
-    def import_customer_page(self, source_url, user_id, payload, *, customer_limit, window_seconds):
+    def import_customer_page(self, source_url, user_id, payload, *, customer_limit, window_seconds, trial_limit=None):
         if getattr(self, "deny_import", False):
             raise AdmissionDenied("limit")
         analysis_id = uuid4()
@@ -262,7 +263,7 @@ class AuthStore:
         }
         return analysis_id
 
-    def capture_customer_page(self, source_url, user_id, payload, *, customer_limit, window_seconds, azure=False):
+    def capture_customer_page(self, source_url, user_id, payload, *, customer_limit, window_seconds, azure=False, trial_limit=None):
         analysis_id = self.import_customer_page(
             source_url, user_id, payload,
             customer_limit=customer_limit, window_seconds=window_seconds,
@@ -948,7 +949,7 @@ def test_me_is_customer_only_and_reports_own_trial_and_usage(signing_keys):
     assert trial.json()["plan"] == "MVP_TRIAL"
     assert trial.json()["trial"]["active"] is True
     assert trial.json()["usage"]["used"] == 7
-    assert trial.json()["usage"]["remaining"] == 13
+    assert trial.json()["usage"]["remaining"] == 33
 
     other_headers = auth_header(token(private, "account_other", email="other@example.test"))
     other = client.get("/api/v1/me", headers=other_headers)
