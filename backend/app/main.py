@@ -29,6 +29,7 @@ from .extraction.offer1688 import MAX_HTML_BYTES, parse_1688_page
 from .extraction.extension1688 import DomCapture, MAX_CAPTURE_BYTES, normalize_capture
 from .extraction.extension_merge import reject_sensitive_page_state
 from .storage import AdmissionDenied, Store
+from .evaluation import list_blind_cases, submit_blind_label
 from .reporting.preview import build_guest_preview
 
 
@@ -43,6 +44,18 @@ class Submission(BaseModel):
         except ValueError:
             return normalize_source_url(value)
 
+
+
+
+class BlindReviewLabel(BaseModel):
+    sentiment: str
+
+    @field_validator("sentiment")
+    @classmethod
+    def allowed_sentiment(cls, value: str) -> str:
+        if value not in {"POSITIVE", "NEGATIVE", "NEUTRAL", "MIXED", "UNCERTAIN"}:
+            raise ValueError("Invalid sentiment label")
+        return value
 
 def create_app(
     store: Store | None = None,
@@ -106,6 +119,33 @@ def create_app(
         if not re.fullmatch(r"[0-9a-f]{64}", key):
             raise HTTPException(status_code=404, detail="Analysis not found")
         return key
+
+
+    @app.get("/api/v1/internal/review-cases")
+    def blind_review_cases(
+        principal: Annotated[Principal, Depends(require_roles(INTERNAL_REVIEWER))],
+    ):
+        try:
+            return list_blind_cases(store, principal.user_id)
+        except Exception as exc:
+            raise HTTPException(status_code=503, detail="Evaluation unavailable") from exc
+
+    @app.post("/api/v1/internal/review-cases/{run_id}/{ordinal}/label", status_code=201)
+    def label_blind_review(
+        run_id: UUID,
+        ordinal: int,
+        body: BlindReviewLabel,
+        principal: Annotated[Principal, Depends(require_roles(INTERNAL_REVIEWER))],
+    ):
+        try:
+            comparison = submit_blind_label(store, principal.user_id, run_id, ordinal, body.sentiment)
+        except ValueError as exc:
+            raise HTTPException(status_code=409, detail="Case already labeled") from exc
+        except Exception as exc:
+            raise HTTPException(status_code=503, detail="Evaluation unavailable") from exc
+        if comparison is None:
+            raise HTTPException(status_code=404, detail="Review case not found")
+        return comparison
 
     @app.get("/api/v1/me")
     def me(
