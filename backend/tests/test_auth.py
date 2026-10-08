@@ -262,11 +262,16 @@ class AuthStore:
         }
         return analysis_id
 
-    def capture_customer_page(self, source_url, user_id, payload, *, customer_limit, window_seconds):
-        return self.import_customer_page(
+    def capture_customer_page(self, source_url, user_id, payload, *, customer_limit, window_seconds, azure=False):
+        analysis_id = self.import_customer_page(
             source_url, user_id, payload,
             customer_limit=customer_limit, window_seconds=window_seconds,
         )
+        if payload.get("extraction_status") in {"SUCCESS", "PARTIAL"}:
+            self.rows[analysis_id]["status"] = "ASSESSING"
+            if azure:
+                self.outbox.append(analysis_id)
+        return analysis_id
 
     def submit_guest(self, source_url, guest_key, *, azure, browser_limit, global_limit, window_seconds):
         analysis_id = self.submit_azure(source_url) if azure else self.submit_local(source_url)
@@ -691,6 +696,7 @@ def test_extension_capture_requires_customer_and_preserves_owner_scope(signing_k
     owner = auth_header(token(private, "extension_owner"))
     response = client.post(route, json=capture, headers=owner)
     assert response.status_code == 201
+    assert response.json()["status"] == "ASSESSING"
     analysis_id = UUID(response.json()["id"])
     row = store.rows[analysis_id]
     assert row["supplier_data"]["extraction_method"] == "EXTENSION_DOM"
