@@ -20,7 +20,7 @@ Introduce the first reviewer-only text-review labeling slice. The API verifies t
 
 ## Deliberate deferrals
 
-Complete annotation fields and richer reviewer UI belong to Story 6.2; authenticated private media, double-review sampling, adjudication and benchmark aggregation belong to later stories. The first story exposes a minimal review queue through API for an internal console to consume, without bypassing any blind boundary.
+Complete annotation fields and richer reviewer UI belong to Story 6.2; authenticated private media, double-review sampling, adjudication and benchmark aggregation belong to later stories. A minimal signed-in internal console at `/internal/review` lists one case, submits the independent sentiment and reveals model findings only on a successful POST. The browser calls the same role-protected API using a fresh Clerk bearer; no client-side model cache or pre-submit model fetch is added.
 
 ## Verification
 
