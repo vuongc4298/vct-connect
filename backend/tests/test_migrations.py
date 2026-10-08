@@ -94,7 +94,7 @@ def _rollback_post_core_revisions(database_url: str) -> None:
         with backend.lock():
             revisions = [migration for migration in backend.to_rollback(migrations)
                          if migration.id in {"0007_1688_extraction_evidence", "0008_allow_public_extraction",
-                                             "0009_allow_snapshot_replay", "0010_llm_review_runs", "0011_worker_assessments", "0012_multimodal_assessments", "0013_reports", "0014_watchlist", "0015_review_evaluation_labels", "0016_review_annotation_fields"}]
+                                             "0009_allow_snapshot_replay", "0010_llm_review_runs", "0011_worker_assessments", "0012_multimodal_assessments", "0013_reports", "0014_watchlist", "0015_review_evaluation_labels", "0016_review_annotation_fields", "0017_private_review_media"}]
             backend.rollback_migrations(revisions)
     finally:
         migrations_module._close_backend(backend)
@@ -237,6 +237,7 @@ def test_fresh_apply_failure_rollback_and_reapply_are_reproducible(
         ("0014_watchlist", False),
         ("0015_review_evaluation_labels", False),
         ("0016_review_annotation_fields", False),
+        ("0017_private_review_media", False),
     ]
 
     with psycopg.connect(isolated_database_url, autocommit=True) as conn:
@@ -260,6 +261,7 @@ def test_fresh_apply_failure_rollback_and_reapply_are_reproducible(
         ("0014_watchlist", True),
         ("0015_review_evaluation_labels", True),
         ("0016_review_annotation_fields", True),
+        ("0017_private_review_media", True),
     ]
 
 
@@ -886,7 +888,7 @@ def test_core_rollback_preserves_tracer_drops_columns_and_reapplies(isolated_dat
 
     apply_migrations(isolated_database_url)
     assert migration_status(isolated_database_url)[-1] == (
-        "0016_review_annotation_fields",
+        "0017_private_review_media",
         True,
     )
     assert {"user_id", "supplier_snapshot_id", "mode", "scoring_version"} <= set(
