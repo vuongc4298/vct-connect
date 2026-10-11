@@ -58,6 +58,7 @@ The updated extension is built at `C:\Users\eidel\Desktop\VCT Connect\frontend\a
 1. In Chrome, open `chrome://extensions`, locate **VCT Connect Source Evidence**, and click **Reload**. For a new installation use **Load unpacked** with the build folder above.
 2. Refresh `https://detail.1688.com/offer/1027322610455.html`. Use the same Chrome profile signed in to VCT Connect at `http://127.0.0.1:3000`.
 3. Let the supplier information, specifications, SKU, shipping and review sections load. Scroll through them so any lazy sections render, then open the extension and click **Analyze this page** once.
+   For the review-drawer fix, first open **View reviews** and leave the drawer open while clicking the extension. The saved drawer contains ten loaded review cards, including three identical text entries; all ten now survive capture and an owned-snapshot merge. The extension captures the loaded page (up to 20 reviews within the size limit), not all paginated 40+ reviews. Buyer names and avatars are excluded. Image/video interpretation is not connected to this capture path yet.
 4. Follow the newly opened analysis. Expect it to finish; inspect source evidence in the report instead of reopening the old analysis. In the saved-page regression, extraction includes 41 attributes, both Style values, four supplier metrics, nine dropshipping metrics, SKU price and inventory, shipping, product rating 4.6, the approximate 40+ review display and one review snippet. A fresh page can contain different values or fewer loaded sections.
 5. Confirm that **coupon ¥0.10** and **¥8.70 minimum-order/loyalty price** retain their context; **¥8.7 / inventory 790** belongs to a SKU. Platform membership is not verified founding age; shipping origin is not company headquarters; dropshipping metrics are not whole-company capacity.
 6. Inspect both the **400g title** and the **300g–350g specification** from this saved sample. The extractor preserves this contradiction instead of choosing one claim. Report source completeness and risk coverage are separate measures; do not expect either to reach 100%.
@@ -65,6 +66,8 @@ The updated extension is built at `C:\Users\eidel\Desktop\VCT Connect\frontend\a
 Verified so far: sanitized saved-page capture in a real browser, strict API admission, normalization, existing report projection and PostgreSQL capture regressions. A new full Chrome capture/report remains the end-user acceptance step. This captures selected visible text, not all paginated reviews, image-only descriptions or off-page supplier records.
 
 For a repeatable browser fixture regression, from the repository root run `node frontend/tests/build-1688-harness.cjs`, serve `tmp` on a local port, open `1688-capture-harness.html` and click **Run capture regression**. Expect **PASS: 14 fixture checks**. The fixture excludes scripts, account state and buyer identifiers.
+
+Run the same builder with `--drawer` to include the sanitized drawer fixture; expect **PASS: 17 fixture checks**, ten review entries and no buyer sentinel in the capture output.
 
 ## 1. Guest queue check (no AI key needed)
 

@@ -69,6 +69,35 @@ def _deduplicate(old: list[dict], new: list[dict], key_function) -> tuple[list[d
     return ordered[:MAX_MERGED_ITEMS], max(len(ordered) - MAX_MERGED_ITEMS, 0)
 
 
+def _merge_review_cards(old: list[dict], new: list[dict]) -> tuple[list[dict], int]:
+    """Keep card multiplicity, avoiding accumulation of overlapping recaptures.
+
+    Text alone cannot distinguish matching buyers across snapshots. Retain the
+    larger observed count for each text, not their sum. Historical metadata can
+    enrich an unambiguous one-to-one match only.
+    """
+    old_groups, new_groups = {}, {}
+    for items, groups in ((old, old_groups), (new, new_groups)):
+        for item in items:
+            groups.setdefault(_review_key(item), []).append(item)
+    ordered = []
+    for item in new:
+        key = _review_key(item)
+        previous = old_groups.get(key, [])
+        value = copy.deepcopy(item)
+        if len(previous) == len(new_groups[key]) == 1:
+            value = {**copy.deepcopy(previous[0]), **{k: copy.deepcopy(v) for k, v in item.items() if v is not None}}
+        ordered.append(value)
+    consumed = {key: len(items) for key, items in new_groups.items()}
+    for item in old:
+        key = _review_key(item)
+        if consumed.get(key, 0):
+            consumed[key] -= 1
+        else:
+            ordered.append(copy.deepcopy(item))
+    return ordered[:MAX_MERGED_ITEMS], max(len(ordered) - MAX_MERGED_ITEMS, 0)
+
+
 def merge_extension_evidence(capture: dict, previous: dict) -> dict:
     """Return a new capture payload combining one eligible prior snapshot."""
     current = capture["supplier_data"]
@@ -110,7 +139,9 @@ def merge_extension_evidence(capture: dict, previous: dict) -> dict:
         old, new = prior.get(field), current.get(field)
         if field in {"reviews", "products"}:
             identity = _review_key if field == "reviews" else _product_key
-            value, omitted[field] = _deduplicate(old or [], new or [], identity)
+            preserve_cards = field == "reviews" and current.get("platform") == "1688"
+            value, omitted[field] = (_merge_review_cards(old or [], new or []) if preserve_cards else
+                                     _deduplicate(old or [], new or [], identity))
             merged[field] = value or None
             item_sources[field] = {}
             for item in value:
@@ -120,6 +151,11 @@ def merge_extension_evidence(capture: dict, previous: dict) -> dict:
                 old_contributes = old_item is not None and (new_item is None or any(
                     name not in new_item or new_item[name] is None for name in old_item
                 ))
+                if preserve_cards:
+                    old_count = sum(identity(candidate) == key for candidate in old or [])
+                    new_count = sum(identity(candidate) == key for candidate in new or [])
+                    inherited_card_retained = any(identity(candidate) == key for candidate in value[len(new or []):])
+                    old_contributes = inherited_card_retained or (old_count == new_count == 1 and old_contributes)
                 labels = (inherited_sources(field, detail=key, kind="item") if old_contributes else []) + (
                     ["EXTENSION_DOM"] if new_item is not None else []
                 )

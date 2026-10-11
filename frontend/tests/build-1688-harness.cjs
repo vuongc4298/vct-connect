@@ -6,6 +6,7 @@ const sandbox = {module:{exports:{}}};
 vm.runInNewContext(compiled, sandbox);
 const capture = sandbox.module.exports.captureSelectedDom.toString();
 const html = fs.readFileSync('frontend/tests/fixtures/1688-offer-1027322610455.html', 'utf8');
+const drawer = process.argv.includes('--drawer') ? fs.readFileSync('frontend/tests/fixtures/1688-review-drawer.html', 'utf8') : '';
 const script = `
 document.getElementById('run').onclick = () => {
   try {
@@ -25,12 +26,15 @@ document.getElementById('run').onclick = () => {
       reviewText: f.reviews?.some(x => x.text.includes('very thick')),
       consign: f.consign_metrics?.length === 9,
       size: new TextEncoder().encode(JSON.stringify(result)).length <= 16384,
-      excludedHidden: !JSON.stringify(result).includes('PRIVATE_SENTINEL')
+      excludedHidden: !JSON.stringify(result).includes('PRIVATE_SENTINEL'),
+      ${drawer ? `drawerCount: f.reviews?.length === 10,
+      repeatedCards: f.reviews?.filter(x => x.text === 'The user thought the product was very good and gave it a five-star rating').length === 3,
+      excludedBuyer: !JSON.stringify(result).includes('PRIVATE_BUYER_SENTINEL'),` : ''}
     };
-    document.getElementById('status').textContent = Object.values(checks).every(Boolean) ? 'PASS: 14 fixture checks' : 'FAIL: ' + JSON.stringify(checks);
+    document.getElementById('status').textContent = Object.values(checks).every(Boolean) ? 'PASS: ' + Object.keys(checks).length + ' fixture checks' : 'FAIL: ' + JSON.stringify(checks);
     document.getElementById('capture-output').textContent = JSON.stringify(result, null, 2);
   } catch (error) { document.getElementById('status').textContent = 'ERROR: ' + error.message; }
 };`;
 const canary = '<div hidden><div id="shopNavigation"><h1 class="shop-company-name">PRIVATE_SENTINEL</h1></div><div id="productEvaluation"><div class="evaluation-content"><div class="content-text">PRIVATE_SENTINEL</div></div></div></div>';
-const harness = html.replace('<body>', '<body><h1>1688 selected evidence regression</h1><button id="run">Run capture regression</button><p id="status">Not run</p><pre id="capture-output"></pre>' + canary).replace('</body>', '<script>' + script + '</script></body>');
+const harness = html.replace('<body>', '<body><h1>1688 selected evidence regression</h1><button id="run">Run capture regression</button><p id="status">Not run</p><pre id="capture-output"></pre>' + canary + drawer).replace('</body>', '<script>' + script + '</script></body>');
 fs.writeFileSync('tmp/1688-capture-harness.html', harness);

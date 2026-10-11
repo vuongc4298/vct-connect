@@ -65,6 +65,32 @@ test("1688 bounds UTF-8 capture size while retaining review extents and exact ze
   assert.equal(Array.from(capture.fields.reviews![0].text).length, 2000);
 });
 
+test("1688 prefers the visible review drawer and preserves repeated review cards", () => {
+  const drawer = selectedNode("PRIVATE_BUYER_AVATAR_SENTINEL", new Map([
+    [".evaluate-panel-title-star", [selectedNode("4.6 40+Number of reviews")]],
+    [".evaluate-panel-title-star em.hl", [selectedNode("4.6")]],
+    [".evaluate-panel-list .evaluation-content .content-info .content-text", [selectedNode("Good fabric"), selectedNode("Good fabric"), selectedNode("Different review"), selectedNode("PRIVATE_SENTINEL", undefined, false)]],
+  ]));
+  const capture = selected1688(new Map([
+    [".ant-drawer-body .evaluate-panel-content", [drawer]],
+    ["#productEvaluation .evaluation-content .content-text", [selectedNode("INLINE_DUPLICATE")]],
+  ]));
+  assert.equal(capture.fields.rating, 4.6);
+  assert.equal(capture.fields.review_summary, "4.6 40+Number of reviews");
+  assert.deepEqual(capture.fields.reviews?.map(x => x.text), ["Good fabric", "Good fabric", "Different review"]);
+  assert.ok(!JSON.stringify(capture).includes("PRIVATE"));
+  assert.ok(!JSON.stringify(capture).includes("INLINE_DUPLICATE"));
+});
+
+test("1688 ignores closed drawers and rejects multiple visible review panels", () => {
+  const capture = selected1688(new Map([
+    [".ant-drawer-body .evaluate-panel-content", [selectedNode("", undefined, false)]],
+    ["#productEvaluation .evaluation-content .content-text", [selectedNode("Inline review")]],
+  ]));
+  assert.deepEqual(capture.fields.reviews?.map(x => x.text), ["Inline review"]);
+  assert.throws(() => selected1688(new Map([[".ant-drawer-body .evaluate-panel-content", [selectedNode(""), selectedNode("")]]])), /Ambiguous/);
+});
+
 test("only a canonical HTTPS 1688 offer is supported", () => {
   assert.deepEqual(supportedOffer(`${OFFER_URL}?spm=home`), {
     sourceUrl: OFFER_URL, offerId: "996518024136",

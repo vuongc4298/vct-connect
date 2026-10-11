@@ -943,10 +943,19 @@ def test_extension_capture_merges_only_same_owner_page_and_rejects_secrets(store
         assert len(repeated_row["reviews"]) == 1
         assert len(repeated_row["supplier_data"]["products"]) == 1
         assert repeated_row["raw_evidence"]["merged_from_snapshot_id"] == str(prior["supplier_snapshot_id"])
+        drawer_capture = {**capture, "fields": {**capture["fields"], "reviews": [
+            {"text": "Repeated review", "original_length": 15} for _ in range(3)]}}
+        drawer_response = client.post("/api/v1/analyses/capture", headers=headers, json=drawer_capture)
+        assert drawer_response.status_code == 201
+        drawer_id = UUID(drawer_response.json()["id"])
+        ids.append(drawer_id)
+        drawer_row = client.get(f"/api/v1/analyses/{drawer_id}", headers=headers).json()
+        assert len([r for r in drawer_row["reviews"] if r["text"] == "Repeated review"]) == 3
+        assert len(drawer_row["supplier_data"]["reviews"]) == 4  # Three current cards and one inherited review.
         with store.connect() as conn:
             used = conn.execute("SELECT used FROM admission_counters WHERE scope = 'CUSTOMER' AND subject = %s",
                                 (subject,)).fetchone()["used"]
-            assert used == 3  # public submission and two accepted captures only
+            assert used == 4  # public submission and three accepted captures only
     finally:
         for analysis_id in reversed(ids):
             remove(store, analysis_id)

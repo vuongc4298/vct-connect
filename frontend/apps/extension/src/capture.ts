@@ -189,8 +189,8 @@ export function captureSelectedDom(): SelectedCapture {
   if (location.protocol !== "https:" || location.host !== "detail.1688.com" || !match) {
     throw new Error("Open a supported 1688 offer or Taobao item/shop first");
   }
-  function selectedText(selectors: string, maximum: number): string | undefined {
-    for (const element of document.querySelectorAll<HTMLElement>(selectors)) {
+  function selectedText(selectors: string, maximum: number, root: Document | HTMLElement = document): string | undefined {
+    for (const element of root.querySelectorAll<HTMLElement>(selectors)) {
       if (!visible(element)) continue;
       const text = renderedText(element).replace(/\s+/g, " ").trim();
       if (text) return Array.from(text).slice(0, maximum).join("");
@@ -237,14 +237,20 @@ export function captureSelectedDom(): SelectedCapture {
   const shipping = pairs("#shippingServices .freight-right-row", ".freight-right-row-title", ".freight-right-row-content", 10);
   const skus = pairs("#skuSelection .expand-view-item", ".item-label", ".item-price-stock", 20);
   const consign = adjacentPairs("#consign tr td.item-title", "item-value", 10);
-  const reviewSummary = selectedText("#productEvaluation .header-label-desc", 160);
-  const reviewRating = selectedText("#productEvaluation .header-label-desc em.hl", 20);
+  const drawers = Array.from(document.querySelectorAll<HTMLElement>(".ant-drawer-body .evaluate-panel-content")).filter(visible);
+  if (drawers.length > 1) throw new Error("Ambiguous visible review drawer");
+  const reviewRoot = drawers[0] ?? document;
+  const reviewSummary = selectedText(drawers.length ? ".evaluate-panel-title-star" : "#productEvaluation .header-label-desc", 160, reviewRoot);
+  const reviewRating = selectedText(drawers.length ? ".evaluate-panel-title-star em.hl" : "#productEvaluation .header-label-desc em.hl", 20, reviewRoot);
   const rating = reviewRating && /^[0-5](?:\.[0-9]+)?$/.test(reviewRating) && Number(reviewRating) <= 5 ? Number(reviewRating) : undefined;
   const reviews: { text: string; original_length: number }[] = [];
-  for (const element of document.querySelectorAll<HTMLElement>("#productEvaluation .evaluation-content .content-text")) {
+  const reviewSelector = drawers.length ? ".evaluate-panel-list .evaluation-content .content-info .content-text"
+    : "#productEvaluation .evaluation-content .content-text";
+  for (const element of reviewRoot.querySelectorAll<HTMLElement>(reviewSelector)) {
     if (!visible(element)) continue;
     const full = Array.from(renderedText(element).trim());
-    if (full.length && !reviews.some(review => review.text === full.slice(0, 2000).join(""))) {
+    // Separate cards may repeat the same text; retain that evidence for pattern analysis.
+    if (full.length) {
       reviews.push({ text: full.slice(0, 2000).join(""), original_length: Math.min(full.length, 2_000_000) });
     }
     if (reviews.length === 20) break;
