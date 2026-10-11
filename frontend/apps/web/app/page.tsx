@@ -696,7 +696,7 @@ export default function Page() {
         {id && <ProgressCard analysis={analysis} delayed={delayed} requestedMethod={requestedMethod} />}
         {id && analysis?.status === "COMPLETED" && reportLoading &&
           <section className="report-loading" aria-live="polite"><i className="spinner" /><span>Đang tải báo cáo đánh giá đã lưu…</span></section>}
-        {id && analysis?.status === "COMPLETED" && report && <><div className="report-watchlist-action"><button type="button" className="button button-ghost" disabled={watchlistBusy} onClick={() => { void saveCurrentSupplier(); }}>{watchlistBusy ? "Đang lưu…" : "☆ Lưu vào Watchlist"}</button>{watchlistError && <span role="alert">{watchlistError}</span>}</div><FullReport report={report} /></>}
+        {id && analysis?.status === "COMPLETED" && report && <><div className="report-watchlist-action"><button type="button" className="button button-ghost" disabled={watchlistBusy} onClick={() => { void saveCurrentSupplier(); }}>{watchlistBusy ? "Đang lưu…" : "☆ Lưu vào Watchlist"}</button>{watchlistError && <span role="alert">{watchlistError}</span>}</div><FullReport key={report.analysis_id} report={report} extractionMethod={analysis.extraction_method} /></>}
         {id && analysis?.status === "COMPLETED" && !reportLoading && !report && reportError &&
           <div className="report-unavailable" role="status"><span>i</span><div><strong>Chưa có báo cáo đánh giá đầy đủ</strong><p>{reportError}</p></div></div>}
         {id && analysis?.status === "COMPLETED" && !report && !isFixtureResult(analysis.result) && <ExtractionEvidence analysis={analysis} />}

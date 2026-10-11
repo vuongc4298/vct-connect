@@ -19,6 +19,16 @@ export const REPORT_SOURCE_KIND_LABELS: Record<string, string> = {
   MODEL_INTERPRETATION: "Diễn giải có cấu trúc",
 };
 
+export const REPORT_FIELD_LABELS: Record<string, string> = {
+  supplier_name: "Tên nhà cung cấp", company_information: "Hồ sơ công ty",
+  years_active: "Thời gian hoạt động", certifications: "Chứng nhận",
+  activity_history: "Lịch sử hoạt động", products: "Sản phẩm",
+  reviews: "Đánh giá người mua", rating: "Điểm đánh giá",
+  transaction_signals: "Giao dịch", delivery_information: "Giao hàng",
+  price_information: "Giá và điều khoản", categories: "Ngành hàng",
+  html_capture_status: "Trang đã thu thập", collection_status: "Nguồn đã truy cập",
+};
+
 export function reportPercent(value: number): string {
   return `${Math.round(value * 100)}%`;
 }
@@ -57,4 +67,11 @@ export function reportFindingTitle(finding: ReportFinding): string {
   return reportPayloadText(finding.payload)
     ?? REPORT_DIMENSION_LABELS[finding.dimension ?? ""]
     ?? finding.finding_type.replaceAll("_", " ");
+}
+
+export function reportSourceContent(payload: Record<string, unknown>): string | null {
+  if (typeof payload.text === "string" && payload.text.trim()) return payload.text;
+  const value = payload.value;
+  if (value === null || value === undefined || value === "" || (Array.isArray(value) && !value.length)) return null;
+  return typeof value === "string" ? value : JSON.stringify(value, null, 2);
 }
