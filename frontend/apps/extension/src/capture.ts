@@ -8,6 +8,17 @@ export type LegacyCapture = {
     price_text?: string;
     company_location?: string;
     review_count?: number;
+    supplier_tenure?: string;
+    main_business?: string;
+    supplier_metrics?: { name: string; value: string }[];
+    product_attributes?: { name: string; value: string }[];
+    price_details?: string;
+    sku_options?: { name: string; value: string }[];
+    shipping_details?: { name: string; value: string }[];
+    consign_metrics?: { name: string; value: string }[];
+    review_summary?: string;
+    rating?: number;
+    reviews?: { text: string; original_length: number }[];
   };
 };
 
@@ -178,8 +189,8 @@ export function captureSelectedDom(): SelectedCapture {
   if (location.protocol !== "https:" || location.host !== "detail.1688.com" || !match) {
     throw new Error("Open a supported 1688 offer or Taobao item/shop first");
   }
-  function selectedText(selectors: string, maximum: number): string | undefined {
-    for (const element of document.querySelectorAll<HTMLElement>(selectors)) {
+  function selectedText(selectors: string, maximum: number, root: Document | HTMLElement = document): string | undefined {
+    for (const element of root.querySelectorAll<HTMLElement>(selectors)) {
       if (!visible(element)) continue;
       const text = renderedText(element).replace(/\s+/g, " ").trim();
       if (text) return Array.from(text).slice(0, maximum).join("");
@@ -188,10 +199,63 @@ export function captureSelectedDom(): SelectedCapture {
   }
   const canonical = document.querySelector<HTMLLinkElement>('link[rel="canonical"]')?.href;
   const sourceUrl = `https://detail.1688.com${location.pathname}`;
-  const supplierName = selectedText(".shop-company-name h1", 240);
+  const supplierName = selectedText("#shopNavigation .shop-company-name h1", 240);
   const productTitle = selectedText(".title-content h1", 500);
   const priceText = selectedText("#mainPrice .price-info", 160);
-  return {
+  const pairs = (rowSelector: string, nameSelector: string, valueSelector: string, limit: number) => {
+    const result: { name: string; value: string }[] = [];
+    for (const row of document.querySelectorAll<HTMLElement>(rowSelector)) {
+      if (!visible(row)) continue;
+      const name = Array.from(row.querySelectorAll<HTMLElement>(nameSelector)).find(visible);
+      const values = Array.from(row.querySelectorAll<HTMLElement>(valueSelector)).filter(visible);
+      if (!name || !values.length) continue;
+      const pair = { name: Array.from(renderedText(name).trim()).slice(0, 80).join(""),
+        value: Array.from(values.map(value => renderedText(value).trim()).filter(Boolean).join(" · ")).slice(0, 240).join("") };
+      if (pair.name && pair.value && !result.some(item => item.name === pair.name && item.value === pair.value)) result.push(pair);
+      if (result.length === limit) break;
+    }
+    return result;
+  };
+  const adjacentPairs = (selector: string, valueClass: string, limit: number) => {
+    const result: { name: string; value: string }[] = [];
+    for (const label of document.querySelectorAll<HTMLElement>(selector)) {
+      const value = label.nextElementSibling as HTMLElement | null;
+      if (!visible(label) || !value || !value.classList.contains(valueClass) || !visible(value)) continue;
+      const pair = { name: Array.from(renderedText(label).trim()).slice(0, 80).join(""),
+        value: Array.from(renderedText(value).trim()).slice(0, 240).join("") };
+      if (pair.name && pair.value && !result.some(item => item.name === pair.name && item.value === pair.value)) result.push(pair);
+      if (result.length === limit) break;
+    }
+    return result;
+  };
+  const supplierTenure = selectedText("#shopNavigation .shop-tp-year", 160);
+  const mainBusiness = selectedText("#shopNavigation .shop-category-name", 160);
+  const priceDetails = Array.from(document.querySelectorAll<HTMLElement>("#mainPrice .price-component"))
+    .filter(visible).map(element => renderedText(element).replace(/\s+/g, " ").trim()).filter(Boolean).join(" | ");
+  const supplierMetrics = pairs("#shopNavigation .shop-data-item", ".shop-data-item-label", ".shop-data-item-value", 10);
+  const attributes = adjacentPairs("#productAttributes th.ant-descriptions-item-label", "ant-descriptions-item-content", 50);
+  const shipping = pairs("#shippingServices .freight-right-row", ".freight-right-row-title", ".freight-right-row-content", 10);
+  const skus = pairs("#skuSelection .expand-view-item", ".item-label", ".item-price-stock", 20);
+  const consign = adjacentPairs("#consign tr td.item-title", "item-value", 10);
+  const drawers = Array.from(document.querySelectorAll<HTMLElement>(".ant-drawer-body .evaluate-panel-content")).filter(visible);
+  if (drawers.length > 1) throw new Error("Ambiguous visible review drawer");
+  const reviewRoot = drawers[0] ?? document;
+  const reviewSummary = selectedText(drawers.length ? ".evaluate-panel-title-star" : "#productEvaluation .header-label-desc", 160, reviewRoot);
+  const reviewRating = selectedText(drawers.length ? ".evaluate-panel-title-star em.hl" : "#productEvaluation .header-label-desc em.hl", 20, reviewRoot);
+  const rating = reviewRating && /^[0-5](?:\.[0-9]+)?$/.test(reviewRating) && Number(reviewRating) <= 5 ? Number(reviewRating) : undefined;
+  const reviews: { text: string; original_length: number }[] = [];
+  const reviewSelector = drawers.length ? ".evaluate-panel-list .evaluation-content .content-info .content-text"
+    : "#productEvaluation .evaluation-content .content-text";
+  for (const element of reviewRoot.querySelectorAll<HTMLElement>(reviewSelector)) {
+    if (!visible(element)) continue;
+    const full = Array.from(renderedText(element).trim());
+    // Separate cards may repeat the same text; retain that evidence for pattern analysis.
+    if (full.length) {
+      reviews.push({ text: full.slice(0, 2000).join(""), original_length: Math.min(full.length, 2_000_000) });
+    }
+    if (reviews.length === 20) break;
+  }
+  const capture: LegacyCapture = {
     source_url: sourceUrl,
     ...(canonical ? { canonical_url: canonical } : {}),
     offer_id: match[1],
@@ -199,8 +263,28 @@ export function captureSelectedDom(): SelectedCapture {
       ...(supplierName ? { supplier_name: supplierName } : {}),
       ...(productTitle ? { product_title: productTitle } : {}),
       ...(priceText ? { price_text: priceText } : {}),
+      ...(supplierTenure ? { supplier_tenure: supplierTenure } : {}),
+      ...(mainBusiness ? { main_business: mainBusiness } : {}),
+      ...(priceDetails ? { price_details: Array.from(priceDetails).slice(0, 1200).join("") } : {}),
+      ...(supplierMetrics.length ? { supplier_metrics: supplierMetrics } : {}),
+      ...(attributes.length ? { product_attributes: attributes } : {}),
+      ...(shipping.length ? { shipping_details: shipping } : {}),
+      ...(skus.length ? { sku_options: skus } : {}),
+      ...(consign.length ? { consign_metrics: consign } : {}),
+      ...(reviewSummary ? { review_summary: reviewSummary } : {}),
+      ...(rating !== undefined ? { rating } : {}),
+      ...(reviews.length ? { reviews } : {}),
     },
   };
+  // Retain identity and pricing context first; additional rows can be recaptured.
+  while (new TextEncoder().encode(JSON.stringify(capture)).length > 16_384) {
+    const collections = [capture.fields.reviews, capture.fields.sku_options, capture.fields.product_attributes,
+      capture.fields.consign_metrics, capture.fields.shipping_details, capture.fields.supplier_metrics];
+    const collection = collections.find(items => items?.length);
+    if (!collection) throw new Error("Selected evidence exceeds the capture size limit");
+    collection.pop();
+  }
+  return capture;
 }
 
 

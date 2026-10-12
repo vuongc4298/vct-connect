@@ -9,7 +9,16 @@ import {
   reportFindingTitle,
   reportPercent,
   reportRiskLabel,
+  reportSourceContent,
 } from "./report-presentation";
+
+test("source values preserve zero, structured content and unknowns separately from interpretation", () => {
+  assert.equal(reportSourceContent({ text: "Raw Chinese review", statement_vi: "Interpretation" }), "Raw Chinese review");
+  assert.equal(reportSourceContent({ value: 0 }), "0");
+  assert.match(reportSourceContent({ value: { business_type: "Manufacturer" } })!, /Manufacturer/);
+  assert.equal(reportSourceContent({ value: null, statement_vi: "Interpretation" }), null);
+  assert.equal(reportSourceContent({ value: [] }), null);
+});
 
 test("report presentation helpers preserve frozen labels and formatting", () => {
   assert.equal(REPORT_DIMENSION_LABELS.PRICING, "Giá và điều khoản");

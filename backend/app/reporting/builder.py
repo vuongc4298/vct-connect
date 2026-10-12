@@ -2,7 +2,9 @@
 from __future__ import annotations
 
 from collections.abc import Mapping, Sequence
+import re
 
+from ..extraction.contracts import EVIDENCE_FIELDS
 from .contracts import ReportEvidence, ReportFinding, ReportPayload, ReportRisk
 
 
@@ -118,6 +120,20 @@ def _limitations(
         result.append(
             "Một số trường dữ liệu nguồn không khả dụng và được giữ là chưa biết thay vì giả định an toàn."
         )
+    if _as_dict(snapshot.get("normalized_data")).get("extraction_method") == "USER_UPLOAD":
+        result.append(
+            "Tuổi ảnh chụp trang đã lưu chưa xác định; thời điểm xử lý HTML là lúc nhập trang và không xác nhận thời điểm trang được lưu."
+        )
+    collection_status = _as_list(_as_dict(snapshot.get("normalized_data")).get("collection_status"))
+    unavailable = [str(item.get("page")) + ": " + str(item.get("status")) for item in collection_status
+                   if isinstance(item, Mapping) and item.get("status") != "OK"]
+    if unavailable:
+        result.append("Một số trang nhà cung cấp chưa thu thập được: " + "; ".join(unavailable) + ". Báo cáo vẫn giữ bằng chứng sản phẩm đã thu thập.")
+    html_status = _as_list(_as_dict(snapshot.get("normalized_data")).get("html_capture_status"))
+    incomplete_html = [str(item.get("page")) + ": " + str(item.get("status")) for item in html_status
+                       if isinstance(item, Mapping) and item.get("status") != "PARSED"]
+    if incomplete_html:
+        result.append("Một số bản HTML chưa được bổ sung đầy đủ: " + "; ".join(incomplete_html) + ". Bằng chứng đã trích xuất vẫn được giữ.")
     if _as_list(identity.get("uncertainty_reasons")):
         result.append(
             "Nhận định nhà máy/thương mại còn có yếu tố chưa chắc chắn; cần xác minh bằng tài liệu độc lập."
@@ -186,6 +202,11 @@ def build_report(
     evidence_by_id: dict[str, ReportEvidence] = {}
     for row in evidence:
         evidence_id = str(row["evidence_id"])
+        payload = _as_dict(row.get("payload"))
+        source_field = row.get("source_field")
+        if row.get("source_kind") == "SUPPLIER_DATA" and source_field in EVIDENCE_FIELDS:
+            # Only canonical source fields from the immutable snapshot are exposed.
+            payload["value"] = normalized.get(source_field)
         evidence_by_id[evidence_id] = ReportEvidence(
             evidence_id=evidence_id,
             source_kind=str(row["source_kind"]),
@@ -194,20 +215,38 @@ def build_report(
                 if row.get("source_field") is not None
                 else None
             ),
-            payload=_as_dict(row.get("payload")),
+            payload=payload,
         )
     for ordinal, review in enumerate(raw_reviews):
-        evidence_id = f"review:{ordinal}"
-        evidence_by_id.setdefault(
-            evidence_id,
-            ReportEvidence(
-                evidence_id=evidence_id,
-                source_kind="REVIEW",
-                source_field="reviews",
-                payload=_as_dict(review.get("payload") if isinstance(review, Mapping) else {}),
-            ),
+        evidence_id = f"review:{review.get('ordinal', ordinal)}"
+        existing = evidence_by_id.get(evidence_id)
+        evidence_by_id[evidence_id] = ReportEvidence(
+            evidence_id=evidence_id,
+            source_kind="REVIEW",
+            source_field="reviews",
+            payload={
+                **(existing.payload if existing else {}),
+                **_as_dict(review.get("payload")),
+            },
         )
-
+    company = _as_dict(normalized.get("company_information"))
+    profile_url = company.get("factory_profile_source_url")
+    if (normalized.get("extractor_version") in {"1688-saved-factory-enrichment.v1", "1688-linked-browser-bundle.v1", "1688-linked-browser-bundle.v2"}
+            and isinstance(profile_url, str)
+            and re.fullmatch(r"https://www\.1688\.com/factory/b2b-[a-z0-9]{6,60}\.html", profile_url)):
+        evidence_by_id["supplier:factory_profile"] = ReportEvidence(
+            evidence_id="supplier:factory_profile", source_kind="SUPPLIER_DATA",
+            source_field="company_information.factory_profile",
+            payload={"value": {
+                key: company.get(key) for key in (
+                    "factory_profile_source_url", "shop_source_url", "established_date_claim",
+                    "age_basis", "factory_profile_claims_display_text", "factory_description_display_text", "factory_description_html_display_text")
+              }, "statement_vi": "Thông tin do trang hồ sơ nhà cung cấp công bố; chưa được xác minh độc lập."})
+    if normalized.get("html_capture_status"):
+        evidence_by_id["supplier:html_sources"] = ReportEvidence(
+            evidence_id="supplier:html_sources", source_kind="SUPPLIER_DATA", source_field="html_capture_status",
+            payload={"value": normalized["html_capture_status"],
+                     "statement_vi": "HTML công khai đã làm sạch được phân tích bổ sung; mã băm và nguồn được giữ để truy vết. Không xác minh độc lập các tuyên bố nguồn."})
     key_risks = [item for item in report_findings if _material_risk(item)]
     positives = [
         item for item in report_findings if item.finding_type in _POSITIVE_TYPES

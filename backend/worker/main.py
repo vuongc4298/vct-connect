@@ -85,6 +85,8 @@ def _process_claim_payload(
 
 
 def dispatch_outbox_once(store: Store, queue: AzureQueue, settings: Settings) -> bool:
+    if hasattr(store, "finish_expired_collections"):
+        store.finish_expired_collections(azure=True)
     claim = store.claim_outbox(settings.outbox_lease_seconds, settings.outbox_max_attempts)
     if claim is None:
         return False
@@ -120,6 +122,8 @@ def process_local_once(
     media_loader=None,
 ) -> bool:
     max_attempts, lease_seconds, _ = _limits(settings)
+    if hasattr(store, "finish_expired_collections"):
+        store.finish_expired_collections()
     local_claim = store.claim_local(lease_seconds)
     if local_claim is None:
         return False

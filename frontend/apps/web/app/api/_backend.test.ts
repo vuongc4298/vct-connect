@@ -1,4 +1,5 @@
 import assert from "node:assert/strict";
+import { OPTIONS as reportOptions } from "./v1/analyses/[analysisId]/report/route";
 import test from "node:test";
 import { proxyBackend } from "./_backend";
 import { OPTIONS as captureOptions } from "./v1/analyses/capture/route";
@@ -108,6 +109,15 @@ test("extension capture proxy caps JSON and allows only its stable origin", asyn
     assert.equal(statusPreflight.status, 204);
     assert.equal(statusPreflight.headers.get("access-control-allow-origin"), origin);
     assert.match(statusPreflight.headers.get("access-control-allow-headers") ?? "", /authorization/);
+    const reportPreflight = await reportOptions(new Request("http://localhost/api/v1/analyses/any-id/report", {
+      method: "OPTIONS", headers: { origin, "access-control-request-headers": "authorization" },
+    }));
+    assert.equal(reportPreflight.status, 204);
+    assert.equal(reportPreflight.headers.get("access-control-allow-origin"), origin);
+    assert.match(reportPreflight.headers.get("access-control-allow-headers") ?? "", /authorization/);
+    assert.equal((await reportOptions(new Request("http://localhost/api/v1/analyses/any-id/report", {
+      method: "OPTIONS", headers: { origin: "https://evil.example" },
+    }))).status, 403);
     const foreign = await captureOptions(new Request(`http://localhost${path}`, {
       method: "OPTIONS", headers: { origin: "https://evil.example" },
     }));
@@ -120,4 +130,24 @@ test("extension capture proxy caps JSON and allows only its stable origin", asyn
   } finally {
     globalThis.fetch = originalFetch;
   }
+});
+
+test("linked collection proxy forwards bounded evidence with extension CORS and rejects oversized bundles", async () => {
+  const original = globalThis.fetch;
+  let calls = 0;
+  globalThis.fetch = async (_url, init) => {
+    calls++;
+    assert.equal(new Headers(init?.headers).get("authorization"), "Bearer test-token");
+    assert.equal((await new Response(init?.body).text()).length, 20_000);
+    return Response.json({ id: "collection", status: "PROCESSING" }, { status: 202 });
+  };
+  try {
+    const path = "/api/v1/analyses/collection/begin";
+    const headers = { origin: "chrome-extension://klggcepemjjbphjclpiabgpfgdbgiljj", authorization: "Bearer test-token", "content-type": "application/json" };
+    const accepted = await proxyBackend(new Request(`http://localhost${path}`, { method: "POST", headers, body: "x".repeat(20_000) }), path);
+    assert.equal(accepted.status, 202);
+    assert.equal(accepted.headers.get("access-control-allow-origin"), headers.origin);
+    const rejected = await proxyBackend(new Request(`http://localhost${path}`, { method: "POST", headers, body: "x".repeat(8_000_001) }), path);
+    assert.equal(rejected.status, 413); assert.equal(calls, 1);
+  } finally { globalThis.fetch = original; }
 });

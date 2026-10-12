@@ -141,6 +141,27 @@ def test_taobao_capture_selected_evidence_owner_and_strict_schema(signing_keys, 
     assert client.post(endpoint, json=body, headers=headers).status_code == 403
 
 
+@pytest.mark.parametrize("fixture_name", ["1688_extension_offer_1027322610455.json", "1688_extension_drawer_1027322610455.json"])
+def test_expanded_1688_capture_is_accepted_and_report_evidence_retained(signing_keys, fixture_name):
+    import json
+    from pathlib import Path
+    private, public = signing_keys
+    client, store = client_and_store(public)
+    body = json.loads((Path(__file__).parent / "fixtures" / fixture_name).read_text(encoding="utf-8"))
+    headers = auth_header(token(private, "expanded_1688_owner"))
+    response = client.post("/api/v1/analyses/capture", json=body, headers=headers)
+    assert response.status_code == 201
+    row = client.get("/api/v1/analyses/" + response.json()["id"], headers=headers).json()
+    data = row["supplier_data"]
+    assert data["extractor_version"] == "1688-extension-dom.v2"
+    assert len(data["products"][0]["attributes"]) == 41
+    assert "790" in data["products"][0]["sku_options"][0]["value"]
+    assert len(data["transaction_signals"]["source_metrics"]) == 13
+    assert data["rating"] == 4.6
+    assert row["raw_evidence"]["selected_fields"]["reviews"] == body["fields"]["reviews"]
+    assert len(data["reviews"]) == len(body["fields"]["reviews"])
+
+
 def test_capture_rejects_jsonb_unsafe_text_and_deep_nesting_before_admission(signing_keys):
     import json
     private, public = signing_keys
@@ -249,7 +270,7 @@ class AuthStore:
     def submit_customer(self, source_url, user_id, *, azure, customer_limit, window_seconds, trial_limit=None):
         return self.submit_azure(source_url, user_id) if azure else self.submit_local(source_url, user_id)
 
-    def import_customer_page(self, source_url, user_id, payload, *, customer_limit, window_seconds, trial_limit=None):
+    def import_customer_page(self, source_url, user_id, payload, *, customer_limit, window_seconds, trial_limit=None, azure=False):
         if getattr(self, "deny_import", False):
             raise AdmissionDenied("limit")
         analysis_id = uuid4()
@@ -261,6 +282,10 @@ class AuthStore:
             "raw_evidence": payload.get("raw_payload"),
             "reviews": payload.get("reviews", []),
         }
+        if payload.get("extraction_status") in {"SUCCESS", "PARTIAL"}:
+            self.rows[analysis_id]["status"] = "ASSESSING"
+            if azure:
+                self.outbox.append(analysis_id)
         return analysis_id
 
     def capture_customer_page(self, source_url, user_id, payload, *, customer_limit, window_seconds, azure=False, trial_limit=None):
@@ -582,6 +607,7 @@ def test_saved_page_import_requires_customer_and_owner(signing_keys):
     owner = auth_header(token(private, "saved_page_owner"))
     submitted = client.post(endpoint, content=page, headers={**owner, "content-type": "text/html"})
     assert submitted.status_code == 201
+    assert submitted.json()["status"] == "ASSESSING"
     analysis_id = submitted.json()["id"]
     row = client.get(f"/api/v1/analyses/{analysis_id}", headers=owner).json()
     assert row["result"]["extraction_status"] == "PARTIAL"
@@ -602,6 +628,7 @@ def test_saved_page_import_safe_outcomes_and_validation(signing_keys):
     headers = {**auth_header(token(private)), "content-type": "text/html; charset=utf-8"}
     challenge = client.post(endpoint, content="<title>Security verification</title>", headers=headers)
     assert challenge.status_code == 201
+    assert challenge.json()["status"] == "COMPLETED"
     blocked = store.rows[UUID(challenge.json()["id"])]
     assert blocked["result"]["extraction_status"] == "BLOCKED"
     assert blocked["supplier_data"] is None

@@ -161,6 +161,22 @@ def test_duplicate_only_capture_is_deduplicated_without_prior_contribution():
     assert "merged_from_snapshot_id" not in merged["raw_payload"]
 
 
+@pytest.mark.parametrize("old_count,new_count,expected", [(0, 3, 3), (1, 3, 3), (3, 3, 3), (3, 1, 3), (3, 0, 3)])
+def test_1688_review_card_multiplicity_survives_recaptures(old_count, new_count, expected):
+    current = capture({"supplier_name": "Supplier", "reviews": [
+        {"text": "Repeated review", "original_length": 15} for _ in range(new_count)]})
+    prior = copy.deepcopy(current["supplier_data"])
+    prior["reviews"] = [{"text": "Repeated review", "source_url": URL} for _ in range(old_count)] or None
+    prior["company_information"] = {"location": "Guangzhou"}
+    snapshot_id = uuid4()
+    merged = merge_extension_evidence(current, {"supplier_snapshot_id": snapshot_id, "supplier_data": prior})
+    assert len(merged["reviews"]) == expected
+    assert len(merged["supplier_data"]["reviews"]) == expected
+    assert len(current["reviews"]) == new_count  # Inputs remain immutable.
+    expected_sources = ([f"snapshot:{snapshot_id}"] if old_count > new_count else []) + (["EXTENSION_DOM"] if new_count else [])
+    assert merged["raw_payload"]["field_sources"]["reviews"] == expected_sources
+
+
 @pytest.mark.parametrize("text", ["password=secret", "Cookie: sid=secret", "session_token=secret",
                                       "Bearer abcdefghijklmnop", "sid=abc123; auth=xyz",
                                       "csrftoken=abc123", "ASP.NET_SessionId=abc123",

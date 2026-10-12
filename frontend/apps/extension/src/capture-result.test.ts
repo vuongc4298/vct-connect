@@ -1,9 +1,51 @@
 import assert from "node:assert/strict";
 import test from "node:test";
-import { restoreLastCapture, saveOpenAndLoadResult, type LastCapture } from "./capture-result";
+import { loadScopedResult, restoreLastCapture, saveOpenAndLoadResult, type LastCapture } from "./capture-result";
+import type { Analysis, ReportV1 } from "@vct/contracts";
 
 const record: LastCapture = { analysisId: "6c93a530-9914-4ead-89ee-c8083f5effb8",
   sourceUrl: "https://item.taobao.com/item.htm?id=1076425861755", ownerId: "owner-one" };
+
+test("restored result loads its report and clears previous report while assessment is pending", async () => {
+  const result = { id: record.analysisId, status: "COMPLETED" } as Analysis;
+  const full = { analysis_id: record.analysisId } as ReportV1;
+  const published: unknown[] = [];
+  await loadScopedResult(record.analysisId, {
+    current: () => true, analysis: async () => result, report: async () => full,
+    publish: (analysis, report) => published.push([analysis, report]),
+  });
+  assert.deepEqual(published, [[result, null], [result, full]]);
+});
+
+test("an owner change while an analysis lookup is pending cannot publish or request its report", async () => {
+  let current = true;
+  let resolve!: (value: Analysis) => void;
+  const pending = loadScopedResult(record.analysisId, {
+    current: () => current,
+    analysis: () => new Promise<Analysis>(done => { resolve = done; }),
+    report: async () => { assert.fail("Old owner report must not be requested"); },
+    publish: () => assert.fail("Old owner analysis must not be restored"),
+  });
+  current = false;
+  resolve({ status: "COMPLETED" } as Analysis);
+  await pending;
+});
+
+test("an owner change or newer lookup during report retrieval cannot restore stale report", async () => {
+  let current = true;
+  let resolve!: (value: ReportV1) => void;
+  const published: unknown[] = [];
+  const pending = loadScopedResult(record.analysisId, {
+    current: () => current, analysis: async () => ({ status: "COMPLETED" } as Analysis),
+    report: () => new Promise<ReportV1>(done => { resolve = done; }),
+    publish: (_analysis, report) => published.push(report),
+  });
+  await Promise.resolve();
+  current = false;
+  resolve({ analysis_id: record.analysisId } as ReportV1);
+  await pending;
+  assert.deepEqual(published, [null]);
+});
 
 test("saved capture opens automatically before lookup; polling failure leaves owner recovery available", async () => {
   const events: string[] = [];

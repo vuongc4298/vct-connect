@@ -10,6 +10,7 @@ from psycopg.rows import dict_row
 from .extraction.urls import source_platform, normalize_source_url
 from .extraction.extension_merge import merge_extension_evidence, reject_sensitive_page_state
 from .extraction.renormalize import UnsupportedRawEvidence, renormalize_public_fields
+from .collection_store import CollectionStoreMixin
 
 
 class LeaseLost(RuntimeError):
@@ -24,7 +25,7 @@ class AdmissionDenied(RuntimeError):
     pass
 
 
-class Store:
+class Store(CollectionStoreMixin):
     def __init__(self, database_url: str):
         self.database_url = database_url
 
@@ -693,9 +694,11 @@ class Store:
     def import_customer_page(
         self, source_url: str, user_id: UUID, payload: dict, *,
         customer_limit: int, window_seconds: int, trial_limit: int | None = None,
+        azure: bool = False,
     ) -> UUID:
-        """Admit and persist an in-memory upload in one transaction, without a queue."""
+        """Atomically persist uploaded evidence and queue supported snapshots for assessment."""
         supplier_data = payload.get("supplier_data")
+        extracted = payload.get("extraction_status") in {"SUCCESS", "PARTIAL"}
         if payload.get("source_url") != source_url or (
             payload.get("extraction_status") in {"SUCCESS", "PARTIAL"}
             and (not isinstance(supplier_data, dict)
@@ -708,7 +711,8 @@ class Store:
         token = uuid4()
         with self.connect() as conn:
             with conn.transaction():
-                self._admit(conn, "CUSTOMER", str(user_id), customer_limit, window_seconds)
+                self._admit(conn, "CUSTOMER", str(user_id),
+                            self._customer_quota(conn, user_id, customer_limit, trial_limit), window_seconds)
                 self._insert_analysis(conn, analysis_id, source_url, user_id, actor_type="CUSTOMER")
                 conn.execute(
                     """UPDATE analyses SET status = 'PROCESSING', attempt_count = 1,
@@ -717,7 +721,19 @@ class Store:
                     (token, analysis_id),
                 )
                 self._event(conn, analysis_id, "PROCESSING", 1)
-                self._complete_processing(conn, analysis_id, token, payload)
+                outcome = self._complete_processing(
+                    conn, analysis_id, token, payload, handoff_to_assessment=extracted
+                )
+                if outcome == "assessing":
+                    # Synchronous parsing is not an assessment worker attempt.
+                    conn.execute("UPDATE analyses SET attempt_count = 0 WHERE id = %s", (analysis_id,))
+                    if azure:
+                        conn.execute(
+                            "INSERT INTO analysis_outbox (analysis_id, message_id) VALUES (%s, %s)",
+                            (analysis_id, analysis_id),
+                        )
+                    else:
+                        conn.execute("INSERT INTO local_queue (analysis_id) VALUES (%s)", (analysis_id,))
         return analysis_id
 
     def capture_customer_page(
@@ -741,7 +757,8 @@ class Store:
         token = uuid4()
         with self.connect() as conn:
             with conn.transaction():
-                self._admit(conn, "CUSTOMER", str(user_id), customer_limit, window_seconds)
+                self._admit(conn, "CUSTOMER", str(user_id),
+                            self._customer_quota(conn, user_id, customer_limit, trial_limit), window_seconds)
                 previous = conn.execute(
                     """SELECT s.id AS supplier_snapshot_id, s.normalized_data AS supplier_data,
                               s.raw_payload AS raw_payload
@@ -765,6 +782,8 @@ class Store:
                     conn, analysis_id, token, payload, handoff_to_assessment=extracted
                 )
                 if outcome == "assessing":
+                    # Synchronous capture persistence is not a worker attempt.
+                    conn.execute("UPDATE analyses SET attempt_count = 0 WHERE id = %s", (analysis_id,))
                     if azure:
                         conn.execute(
                             "INSERT INTO analysis_outbox (analysis_id, message_id) VALUES (%s, %s)",
@@ -820,7 +839,8 @@ class Store:
                 if (revised["platform"] != source["supplier_platform"]
                         or revised["platform_supplier_id"] != source["platform_supplier_id"]):
                     raise UnsupportedRawEvidence("Replay cannot change supplier identity")
-                self._admit(conn, "CUSTOMER", str(user_id), customer_limit, window_seconds)
+                self._admit(conn, "CUSTOMER", str(user_id),
+                            self._customer_quota(conn, user_id, customer_limit, trial_limit), window_seconds)
                 analysis_id, token = uuid4(), uuid4()
                 self._insert_analysis(conn, analysis_id, source["source_url"], user_id, actor_type="CUSTOMER")
                 conn.execute(

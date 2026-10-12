@@ -123,11 +123,13 @@ function Pill({ children, tone = "neutral" }: { children: ReactNode; tone?: "neu
 }
 
 function Landing() {
+  const [guestUrl, setGuestUrl] = useState(FIXTURE_URL);
   const [guestId, setGuestId] = useState<string | null>(null);
   const [guestAnalysis, setGuestAnalysis] = useState<Analysis | null>(null);
   const [guestPreview, setGuestPreview] = useState<GuestPreviewV1 | null>(null);
   const [guestError, setGuestError] = useState("");
   const [guestBusy, setGuestBusy] = useState(false);
+  const [guestMethod, setGuestMethod] = useState<string | null>(null);
 
   useEffect(() => {
     if (!guestId) return;
@@ -137,12 +139,14 @@ function Landing() {
       try {
         const current = await getGuestAnalysis(guestId!);
         if (active) { setGuestAnalysis(current); setGuestError(""); }
-        if (current.status === "COMPLETED") {
+        if (current.status === "COMPLETED" && !isFixtureResult(current.result) && analysisPresentation(current).complete) {
           try {
             const preview = await getGuestPreview(guestId!);
             if (active) setGuestPreview(preview);
           } catch (cause) {
-            if (active) setGuestError(cause instanceof Error ? cause.message : "Không thể tải bản xem trước");
+            if (active) setGuestError(cause instanceof ApiError && cause.status === 404
+              ? "Phân tích này chưa có báo cáo đã lưu để tạo bản xem trước. Hãy kiểm tra trạng thái nguồn và đăng nhập để bổ sung bằng chứng."
+              : cause instanceof Error ? cause.message : "Không thể tải bản xem trước");
           }
         }
         if (!analysisPresentation(current).shouldPoll) return;
@@ -159,8 +163,9 @@ function Landing() {
   async function submitGuest(event: FormEvent) {
     event.preventDefault();
     setGuestBusy(true); setGuestError(""); setGuestAnalysis(null); setGuestPreview(null); setGuestId(null);
+    setGuestMethod(guestUrl === FIXTURE_URL ? "FIXTURE" : "PUBLIC_HTTP");
     try {
-      const submitted = await submitGuestAnalysis({ source_url: FIXTURE_URL });
+      const submitted = await submitGuestAnalysis({ source_url: guestUrl });
       setGuestId(submitted.id);
     } catch (cause) {
       setGuestError(cause instanceof Error ? cause.message : "Không thể gửi phân tích");
@@ -185,18 +190,20 @@ function Landing() {
           <span className="hero-note">Không cần thẻ thanh toán</span>
         </div>
         <form onSubmit={submitGuest} className="guest-demo-form">
-          <p>Thử fixture demo mà không cần tài khoản. Giới hạn tạm thời áp dụng cho trình duyệt này.</p>
+          <p>Gửi URL nguồn được hỗ trợ hoặc thử tracer tổng hợp mà không cần tài khoản. Giới hạn tạm thời áp dụng cho trình duyệt này.</p>
+          <label htmlFor="guest-source-url">Liên kết 1688 / Taobao / Alibaba</label>
+          <input id="guest-source-url" type="url" required value={guestUrl} onChange={event => setGuestUrl(event.target.value)} />
           <button type="submit" className="button button-ghost" disabled={guestBusy}>
             {guestBusy ? "Đang gửi…" : "Thử demo khách"}
           </button>
         </form>
         {guestError && <p role="alert" className="error-banner">{guestError}</p>}
-        {guestId && <ProgressCard analysis={guestAnalysis} delayed={false} requestedMethod={null} />}
+        {guestId && <ProgressCard analysis={guestAnalysis} delayed={false} requestedMethod={guestMethod} reportAvailable={Boolean(guestPreview)} />}
         {guestId && guestAnalysis?.status === "COMPLETED" && guestPreview && <>
           <GuestPreview preview={guestPreview} />
           <div className="guest-preview-cta">
-            <SignUpButton><button type="button" className="button button-primary">Đăng ký để xem báo cáo đầy đủ</button></SignUpButton>
-            <span>Đăng nhập và dùng tiện ích để có thêm bằng chứng khi trang nguồn hạn chế truy cập.</span>
+            <SignUpButton><button type="button" className="button button-primary">Đăng ký để tạo báo cáo đầy đủ</button></SignUpButton>
+            <span>Sau khi đăng nhập, gửi lại URL hoặc bằng chứng để tạo báo cáo đầy đủ trong tài khoản. Bản xem trước khách không được chuyển vào tài khoản. Dùng tiện ích khi trang nguồn hạn chế truy cập.</span>
           </div>
         </>}
         <div className="trust-row">
@@ -242,24 +249,25 @@ function Sidebar({ view, historyCount, watchlistCount, onViewChange }: { view: W
   </aside>;
 }
 
-function ProgressCard({ analysis, delayed, requestedMethod }: { analysis: Analysis | null; delayed: boolean; requestedMethod: string | null }) {
+function ProgressCard({ analysis, delayed, requestedMethod, reportAvailable = false }: { analysis: Analysis | null; delayed: boolean; requestedMethod: string | null; reportAvailable?: boolean }) {
   const presentation = analysisPresentation(analysis);
   const method = analysis?.extraction_method ?? requestedMethod;
   const liveExtraction = method === "PUBLIC_HTTP" || method === "PUBLIC_BROWSER" || method === "USER_UPLOAD" || method === "EXTENSION_DOM";
   const stepClass = (step: number) => {
     if (step === 0) return "done";
+    if (analysis?.status === "COMPLETED" && liveExtraction && step >= 2) return reportAvailable ? "done" : "";
     if (presentation.final) return "";
     if (presentation.progressStep > step) return "done";
     return presentation.progressStep === step ? "current" : "";
   };
-  const stepSymbol = (step: number) => presentation.progressStep > step || presentation.complete ? "✓" : String(step + 1);
+  const stepSymbol = (step: number) => analysis?.status === "COMPLETED" && liveExtraction && step >= 2 && !reportAvailable ? String(step + 1) : presentation.progressStep > step || presentation.complete ? "✓" : String(step + 1);
   return <section className="progress-card" aria-live="polite">
     <div className="progress-top"><div><span className={`status-orb ${presentation.orbClass}`}>{presentation.orbSymbol}</span><div><strong>{presentation.headline}</strong><p>{presentation.detail}</p></div></div><Pill tone={presentation.pillTone}>{presentation.pillLabel}</Pill></div>
     <div className="steps report-steps" aria-label="Tiến độ phân tích">
       <div className={stepClass(0)}><span>✓</span><strong>Đã nhận URL</strong><small>Kiểm tra nguồn</small></div><i />
       <div className={stepClass(1)}><span>{stepSymbol(1)}</span><strong>{liveExtraction ? "Trích xuất" : "Chuẩn bị dữ liệu"}</strong><small>{liveExtraction ? "Đọc bằng chứng" : "Nạp dữ liệu"}</small></div><i />
-      <div className={stepClass(2)}><span>{stepSymbol(2)}</span><strong>Đánh giá</strong><small>Risk · Confidence · Coverage</small></div><i />
-      <div className={stepClass(3)}><span>{stepSymbol(3)}</span><strong>Báo cáo</strong><small>Lưu kết quả trước hoàn tất</small></div>
+      {liveExtraction ? <><div className={stepClass(2)}><span>{stepSymbol(2)}</span><strong>Đánh giá</strong><small>Risk · Confidence · Coverage</small></div><i />
+      <div className={stepClass(3)}><span>{stepSymbol(3)}</span><strong>Báo cáo</strong><small>Lưu kết quả trước hoàn tất</small></div></> : <div className={presentation.complete ? "done" : ""}><span>{presentation.complete ? "✓" : "3"}</span><strong>Kết quả tracer</strong><small>Kiểm tra tổng hợp · Không chấm điểm</small></div>}
     </div>
     {presentation.nextAction && <p className="progress-next-action"><strong>Bước tiếp theo:</strong> {presentation.nextAction}</p>}
     {presentation.retrying && analysis?.next_retry_at && <p className="delay-note">Lần thử tiếp theo dự kiến lúc {new Date(analysis.next_retry_at).toLocaleTimeString("vi-VN")}.</p>}
@@ -424,6 +432,7 @@ export default function Page() {
   const { getToken, isLoaded, isSignedIn, userId } = useAuth();
   const [url, setUrl] = useState(FIXTURE_URL);
   const savedPageInput = useRef<HTMLInputElement>(null);
+  const reopenedId = useRef<string | null>(null);
   const [savedPage, setSavedPage] = useState<File | null>(null);
   const [requestedMethod, setRequestedMethod] = useState<string | null>(null);
   const [analysis, setAnalysis] = useState<Analysis | null>(null);
@@ -431,6 +440,7 @@ export default function Page() {
   const [reportLoading, setReportLoading] = useState(false);
   const [reportError, setReportError] = useState("");
   const [id, setId] = useState<string | null>(null);
+  const [reopenVersion, setReopenVersion] = useState(0);
   const [error, setError] = useState("");
   const [busy, setBusy] = useState(false);
   const [delayed, setDelayed] = useState(false);
@@ -516,7 +526,8 @@ export default function Page() {
       setError("Mã phân tích không hợp lệ");
       return;
     }
-    setRequestedMethod("EXTENSION_DOM");
+    setRequestedMethod(null);
+    reopenedId.current = analysisId;
     setId(analysisId);
     setView("analysis");
   }, [userId]);
@@ -538,7 +549,11 @@ export default function Page() {
         const current = await getAnalysis(id!, { getToken });
         if (active) {
           setAnalysis(current); setError("");
-          if (current.extraction_method === "EXTENSION_DOM") setUrl(current.source_url);
+          if (reopenedId.current === current.id) {
+            setUrl(current.source_url);
+            reopenedId.current = null;
+          }
+          setRequestedMethod(current.extraction_method);
         }
         if (!analysisPresentation(current).shouldPoll) return;
       } catch (cause) {
@@ -554,10 +569,16 @@ export default function Page() {
     }
     void poll();
     return () => { active = false; window.clearTimeout(timer); window.clearTimeout(delayTimer); };
-  }, [getToken, id, isSignedIn]);
+  }, [getToken, id, isSignedIn, reopenVersion]);
 
   useEffect(() => {
-    if (!id || !isSignedIn || analysis?.status !== "COMPLETED") return;
+    if (!id || !isSignedIn || analysis?.status !== "COMPLETED" || analysis.id !== id) return;
+    if (isFixtureResult(analysis.result)) {
+      setReport(null);
+      setReportLoading(false);
+      setReportError("Tracer tổng hợp chỉ kiểm tra luồng xử lý; chưa có báo cáo đánh giá nhà cung cấp hoặc điểm rủi ro.");
+      return;
+    }
     let active = true;
     setReportLoading(true);
     setReportError("");
@@ -582,7 +603,7 @@ export default function Page() {
       if (active) setReportLoading(false);
     });
     return () => { active = false; };
-  }, [analysis?.status, getToken, id, isSignedIn]);
+  }, [analysis, getToken, id, isSignedIn]);
 
   async function submit(event: FormEvent) {
     event.preventDefault();
@@ -652,6 +673,10 @@ export default function Page() {
     window.history.replaceState(null, "", `${next.pathname}${next.search}${next.hash}`);
     setView("analysis");
     setId(item.id);
+    setReopenVersion(version => version + 1);
+    setUrl(item.source_url);
+    reopenedId.current = null;
+    clearSavedPage();
     setAnalysis(null);
     setReport(null);
     setReportError("");
@@ -682,7 +707,7 @@ export default function Page() {
     <div className="workspace">
       <header className="workspace-header"><div><span>Không gian Pilot</span><i>/</i><strong>{view === "analysis" ? "Phân tích mới" : view === "history" ? "Lịch sử" : view === "watchlist" ? "Watchlist" : "Tài khoản"}</strong></div><nav className="mobile-nav" aria-label="Điều hướng di động"><button type="button" className={view === "analysis" ? "active" : ""} aria-current={view === "analysis" ? "page" : undefined} onClick={() => setView("analysis")}>Phân tích</button><button type="button" className={view === "history" ? "active" : ""} aria-current={view === "history" ? "page" : undefined} onClick={() => setView("history")}>Lịch sử</button><button type="button" className={view === "watchlist" ? "active" : ""} aria-current={view === "watchlist" ? "page" : undefined} onClick={() => setView("watchlist")}>Watchlist</button><button type="button" className={view === "account" ? "active" : ""} aria-current={view === "account" ? "page" : undefined} onClick={() => setView("account")}>Tài khoản</button></nav><div className="header-tools"><button type="button" className="icon-button" aria-label="Thông báo">♢<i /></button><span className="language">VI</span><UserButton /></div></header>
       {view === "history" ? <AnalysisHistory items={analysisHistory} loading={historyLoading} error={historyError} onOpen={openHistoryAnalysis} onNewAnalysis={showNewAnalysis} /> : view === "watchlist" ? <WatchlistView entries={watchlist} loading={watchlistLoading} error={watchlistError} removingId={watchlistRemovingId} onOpen={openWatchlistAnalysis} onRemove={deleteWatchlistEntry} /> : view === "account" ? (accountState ? <AccountStateView state={accountState} /> : <main className="dashboard account-dashboard"><section className="account-card" aria-live="polite">{accountLoading ? <p>Đang tải trạng thái tài khoản…</p> : <p role={accountError ? "alert" : undefined}>{accountError || "Chưa có trạng thái tài khoản."}</p>}</section></main>) : <main className="dashboard" id="analysis">
-        <section className="dashboard-intro"><div><Pill tone="good">BẢN DEMO TƯƠNG TÁC</Pill><h1>Phân tích nhà cung cấp</h1><p>Dán liên kết sản phẩm 1688, sản phẩm / cửa hàng Taobao hoặc sản phẩm / hồ sơ công ty Alibaba để xem bằng chứng công khai và độ phủ. URL mẫu hiển thị báo cáo rủi ro minh họa.</p></div>{(analysis?.status === "COMPLETED" || analysis?.status === "FAILED_FINAL") && <button type="button" className="button button-ghost" onClick={showNewAnalysis}>+ Phân tích mới</button>}</section>
+        <section className="dashboard-intro"><div><Pill tone="good">BẢN DEMO TƯƠNG TÁC</Pill><h1>Phân tích nhà cung cấp</h1><p>Dán liên kết sản phẩm 1688, sản phẩm / cửa hàng Taobao hoặc sản phẩm / hồ sơ công ty Alibaba để xem bằng chứng công khai và độ phủ. URL mẫu chạy tracer tổng hợp để kiểm tra luồng xử lý.</p></div>{(analysis?.status === "COMPLETED" || analysis?.status === "FAILED_FINAL") && <button type="button" className="button button-ghost" onClick={showNewAnalysis}>+ Phân tích mới</button>}</section>
         <section className="analyze-card">
           <form onSubmit={submit}>
             <label htmlFor="source-url">LIÊN KẾT 1688 / TAOBAO / ALIBABA</label>
@@ -693,14 +718,14 @@ export default function Page() {
           </form>
         </section>
         {error && <div role="alert" className="error-banner"><span>!</span><div><strong>Không thể tiếp tục</strong><p>{error === "Analysis not found" ? "Không tìm thấy phân tích. Vui lòng gửi lại dữ liệu demo." : error}</p></div></div>}
-        {id && <ProgressCard analysis={analysis} delayed={delayed} requestedMethod={requestedMethod} />}
+        {id && <ProgressCard analysis={analysis} delayed={delayed} requestedMethod={requestedMethod} reportAvailable={Boolean(report)} />}
         {id && analysis?.status === "COMPLETED" && reportLoading &&
           <section className="report-loading" aria-live="polite"><i className="spinner" /><span>Đang tải báo cáo đánh giá đã lưu…</span></section>}
-        {id && analysis?.status === "COMPLETED" && report && <><div className="report-watchlist-action"><button type="button" className="button button-ghost" disabled={watchlistBusy} onClick={() => { void saveCurrentSupplier(); }}>{watchlistBusy ? "Đang lưu…" : "☆ Lưu vào Watchlist"}</button>{watchlistError && <span role="alert">{watchlistError}</span>}</div><FullReport report={report} /></>}
+        {id && analysis?.status === "COMPLETED" && report && <><div className="report-watchlist-action"><button type="button" className="button button-ghost" disabled={watchlistBusy} onClick={() => { void saveCurrentSupplier(); }}>{watchlistBusy ? "Đang lưu…" : "☆ Lưu vào Watchlist"}</button>{watchlistError && <span role="alert">{watchlistError}</span>}</div><FullReport key={report.analysis_id} report={report} extractionMethod={analysis.extraction_method} /></>}
         {id && analysis?.status === "COMPLETED" && !reportLoading && !report && reportError &&
           <div className="report-unavailable" role="status"><span>i</span><div><strong>Chưa có báo cáo đánh giá đầy đủ</strong><p>{reportError}</p></div></div>}
         {id && analysis?.status === "COMPLETED" && !report && !isFixtureResult(analysis.result) && <ExtractionEvidence analysis={analysis} />}
-        {!id && <section className="empty-guide"><div className="guide-icon">◎</div><h2>Một URL, bằng chứng rõ nguồn</h2><p>URL 1688, Taobao và Alibaba công khai được trích xuất khi truy cập được; URL mẫu chạy báo cáo fixture minh họa. Trang bị chặn sẽ hiển thị trạng thái rõ ràng.</p><div><span>1</span>Gửi URL<i /><span>2</span>Chờ xử lý<i /><span>3</span>Xem kết quả</div></section>}
+        {!id && <section className="empty-guide"><div className="guide-icon">◎</div><h2>Một URL, bằng chứng rõ nguồn</h2><p>URL 1688, Taobao và Alibaba công khai được trích xuất khi truy cập được; URL mẫu chạy tracer tổng hợp, không tạo điểm rủi ro. Trang bị chặn sẽ hiển thị trạng thái rõ ràng.</p><div><span>1</span>Gửi URL<i /><span>2</span>Chờ xử lý<i /><span>3</span>Xem kết quả</div></section>}
       </main>}
     </div>
   </div>;

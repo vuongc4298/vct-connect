@@ -31,11 +31,13 @@ await mkdir(output, { recursive: true });
 const manifest = {
   manifest_version: 3,
   name: "VCT Connect Source Evidence",
-  version: "0.1.0",
+  version: "0.5.1",
   description: "Capture selected visible 1688 and Taobao evidence on request.",
   key: publicKey,
-  permissions: ["activeTab", "scripting", "cookies", "storage"],
+  permissions: ["activeTab", "scripting", "cookies", "storage", "downloads"],
   host_permissions: [`${webOrigin}/*`, `https://${clerkHost}/*`],
+  optional_host_permissions: ["https://*.1688.com/*"],
+  background: { service_worker: "background.js", type: "module" },
   action: { default_popup: "popup.html", default_title: "Capture source evidence" },
 };
 await writeFile(resolve(output, "manifest.json"), JSON.stringify(manifest, null, 2));
@@ -54,5 +56,11 @@ await build({
     VCT_WEB_ORIGIN: JSON.stringify(webOrigin),
     VCT_CLERK_SYNC_HOST: JSON.stringify(syncHost),
   },
+});
+await build({
+  absWorkingDir: directory, entryPoints: ["src/background.ts"], bundle: true,
+  outfile: "build/background.js", format: "esm", platform: "browser", target: "chrome120",
+  define: { VCT_CLERK_PUBLISHABLE_KEY: JSON.stringify(publishableKey),
+    VCT_WEB_ORIGIN: JSON.stringify(webOrigin), VCT_CLERK_SYNC_HOST: JSON.stringify(syncHost) },
 });
 console.log(`Built extension for ${webOrigin}; load ${output}`);

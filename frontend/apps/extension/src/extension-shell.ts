@@ -1,16 +1,22 @@
+import { shopUrl, factoryUrl } from "./linked-capture";
 import { supportedOffer } from "./capture";
 
 export type ExtensionPageState =
   | { status: "checking" }
   | { status: "unsupported" }
-  | { status: "supported"; sourceUrl: string; sourceId: string; kind: "1688" | "taobao-item" | "taobao-shop" };
+  | { status: "supported"; sourceUrl: string; sourceId: string; kind: "1688" | "taobao-item" | "taobao-shop" | "1688-company" | "1688-factory" };
 
 export type ExtensionGate = "loading-auth" | "signed-out" | "checking-page" | "unsupported-page" | "ready";
 
 export function classifyExtensionPage(url: string | undefined): ExtensionPageState {
   if (!url) return { status: "unsupported" };
   const supported = supportedOffer(url);
-  if (!supported) return { status: "unsupported" };
+  if (!supported) {
+    const company = shopUrl(url), factory = factoryUrl(url);
+    if (company) return { status: "supported", sourceUrl: company, sourceId: company, kind: "1688-company" };
+    if (factory) return { status: "supported", sourceUrl: factory, sourceId: factory, kind: "1688-factory" };
+    return { status: "unsupported" };
+  }
   return {
     status: "supported",
     sourceUrl: supported.sourceUrl,

@@ -1,0 +1,2 @@
+class CollectionConflict(RuntimeError):
+    pass
