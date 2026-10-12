@@ -7,6 +7,7 @@ without changing the v0.1.0 assessment contract.
 from __future__ import annotations
 
 from typing import Mapping
+import json
 
 from .identity import FactoryTraderAssessment
 from .interpretation import InterpretationRun
@@ -17,6 +18,15 @@ from .semantic_reviews import SemanticReviewRun
 
 
 SEVERITY = {"NONE": 0.0, "LOW": 25.0, "MEDIUM": 55.0, "HIGH": 80.0}
+DIMENSION_FIELDS = {
+    "PRODUCT_QUALITY": {"reviews", "transaction_signals", "certifications"},
+    "SUPPLIER_IDENTITY": {"company_information", "certifications", "activity_history"},
+    "DELIVERY": {"delivery_information", "transaction_signals", "reviews"},
+    "REVIEW_MANIPULATION": {"reviews"},
+    "AFTER_SALES": {"reviews", "transaction_signals", "company_information"},
+    "PRICING": {"price_information"},
+    "COMMUNICATION": {"reviews", "transaction_signals"},
+}
 MEDIA_MULTIPLIER = {
     "SUPPORTS": 1.10,
     "PARTIALLY_SUPPORTS": 1.00,
@@ -272,6 +282,106 @@ def media_records(
         for item in media_run.assessment.provenance
     ]
     return findings, evidence
+
+
+def _source_fragments(value: object) -> list[str]:
+    fragments = [json.dumps(value, ensure_ascii=False, sort_keys=True)]
+    fragments.append(json.dumps(value, ensure_ascii=False, sort_keys=True, separators=(",", ":")))
+    if isinstance(value, str):
+        fragments.append(value)
+    elif isinstance(value, Mapping):
+        for item in value.values():
+            fragments.extend(_source_fragments(item))
+    elif isinstance(value, list):
+        for item in value:
+            fragments.extend(_source_fragments(item))
+    return fragments
+
+
+def supplier_score_inputs(run: InterpretationRun) -> tuple[list[DimensionInput], list[dict]]:
+    """Score only explicit categories supported by present, quoted source evidence.
+
+    Narrative positives/risks and missing fields never implicitly become scores.
+    Model claims cannot activate critical floors or count as verified documents.
+    """
+    dimensions: list[DimensionInput] = []
+    evidence: list[dict] = []
+    source = run.input_payload["evidence"]
+    for item in run.interpretation.dimension_assessments:
+        fields = set(item.evidence_fields)
+        if (item.dimension in {"SUPPLIER_IDENTITY", "REVIEW_MANIPULATION"}
+                or item.severity == "UNKNOWN" or not fields
+                or fields != set(item.evidence_quotes)
+                or not fields.intersection(DIMENSION_FIELDS[item.dimension])):
+            continue
+        metrics = source.get("transaction_signals")
+        if "transaction_signals" in fields and isinstance(metrics, Mapping):
+            raw_metrics = metrics.get("source_metrics")
+            if isinstance(raw_metrics, list) and any(
+                isinstance(metric, Mapping) and isinstance(metric.get("label"), str)
+                and metric["label"].casefold() in {
+                    "store return rate", "dropshipping buyer's return rate", "return customer rate"
+                } and metric["label"] in item.evidence_quotes["transaction_signals"]
+                for metric in raw_metrics
+            ):
+                # These translated platform labels may mean repeat purchase;
+                # they cannot support numeric quality/returns risk as captured.
+                continue
+            if isinstance(raw_metrics, list) and not any(
+                isinstance(metric, Mapping)
+                and isinstance(metric.get("label"), str)
+                and isinstance(metric.get("value"), str)
+                and metric["label"] in item.evidence_quotes["transaction_signals"]
+                and metric["value"] in item.evidence_quotes["transaction_signals"]
+                for metric in raw_metrics
+            ):
+                continue
+        if any(source.get(field) in (None, "", [], {}) or not any(
+            item.evidence_quotes[field] in fragment
+            for fragment in _source_fragments(source[field])
+        ) for field in fields):
+            continue
+        review_derived = "reviews" in fields
+        # One isolated review cannot support a generalized dimension assessment.
+        if review_derived and len(normalized_reviews(source)) < 2:
+            continue
+        confidence = min(item.confidence, run.interpretation.confidence, 0.7)
+        if confidence <= 0:
+            continue
+        evidence_id = f"supplier-dimension:{item.dimension.lower()}"
+        dimensions.append(DimensionInput(
+            dimension=item.dimension, confidence=confidence,
+            signals=[RiskSignal(
+                evidence_id=evidence_id, dimension=item.dimension,
+                severity=SEVERITY[item.severity], reliability=confidence,
+                source_kind="MODEL_INTERPRETATION", review_derived=review_derived,
+                explanation=item.statement_vi,
+            )],
+        ))
+        evidence.append({
+            "evidence_id": evidence_id, "source_kind": "MODEL_INTERPRETATION",
+            "source_field": None,
+            "payload": {**item.model_dump(mode="json"), "confidence": confidence,
+                        "policy": "supplier-dimensions.v1", "independently_verified": False},
+        })
+    return dimensions, evidence
+
+
+def merge_dimension_inputs(dimensions: list[DimensionInput]) -> list[DimensionInput]:
+    """Keep existing review/identity signals when supplier dimensions overlap."""
+    grouped: dict[str, list[DimensionInput]] = {}
+    for item in dimensions:
+        grouped.setdefault(item.dimension, []).append(item)
+    merged: list[DimensionInput] = []
+    for dimension, items in grouped.items():
+        signals = [signal for item in items for signal in item.signals]
+        mass = sum(signal.reliability for signal in signals)
+        confidence = sum(
+            item.confidence * sum(signal.reliability for signal in item.signals)
+            for item in items
+        ) / mass if mass else 0.0
+        merged.append(DimensionInput(dimension=dimension, confidence=confidence, signals=signals))
+    return merged
 
 
 def supplier_records(run: InterpretationRun) -> tuple[list[dict], list[dict]]:

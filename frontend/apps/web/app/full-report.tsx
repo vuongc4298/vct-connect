@@ -53,6 +53,10 @@ function EvidenceCard({ evidence, extractedAt, uploaded }: { evidence: ReportEvi
     {evidence.source_field && <p><strong>Trường nguồn:</strong> {evidence.source_field}</p>}
     {hasSourceContent && <div><strong>Nội dung nguồn:</strong><pre style={{ whiteSpace: "pre-wrap", overflowWrap: "anywhere" }}>{content ?? "Chưa xác định"}</pre></div>}
     {text && <p><strong>Diễn giải / ghi chú:</strong> {text}</p>}
+    {evidence.source_kind === "MODEL_INTERPRETATION" && evidence.payload.evidence_quotes !== null &&
+      typeof evidence.payload.evidence_quotes === "object" && <div><strong>Trích dẫn nguồn:</strong>
+        <pre style={{ whiteSpace: "pre-wrap", overflowWrap: "anywhere" }}>{JSON.stringify(evidence.payload.evidence_quotes, null, 2)}</pre>
+      </div>}
     {reviewSource && <a href={reviewSource} target="_blank" rel="noreferrer">Mở nguồn đánh giá ↗</a>}
     <small>{uploaded ? "Thời điểm xử lý HTML: " : "Độ mới: "}{!uploaded && freshness.stale ? "DỮ LIỆU CŨ · " : ""}{freshness.label}{uploaded ? " · Tuổi ảnh chụp trang: Chưa xác định" : ""}</small>
     </details>
@@ -77,6 +81,7 @@ export function FullReport({ report, extractionMethod }: { report: ReportV1; ext
   const overall = report.risk.label === "INSUFFICIENT_INFORMATION" ? null : report.risk.overall_risk;
   const sourceFreshness = reportFreshness(report.extracted_at);
   const availableEvidenceIds = new Set(report.evidence.map(item => item.evidence_id));
+  const evidenceById = new Map(report.evidence.map(item => [item.evidence_id, item]));
   const reviewReliability = typeof review.review_reliability === "number"
     ? review.review_reliability
     : typeof review.reliability === "number" ? review.reliability : null;
@@ -168,6 +173,12 @@ export function FullReport({ report, extractionMethod }: { report: ReportV1; ext
             <RiskBar value={dimensionRisk} label={REPORT_DIMENSION_LABELS[dimension] ?? dimension} />
             <details className="dimension-detail"><summary>Độ tin cậy & nguồn</summary><div className="dimension-meta">
               <small>Độ tin cậy hiệu dụng: {confidence === null ? "chưa xác định" : reportPercent(confidence)}</small>
+              {ids.map(id => {
+                const evidence = evidenceById.get(id);
+                const reason = evidence?.source_kind === "MODEL_INTERPRETATION"
+                  ? reportPayloadText(evidence.payload) : null;
+                return reason ? <p key={`reason-${id}`}>{reason}</p> : null;
+              })}
               {ids.length > 0 && <span>{ids.map(id =>
                 availableEvidenceIds.has(id)
                   ? <a href={`#${reportEvidenceAnchor(id)}`} key={id}>{id}</a>

@@ -176,6 +176,26 @@ test("full report renders real score, identity, review, actions and evidence tra
   assert.match(html, /Mở trang nguồn 1688/);
 });
 
+test("supplier dimension scores show their assessment reason and captured source quotes", () => {
+  const report = reportFixture("INSUFFICIENT_INFORMATION");
+  report.risk.dimensions[1] = {
+    ...report.risk.dimensions[1], risk: 55, effective_confidence: 0.6,
+    evidence_ids: ["supplier-dimension:delivery"],
+  };
+  report.evidence.push({evidence_id: "supplier-dimension:delivery",
+    source_kind: "MODEL_INTERPRETATION", source_field: null,
+    payload: {statement_vi: "Tỷ lệ thực hiện đơn cần xác minh.",
+      evidence_quotes: {transaction_signals: "45%"}}});
+  const html = renderToStaticMarkup(<FullReport report={report} />);
+  assert.match(html, /55\/100/);
+  const chart = html.slice(html.indexOf('class="report-dimension-list"'), html.indexOf('class="report-grid"'));
+  assert.match(chart, /Tỷ lệ thực hiện đơn cần xác minh/);
+  assert.match(chart, /href="#evidence-supplier-dimension-delivery"/);
+  assert.match(html, /Trích dẫn nguồn:/);
+  assert.match(html, /45%/);
+  assert.match(html, /CHƯA ĐỦ THÔNG TIN/);
+});
+
 test("absent supplier source values stay explicitly unknown", () => {
   const report = reportFixture();
   report.evidence[1].payload.value = null;
