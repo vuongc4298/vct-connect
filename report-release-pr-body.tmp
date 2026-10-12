@@ -1,0 +1,5 @@
+Saved supplier reports now lead with risk, confidence and coverage charts, followed by a horizontal risk comparison and direct section navigation. Findings, actions, uncertainties and limitations show at most five items per page; remaining items are accessible through paging. Original evidence is expandable and finding links open its matching source.
+
+Insufficient information remains visibly unknown and suppresses an overall numeric score. This release includes only report presentation files based on the current deployed main revision; pending extraction/backend changes are excluded.
+
+Validation: 112 frontend tests and TypeScript passed against the deployment baseline. The matching UI was checked in the browser for scored/insufficient reports, paging, source navigation and responsive layout. Web and extension production builds passed locally; the client artifact scan found no configured server credentials. GitHub CI is completing deployable image and browser checks before merge.
