@@ -38,6 +38,10 @@ class EvidenceSignal(BaseModel):
             field = key.split(".", 1)[0] if isinstance(key, str) else key
             if field not in _ALLOWED_EVIDENCE_FIELDS:
                 raise ValueError("quotes contain unsupported SupplierData fields")
+            if quote is None:
+                # A missing source has no quotation. Providers often express
+                # that as JSON null in uncertainty records; never invent text.
+                continue
             text = json.dumps(quote, ensure_ascii=False, sort_keys=True, separators=(",", ":")) if isinstance(quote, dict) else quote
             if not isinstance(text, str) or not text.strip() or len(text) > 400:
                 raise ValueError("source quotes must contain 1-400 characters")
