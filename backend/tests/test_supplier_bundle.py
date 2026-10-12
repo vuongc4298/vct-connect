@@ -2,6 +2,7 @@ from datetime import datetime, timezone
 from uuid import uuid4
 import pytest
 from backend.app.extraction.supplier_bundle import SupplierBundle, normalize_bundle
+from backend.app.extraction.shop1688_identity import shop_identity
 
 SHOP = "https://shopabcdef123.1688.com/"
 FACTORY = "https://www.1688.com/factory/b2b-abcdef123.html"
@@ -20,6 +21,26 @@ def selected():
 
 def normalize(value):
     return normalize_bundle(SupplierBundle.model_validate(value), at=datetime(2026, 10, 11, tzinfo=timezone.utc))
+
+
+def test_named_shop_bundle_preserves_identity_across_all_sources():
+    import json
+    named = "https://hztxsy.1688.com/"
+    value = json.loads(json.dumps(selected()).replace(SHOP, named))
+    result = normalize(value)
+    assert result["supplier_data"]["company_information"]["factory_profile_source_url"] == FACTORY
+    assert shop_identity(named + "?offerId=778418840629") == named
+    value["factory"]["shop_url"] = SHOP
+    with pytest.raises(ValueError):
+        normalize(value)
+
+
+@pytest.mark.parametrize("url", ["https://detail.1688.com/", "https://sale.1688.com/",
+    "https://login.1688.com/", "https://www.1688.com/", "https://hztxsy.1688.com.evil.test/",
+    "https://hztxsy.1688.com:443/", "https://user@hztxsy.1688.com/", "https://hztxsy.1688.com/page/offerlist.htm"])
+def test_named_shop_identity_rejects_service_and_foreign_hosts(url):
+    with pytest.raises(ValueError):
+        shop_identity(url)
 
 
 @pytest.mark.parametrize("field", ["description", "claim"])

@@ -18,6 +18,10 @@ test("extension shell detects supported 1688 and Taobao pages", () => {
   assert.equal(shop.status, "supported");
   assert.equal(shop.status === "supported" && shop.kind, "taobao-shop");
   assert.deepEqual(classifyExtensionPage("https://example.org/"), { status: "unsupported" });
+  const named = classifyExtensionPage("https://hztxsy.1688.com/?offerId=778418840629");
+  assert.equal(named.status === "supported" && named.kind, "1688-company");
+  for (const url of ["https://detail.1688.com/", "https://sale.1688.com/", "https://login.1688.com/", "https://hztxsy.1688.com.evil.test/"])
+    assert.deepEqual(classifyExtensionPage(url), { status: "unsupported" });
 });
 
 test("enhanced submission requires loaded auth, sign-in, and a supported page", () => {

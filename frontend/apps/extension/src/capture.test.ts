@@ -1,6 +1,37 @@
 import assert from "node:assert/strict";
 import test from "node:test";
 import { assertPermittedEvidence, captureSelectedDom, supportedOffer, type LegacyCapture, type TaobaoCapture } from "./capture";
+import { captureLinkedDom } from "./linked-capture";
+
+test("product shop discovery accepts wrapper markup but rejects ambiguous supplier identities", () => {
+  const before = [globalThis.location, globalThis.document, globalThis.getComputedStyle];
+  let anchors: unknown[] = [];
+  const anchor = (href: string, shown = true) => ({ href, getClientRects: () => shown ? [{}] : [],
+    closest: () => null, parentElement: null });
+  try {
+    Object.defineProperty(globalThis, "location", { configurable: true, value: new URL(OFFER_URL) });
+    Object.defineProperty(globalThis, "document", { configurable: true, value: {
+      querySelectorAll: (selector: string) => selector === "#shopNavigation a[href]" ? anchors : [],
+    } });
+    Object.defineProperty(globalThis, "getComputedStyle", { configurable: true,
+      value: () => ({ visibility: "visible", display: "block", opacity: "1" }) });
+    const shop = "https://shopabcdef123.1688.com/";
+    anchors = [anchor(shop + "?offerId=996518024136"), anchor(shop), anchor("https://evil.test/"),
+      anchor("https://shopother123.1688.com/", false)];
+    assert.equal(captureLinkedDom("PRODUCT_LINK", OFFER_URL), shop);
+    anchors.push(anchor("https://shopother123.1688.com/"));
+    assert.equal(captureLinkedDom("PRODUCT_LINK", OFFER_URL), null);
+    anchors = [anchor("https://hztxsy.1688.com/?offerId=778418840629&td_page_id=PC-DEFAULT-2026")];
+    assert.equal(captureLinkedDom("PRODUCT_LINK", OFFER_URL), "https://hztxsy.1688.com/");
+    anchors = [anchor("https://detail.1688.com/"), anchor("https://sale.1688.com/"), anchor("https://hztxsy.1688.com.evil.test/")];
+    assert.equal(captureLinkedDom("PRODUCT_LINK", OFFER_URL), null);
+    anchors = [];
+    assert.equal(captureLinkedDom("PRODUCT_LINK", OFFER_URL), null);
+  } finally {
+    for (const [index, key] of ["location", "document", "getComputedStyle"].entries())
+      Object.defineProperty(globalThis, key, { configurable: true, value: before[index] });
+  }
+});
 
 const OFFER_URL = "https://detail.1688.com/offer/996518024136.html";
 

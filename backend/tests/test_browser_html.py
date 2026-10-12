@@ -33,6 +33,18 @@ def test_html_enriches_same_snapshot_without_replacing_reviews_or_manufacturing_
     assert "html_sources" not in result["raw_payload"]["linked_collection"]
 
 
+def test_named_shop_html_sources_parse_together_with_matching_factory_backlink():
+    value = selected()
+    value["html_sources"] = html_sources(value)
+    value = json.loads(json.dumps(value).replace(SHOP, "https://hztxsy.1688.com/"))
+    result = normalize(value)
+    assert all(source["status"] == "PARSED" for source in result["supplier_data"]["html_capture_status"])
+    assert len(result["raw_payload"]["html_sources"]) == 3
+    value["html_sources"][2]["html"] = value["html_sources"][2]["html"].replace("https://hztxsy.1688.com/", SHOP)
+    with pytest.raises(ValueError):
+        normalize(value)
+
+
 @pytest.mark.parametrize("change", ["canonical", "source", "duplicate", "script", "button", "event", "secret", "link", "size", "encoded_secret", "uncollected"])
 def test_unsafe_html_is_rejected(change):
     value = selected(); value["html_sources"] = html_sources(value)

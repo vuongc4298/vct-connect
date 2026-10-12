@@ -139,9 +139,16 @@ async function guided(type: string, tabId: number, ownerId: string, sourceUrl?: 
       const [injected] = await chrome.scripting.executeScript({ target: { tabId }, func: captureSelectedDom });
       const product = injected?.result as LegacyCapture | undefined;
       if (!product || !("offer_id" in product) || product.source_url !== sourceUrl) throw new Error("Product evidence is not ready.");
-      const link = await selected<string>(tabId, "PRODUCT_LINK", sourceUrl);
+      let link = await selected<string>(tabId, "PRODUCT_LINK", sourceUrl);
+      // Supplier navigation can hydrate after the product becomes readable.
+      // Do not silently submit product-only evidence when discovery fails.
+      for (let attempt = 0; !link && attempt < 8; attempt++) {
+        await new Promise(resolve => setTimeout(resolve, 250));
+        link = await selected<string>(tabId, "PRODUCT_LINK", sourceUrl);
+      }
       if (supportedOffer((await chrome.tabs.get(tabId)).url || "")?.sourceUrl !== sourceUrl) throw new Error("The active product changed.");
       const company = link ? shopUrl(link) : null;
+      if (!company) throw new Error("The supplier shop link is not ready or is ambiguous. Scroll to the supplier name on the product, wait for it to load, then retry Analyze this page. No analysis was submitted.");
       const startedAt = Date.now();
       const job: CollectionJob = { id: crypto.randomUUID(), ownerId, sourceUrl: sourceUrl!, startedAt,
         expiresAt: startedAt + 30 * 60_000, stage: "STARTING", ...(company ? { companyUrl: company } : {}) };
@@ -156,7 +163,7 @@ async function guided(type: string, tabId: number, ownerId: string, sourceUrl?: 
       await chrome.storage.local.set({ lastCapture: { analysisId: job.id, ownerId, sourceUrl } });
       if (company) {
         try { await chrome.scripting.executeScript({ target: { tabId }, func: showCompanyGuidance, args: ["SHOP", company] }); } catch { /* Popup retains the link. */ }
-      } else await finishSession(session);
+      }
       return { id: job.id };
     }
     if (!session || !session.reserved) throw new Error("Capture a product first, or retry its pending reservation.");
