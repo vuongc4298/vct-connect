@@ -103,6 +103,42 @@ def test_unquoted_context_is_removed_without_adding_new_model_references():
     assert kept.evidence_quotes == {"delivery_information": "Late deliveries"}
 
 
+def test_null_quotes_for_missing_fields_preserve_uncertainty_and_cannot_score():
+    output = valid_output()
+    output["uncertainties"][0]["evidence_quotes"] = {"certifications": None}
+    output["dimension_assessments"] = [assessment() | {
+        "evidence_quotes": {"delivery_information": None}}]
+    provider = FakeProvider(output)
+    run = interpret_supplier_data(supplier_fixture(), provider=provider, model="fixture")
+    assert len(provider.calls) == 1
+    assert run.interpretation.uncertainties[0].evidence_quotes == {}
+    assert run.interpretation.uncertainties[0].evidence_fields == ["certifications"]
+    assert run.interpretation.dimension_assessments[0].severity == "UNKNOWN"
+    assert supplier_score_inputs(run) == ([], [])
+
+
+def test_live_sparse_phone_shape_completes_with_grouped_null_uncertainty_quotes():
+    data = supplier_fixture()
+    missing = ["company_information", "years_active", "categories", "certifications",
+               "price_information", "transaction_signals", "rating", "delivery_information", "activity_history"]
+    data.update({field: None for field in missing})
+    data.update(completeness=0.25, missing_fields=missing, extraction_method="USER_UPLOAD")
+    output = valid_output() | {
+        "positive_signals": [], "risk_signals": [],
+        "uncertainties": [{"statement_vi": "Một số nguồn chưa có dữ liệu.",
+            "evidence_fields": missing, "evidence_quotes": dict.fromkeys(missing), "confidence": 0.7}],
+        "dimension_assessments": [assessment("PRODUCT_QUALITY", "MEDIUM", "reviews", "Poor quality stitching")],
+    }
+    provider = FakeProvider(output)
+    bundle = build_assessment(data, provider=provider, model="fixture")
+    assert len(provider.calls) == 1
+    assert bundle.supplier_run.interpretation.uncertainties[0].evidence_quotes == {}
+    quality = next(item for item in bundle.risk.dimensions if item.dimension == "PRODUCT_QUALITY")
+    assert quality.risk == 55
+    assert bundle.risk.overall_risk is None
+    assert bundle.risk.label == "INSUFFICIENT_INFORMATION"
+
+
 def test_ambiguous_translated_return_metric_cannot_become_product_quality_risk():
     data = supplier_fixture()
     metric = {"label": "Store return rate", "scope": "SUPPLIER_PLATFORM", "value": "27%"}
