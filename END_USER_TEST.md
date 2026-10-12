@@ -241,3 +241,15 @@ Local validation: 157 frontend tests, TypeScript, extension production build and
 Reload extension 0.5.1 and return to the linked shop. If its supplier header is visible but the company-introduction module/credit link is absent, **Save shop HTML** now captures that header. Expect WAITING_FACTORY, a shop HTML download and a factory-navigation cue. Retry the existing reservation within its original 30-minute deadline; otherwise start from the product again. The report source records SHOP_HEADER_ONLY and displayed name/tenure/category/service claims; it must not invent a company introduction or treat platform tenure as registered operating age. Finish with the factory or captured product/shop as before.
 
 Validation: 158 frontend tests, TypeScript, extension build, 31 selected-bundle/HTML backend tests and 11 authenticated PostgreSQL collection checks passed. Offline browser capture with the introduction module removed produced header-only HTML accepted as PARSED with four header claims and unknown registered age. Screenshot: tmp/header-shop-proof.png. The operator's exact Shenzhen page was not available as saved HTML; its screenshot established the visible-header symptom, while fixture checks verify the supported header layout. Local API restarted with the new normalization support.
+
+# Supplier evidence and risk-category linkage (2026-10-12)
+
+Create a **new analysis** after this release. Existing reports remain saved snapshots and are not recalculated by refreshing the page.
+
+1. Capture the product, save the visible shop HTML, and finish with factory HTML (or the available sources) through the existing extension flow.
+2. Open the new report and inspect **Rủi ro tập trung ở đâu?**. Supported categories should show numeric bars; missing/ambiguous categories should stay striped and marked **Chưa đủ bằng chứng**.
+3. Expand **Độ tin cậy & nguồn** under a supported category. Check the assessment reason and effective confidence, then follow its evidence link and expand the source card to view the verbatim quotes.
+4. Confirm that a report with insufficient category coverage still suppresses the overall risk number. A seller claim, company name, or positive rating alone must not establish verified identity or authentic reviews.
+5. Reopen the same report from history. Its scores and quotes should persist without another AI request. To compare later evidence, create another analysis rather than expecting the old report to change.
+
+The captured phone supplier replay supported product-quality and delivery concerns (55/100 each, with reduced confidence); the other five categories stayed unknown and overall coverage stayed 40%. These are recorded replay results, not promised scores for subsequent model runs.

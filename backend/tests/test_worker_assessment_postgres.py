@@ -19,9 +19,10 @@ SOURCE_URL = "https://detail.1688.com/offer/996518024136.html"
 
 
 class WorkerProvider:
-    def __init__(self):
+    def __init__(self, *, supplier_dimensions=False):
         self.chat_calls = 0
         self.embedding_calls = 0
+        self.supplier_dimensions = supplier_dimensions
 
     def generate_json(self, **kwargs):
         self.chat_calls += 1
@@ -55,6 +56,13 @@ class WorkerProvider:
                 "confidence": 0.75,
             }
         )
+        if not review and self.supplier_dimensions:
+            output["dimension_assessments"] = [{
+                "dimension": "PRICING", "severity": "LOW",
+                "statement_vi": "Giá hiển thị cần đối chiếu trước khi giao dịch.",
+                "evidence_fields": ["price_information"],
+                "evidence_quotes": {"price_information": "12"}, "confidence": 0.6,
+            }]
         return ProviderResponse(
             provider="FAKE_WORKER",
             request_id=f"worker-chat-{self.chat_calls}",
@@ -181,7 +189,8 @@ def cleanup(store, analysis_id):
 
 
 @pytest.mark.parametrize("admission", ["public", "import", "import_azure", "capture", "capture_azure"])
-def test_worker_persists_report_completes_once_and_replay_spends_no_ai(store, admission):
+@pytest.mark.parametrize("supplier_dimensions", [False, True])
+def test_worker_persists_report_completes_once_and_replay_spends_no_ai(store, admission, supplier_dimensions):
     data = supplier_data()
     owner = store.resolve_user("evidence_worker_" + uuid4().hex) if admission != "public" else None
     azure = admission.endswith("_azure")
@@ -204,7 +213,7 @@ def test_worker_persists_report_completes_once_and_replay_spends_no_ai(store, ad
         data = payload["supplier_data"]
     expected_chat_calls = 2 if data["reviews"] else 1
     expected_embedding_calls = 1 if data["reviews"] else 0
-    provider = WorkerProvider()
+    provider = WorkerProvider(supplier_dimensions=supplier_dimensions)
     assessor_calls = 0
 
     def assessor(snapshot):
@@ -290,6 +299,12 @@ def test_worker_persists_report_completes_once_and_replay_spends_no_ai(store, ad
             assert report["language"] == "vi"
             assert report["payload"]["risk"]["scoring_version"] == "v0.1.0"
             risk = report["payload"]["risk"]
+            if supplier_dimensions:
+                pricing = next(item for item in risk["dimensions"] if item["dimension"] == "PRICING")
+                assert pricing["risk"] == 25
+                stored = next(item for item in report["payload"]["evidence"]
+                              if item["evidence_id"] == pricing["evidence_ids"][0])
+                assert stored["payload"]["evidence_quotes"] == {"price_information": "12"}
             supported_weight = sum(item["configured_weight"] for item in risk["dimensions"]
                                    if item["risk"] is not None and item["effective_confidence"] > 0)
             assert risk["coverage"] == pytest.approx(min(data["completeness"], supported_weight))

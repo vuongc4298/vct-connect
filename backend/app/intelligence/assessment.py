@@ -17,6 +17,8 @@ from .assessment_policy import (
     normalized_reviews,
     review_score_inputs,
     supplier_records,
+    supplier_score_inputs,
+    merge_dimension_inputs,
 )
 from .identity import FactoryTraderAssessment, assess_supplier_identity
 from .interpretation import InterpretationRun, interpret_supplier_data
@@ -135,6 +137,16 @@ def build_assessment(
     dimensions.extend(identity_dimensions)
 
     supplier_findings, supplier_evidence = supplier_records(supplier_run)
+    supplier_dimensions, dimension_evidence = supplier_score_inputs(supplier_run)
+    # Semantic review findings already represent these review-derived facts.
+    review_supported = {item.dimension for item in dimensions
+                        if any(signal.review_derived for signal in item.signals)}
+    supplier_dimensions = [item for item in supplier_dimensions
+                           if not (item.dimension in review_supported
+                                   and any(signal.review_derived for signal in item.signals))]
+    used_ids = {signal.evidence_id for item in supplier_dimensions for signal in item.signals}
+    supplier_evidence.extend(item for item in dimension_evidence if item["evidence_id"] in used_ids)
+    dimensions = merge_dimension_inputs(dimensions + supplier_dimensions)
     media_findings, media_evidence = media_records(media_run)
 
     # A populated profile does not establish coverage of risk dimensions.
