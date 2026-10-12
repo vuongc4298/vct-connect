@@ -47,3 +47,7 @@ Follow the highlighted **Factory profile / 工厂档案** control. Close any dis
 Guidance appears on matching page load or when the popup opens. A page visit alone does not capture or download data. No CAPTCHA solution or automated challenge dismissal is performed. Empty company regions remain unavailable. Canonical/profile backlinks bind sources to the same supplier; JavaScript navigation labels can be highlighted even without an href.
 
 Downloads start under `Downloads/VCT Connect/<analysis ID>/product.html`, `shop.html`, and `factory.html`. Browser download failure is reported without discarding uploadable HTML. Scripts, account controls, hidden content and media remain excluded; source-byte and transport caps remain enforced. Local build directory: `frontend/apps/extension/build`, target `http://127.0.0.1:3000`. Keep the local web/API/database/worker running.
+
+## Live deployment build
+
+Set VCT_WEB_ORIGIN to the deployed HTTPS web origin and VCT_EXTENSION_OUTPUT=build-live before building. The same Clerk publishable key and fixed extension identity are retained; only server origin and output folder change. The build-live folder is ignored by Git. To switch from localhost, remove the local unpacked installation before loading build-live so local pending IDs and cached results are not sent to the cloud. Sign in on the live VCT site and start a fresh product capture. Captures reserved in the local database are not migrated to Azure.

@@ -4,7 +4,7 @@ import { dirname, resolve } from "node:path";
 import { fileURLToPath } from "node:url";
 
 const directory = dirname(fileURLToPath(import.meta.url));
-const output = resolve(directory, "build");
+const output = resolve(directory, process.env.VCT_EXTENSION_OUTPUT || "build");
 const publicKey = "MIIBIjANBgkqhkiG9w0BAQEFAAOCAQ8AMIIBCgKCAQEAoUaC/KOFnMHvtio6BDO/2AEQviTOcoZKitGBfufE1mjiovFHr4GWtak7z21SX1WL9HCQHMJBoFDfK6NGqqzYwshiZZpTSHA3tJepiwMd1QT53G6LaveS7173/ibdpRcL/V9vt1HyF8ZBoFNj5pjV3pykRyB2XAWKv6i0X4T/ZLNFaTCv00tUBOBmv60n/idZ2MkNlSk3mkm6DTjWWYuMHLcF1iuwv0i3JMK1mxt905v7ZIEqeAtJ0vDHYfKVvCOp2XZ2oF1khKfn5b1a6gio1VarT+G3Ap8CQkLzKcltY9sLxHe7VqPZmO8aYehcWel0bW/Zzc8JWo18cpjdT1OUcQIDAQAB";
 
 function localPublishableKey(text) {
@@ -47,7 +47,7 @@ await build({
   absWorkingDir: directory,
   entryPoints: ["src/popup.tsx"],
   bundle: true,
-  outfile: "build/popup.js",
+  outfile: resolve(output, "popup.js"),
   format: "iife",
   platform: "browser",
   target: "chrome120",
@@ -59,7 +59,7 @@ await build({
 });
 await build({
   absWorkingDir: directory, entryPoints: ["src/background.ts"], bundle: true,
-  outfile: "build/background.js", format: "esm", platform: "browser", target: "chrome120",
+  outfile: resolve(output, "background.js"), format: "esm", platform: "browser", target: "chrome120",
   define: { VCT_CLERK_PUBLISHABLE_KEY: JSON.stringify(publishableKey),
     VCT_WEB_ORIGIN: JSON.stringify(webOrigin), VCT_CLERK_SYNC_HOST: JSON.stringify(syncHost) },
 });

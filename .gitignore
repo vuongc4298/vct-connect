@@ -10,3 +10,4 @@ __pycache__/
 frontend/apps/web/.next/
 frontend/apps/extension/build/
 *.tsbuildinfo
+frontend/apps/extension/build-live/
