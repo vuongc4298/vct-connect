@@ -23,7 +23,7 @@ from .interpretation import InterpretationRun, interpret_supplier_data
 from .media import MediaInterpretationRun, ReviewMediaInput, interpret_review_media
 from .provider import EmbeddingProvider, LLMProvider, MultimodalLLMProvider
 from .reviews import ReviewAnalysis, analyze_review_signals
-from .scoring import ConfidenceFactors, RiskAssessment, score_supplier_risk
+from .scoring import DIMENSION_WEIGHTS, ConfidenceFactors, RiskAssessment, score_supplier_risk
 from .semantic_reviews import SemanticReviewRun, interpret_reviews
 
 
@@ -137,7 +137,12 @@ def build_assessment(
     supplier_findings, supplier_evidence = supplier_records(supplier_run)
     media_findings, media_evidence = media_records(media_run)
 
-    coverage = float(supplier_data.get("completeness") or 0.0)
+    # A populated profile does not establish coverage of risk dimensions.
+    # Only dimensions with usable scored evidence count toward that coverage.
+    supported = {item.dimension for item in dimensions if item.confidence > 0
+                 and any(signal.reliability > 0 for signal in item.signals)}
+    dimension_coverage = sum(DIMENSION_WEIGHTS[name] for name in supported)
+    coverage = min(float(supplier_data.get("completeness") or 0.0), dimension_coverage)
     reliabilities = [supplier_run.interpretation.confidence]
     if reviews:
         reliabilities.append(review_reliability)
@@ -152,9 +157,11 @@ def build_assessment(
             data_coverage=max(0.0, min(1.0, coverage)),
             source_reliability=max(0.0, min(1.0, source_reliability)),
             sample_adequacy=sample_adequacy,
-            data_freshness=1.0,
+            data_freshness=0.0 if supplier_data.get("extraction_method") == "USER_UPLOAD" else 1.0,
         ),
     )
+    if risk.label == "INSUFFICIENT_INFORMATION":
+        risk = risk.model_copy(update={"overall_risk": None})
 
     return AssessmentBundle(
         supplier_run=supplier_run,

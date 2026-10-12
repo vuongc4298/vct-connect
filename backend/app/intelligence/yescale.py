@@ -70,6 +70,20 @@ def _metadata_headers(api_key: str, metadata: Mapping[str, str] | None) -> dict[
     return headers
 
 
+def _chat_settings(model: str, temperature: float, max_tokens: int) -> dict:
+    settings = {
+        "temperature": temperature,
+        "max_tokens": max_tokens,
+        "stream": False,
+        "response_format": {"type": "json_object"},
+    }
+    model_name = model.rsplit("/", 1)[-1].lower()
+    if model_name.startswith("deepseek-v4") or model_name in {"deepseek-flash", "deepseek-pro"}:
+        # V4 defaults to thinking, which can exhaust the bounded JSON answer budget.
+        settings["thinking"] = {"type": "disabled"}
+    return settings
+
+
 class YEScaleProvider:
     """Minimal server-only YEScale client with no secret-bearing logging."""
 
@@ -144,12 +158,7 @@ class YEScaleProvider:
         if not 1 <= max_tokens <= 8192:
             raise ValueError("max_tokens must be between 1 and 8192")
 
-        request_settings = {
-            "temperature": temperature,
-            "max_tokens": max_tokens,
-            "stream": False,
-            "response_format": {"type": "json_object"},
-        }
+        request_settings = _chat_settings(model, temperature, max_tokens)
         response, latency_ms = self._post(
             "/chat/completions",
             metadata=metadata,
@@ -231,12 +240,7 @@ class YEScaleProvider:
                 "image_url": {"url": image.data_url, "detail": image.detail},
             })
 
-        request_settings = {
-            "temperature": temperature,
-            "max_tokens": max_tokens,
-            "stream": False,
-            "response_format": {"type": "json_object"},
-        }
+        request_settings = _chat_settings(model, temperature, max_tokens)
         response, latency_ms = self._post(
             "/chat/completions",
             metadata=metadata,

@@ -144,12 +144,34 @@ def test_complete_assessment_composes_review_identity_and_versioned_score():
     assert provider.chat_calls == 2
     assert provider.embedding_calls == 1
     assert bundle.risk.scoring_version == "v0.1.0"
-    assert bundle.risk.data_coverage == 0.75
+    # Only quality and manipulation have scored evidence (weights .25 + .15).
+    assert bundle.risk.data_coverage == 0.4
+    assert bundle.risk.label == "INSUFFICIENT_INFORMATION"
+    assert bundle.risk.overall_risk is None
     assert bundle.identity.supplier_risk_penalty == 0
     assert bundle.review_analysis.assessment.findings[0].category == "QUALITY"
     assert any(finding["finding_type"] == "REVIEW_FINDING" for finding in bundle.findings)
     assert any(finding["finding_type"] == "IDENTITY_ASSESSMENT" for finding in bundle.findings)
     assert any(item["source_kind"] == "REVIEW" for item in bundle.evidence)
+
+
+def test_populated_profile_and_duplicate_reviews_cannot_imply_low_supplier_risk():
+    fixture = supplier_fixture()
+    fixture["completeness"] = 1.0
+    fixture["reviews"] = [{"text": "Excellent product", "source_url": "https://example.test/r1"}] * 10
+    bundle = build_assessment(fixture, provider=FakeProvider(), model="fixture-chat")
+    assert bundle.risk.data_coverage == 0.15
+    assert bundle.risk.label == "INSUFFICIENT_INFORMATION"
+    assert bundle.risk.overall_risk is None
+    assert "PRODUCT_QUALITY" in bundle.risk.missing_dimensions
+
+
+def test_saved_page_import_does_not_claim_known_data_freshness():
+    fixture = supplier_fixture()
+    live = build_assessment(fixture, provider=FakeProvider(), model="fixture-chat")
+    fixture["extraction_method"] = "USER_UPLOAD"
+    saved = build_assessment(fixture, provider=FakeProvider(), model="fixture-chat")
+    assert round(live.risk.confidence - saved.risk.confidence, 4) == 0.15
 
 
 def test_missing_embedding_model_degrades_to_deterministic_review_without_second_llm_call():

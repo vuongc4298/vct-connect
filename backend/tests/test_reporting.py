@@ -4,6 +4,21 @@ from backend.app.reporting.builder import build_report
 from backend.app.reporting.contracts import REPORT_SCHEMA_VERSION
 
 
+def test_saved_factory_evidence_is_distinct_from_product_evidence():
+    assessment, snapshot, findings, evidence, reviews = source_fixture()
+    url = "https://www.1688.com/factory/b2b-222030383828763a1d.html"
+    snapshot["normalized_data"].update(extractor_version="1688-saved-factory-enrichment.v1",
+        company_information={"factory_profile_source_url": url, "established_date_claim": "2025-07-14",
+                             "factory_profile_claims_display_text": "员工总数: 11~50人"})
+    report = build_report(analysis_id="profile-test", source_url=snapshot["normalized_data"]["source_url"],
+                          snapshot=snapshot, assessment=assessment, findings=findings,
+                          evidence=evidence, raw_reviews=reviews)
+    profile = next(item for item in report.evidence if item.evidence_id == "supplier:factory_profile")
+    assert profile.payload["value"]["factory_profile_source_url"] == url
+    assert profile.payload["value"]["established_date_claim"] == "2025-07-14"
+    assert "chưa được xác minh độc lập" in profile.payload["statement_vi"]
+
+
 def source_fixture(*, insufficient=False):
     risk = {
         "schema_version": "supplier-risk.v0.1",
@@ -148,6 +163,36 @@ def source_fixture(*, insufficient=False):
         }
     ]
     return assessment, snapshot, findings, evidence, raw_reviews
+
+
+def test_report_resolves_only_canonical_snapshot_values_and_keeps_review_source():
+    assessment, snapshot, findings, evidence, reviews = source_fixture()
+    snapshot["normalized_data"].update(years_active=0, certifications=None, secret="private")
+    evidence.extend([
+        {"evidence_id": "supplier:certifications", "source_kind": "SUPPLIER_DATA",
+         "source_field": "certifications", "payload": {"field": "certifications"}},
+        {"evidence_id": "supplier:secret", "source_kind": "SUPPLIER_DATA",
+         "source_field": "secret", "payload": {"field": "secret"}},
+        {"evidence_id": "review:0", "source_kind": "REVIEW", "source_field": "reviews",
+         "payload": {"pattern": "REPEATED_TEXT"}},
+    ])
+    report = build_report(analysis_id="source-test", source_url=snapshot["normalized_data"]["source_url"],
+                          snapshot=snapshot, assessment=assessment, findings=findings,
+                          evidence=evidence, raw_reviews=reviews)
+    payloads = {item.evidence_id: item.payload for item in report.evidence}
+    assert payloads["supplier:years_active"]["value"] == 0
+    assert payloads["supplier:certifications"]["value"] is None
+    assert "value" not in payloads["supplier:secret"]
+    assert payloads["review:0"] == {"pattern": "REPEATED_TEXT", **reviews[0]["payload"]}
+    assert "private" not in report.model_dump_json()
+
+
+def test_uploaded_report_carries_unknown_original_capture_age_limitation():
+    assessment, snapshot, findings, evidence, reviews = source_fixture()
+    snapshot["normalized_data"]["extraction_method"] = "USER_UPLOAD"
+    report = build_report(analysis_id="upload-age", source_url=snapshot["normalized_data"]["source_url"],
+                          snapshot=snapshot, assessment=assessment, findings=findings, evidence=evidence, raw_reviews=reviews)
+    assert any("Tuổi ảnh chụp trang đã lưu chưa xác định" in item and "thời điểm xử lý HTML" in item for item in report.limitations_vi)
 
 
 def test_report_v1_keeps_risk_confidence_coverage_evidence_and_actions_separate():

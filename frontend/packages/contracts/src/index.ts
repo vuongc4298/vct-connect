@@ -19,7 +19,7 @@ export type AnalysisStatusEvent = {
 };
 export type SubmitAnalysisRequest = { source_url: string };
 export type SubmitAnalysisResponse = { id: string; status: "QUEUED" };
-export type ImportSavedPageResponse = { id: string; status: "COMPLETED" };
+export type ImportSavedPageResponse = { id: string; status: "ASSESSING" | "COMPLETED"; extraction_status: ExtractionStatus };
 export type SubmitGuestAnalysisRequest = SubmitAnalysisRequest;
 export type SubmitGuestAnalysisResponse = SubmitAnalysisResponse;
 export type AnalysisMode = "GUEST_PUBLIC" | "ACCOUNT_PUBLIC" | "EXTENSION_ENHANCED";
@@ -49,7 +49,7 @@ export type SupplierData = {
   years_active: number | null;
   categories: string[] | null;
   certifications: string[] | null;
-  products: Array<{ offer_id: string | null; title: string | null; source_url?: string; attributes?: Array<{ name: string; value: string }>; price_display_text?: string | null; minimum_order_display_text?: string | null }> | null;
+  products: Array<{ offer_id: string | null; title: string | null; source_url?: string; attributes?: Array<{ name: string; value: string }>; sku_options?: Array<{ name: string; value: string }>; price_display_text?: string | null; minimum_order_display_text?: string | null }> | null;
   price_information: {
     minimum?: string; maximum?: string; minimum_order_quantity?: number; display_text?: string;
     price?: { priceText: string | null; priceTitle: string | null; priceUnit: string | null; priceDesc: string | null };

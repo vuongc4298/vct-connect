@@ -8,7 +8,7 @@ from pydantic import ValidationError
 from backend.app.extraction.contracts import EVIDENCE_FIELDS
 from backend.app.intelligence.contracts import SCHEMA_VERSION, EvidenceSignal, SupplierInterpretation
 from backend.app.intelligence.interpretation import interpret_supplier_data
-from backend.app.intelligence.provider import ProviderResponse, ProviderUsage
+from backend.app.intelligence.provider import ProviderResponse, ProviderUsage, VisualInput
 from backend.app.intelligence.yescale import ProviderError, YEScaleProvider
 
 
@@ -158,6 +158,38 @@ def test_yescale_adapter_uses_server_key_metadata_json_mode_and_provenance():
     assert result.response_model == "gpt-4o-mini-2026-06-01"
     assert result.usage.total_tokens == 150
     assert result.usage.cost_usd == Decimal("0.0025")
+
+
+@pytest.mark.parametrize("model,disables_thinking", [
+    ("deepseek-v4.1-flash", True),
+    ("cb/deepseek-v4.1-flash", True),
+    ("deepseek-flash", True),
+    ("deepseek-pro", True),
+    ("gpt-4o-mini", False),
+    ("deepseek-r1", False),
+])
+@pytest.mark.parametrize("multimodal", [False, True])
+def test_structured_deepseek_answers_disable_thinking_and_record_settings(model, disables_thinking, multimodal):
+    def handler(request):
+        body = json.loads(request.content)
+        assert (body.get("thinking") == {"type": "disabled"}) is disables_thinking
+        if not disables_thinking:
+            assert "thinking" not in body
+        return httpx.Response(200, json={
+            "model": model,
+            "choices": [{"message": {"content": "{}"}, "finish_reason": "stop"}],
+        })
+    with httpx.Client(transport=httpx.MockTransport(handler)) as client:
+        provider = YEScaleProvider("secret", client=client)
+        options = dict(model=model, system_prompt="s", user_prompt="u", temperature=0.1, max_tokens=1800)
+        if multimodal:
+            result = provider.generate_multimodal_json(**options, images=[
+                VisualInput(media_id="image-1", data_url="data:image/png;base64,aGVsbG8=")
+            ])
+        else:
+            result = provider.generate_json(**options)
+    assert (result.settings.get("thinking") == {"type": "disabled"}) is disables_thinking
+    assert result.settings["max_tokens"] == 1800
 
 
 def test_yescale_adapter_records_unavailable_cost_without_inventing_one():

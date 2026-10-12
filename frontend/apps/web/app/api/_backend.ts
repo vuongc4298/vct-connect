@@ -51,19 +51,21 @@ export async function proxyBackend(
   try {
     const upload = path === "/api/v1/analyses/import" || path.startsWith("/api/v1/analyses/import?");
     const capture = path === "/api/v1/analyses/capture";
-    const maximum = capture ? MAX_CAPTURE_BYTES : MAX_HTML_BYTES;
-    if ((upload || capture) && Number(request.headers.get("content-length")) > maximum) {
-      return withExtensionCors(request, Response.json({ detail: capture ? "Capture exceeds 16 KB" : "HTML page exceeds 2 MB" }, { status: 413 }));
+    const collection = path.startsWith("/api/v1/analyses/collection/");
+    const maximum = collection ? 8_000_000 : capture ? MAX_CAPTURE_BYTES : MAX_HTML_BYTES;
+    const sizeError = collection ? "HTML collection exceeds 8 MB" : capture ? "Capture exceeds 16 KB" : "HTML page exceeds 2 MB";
+    if ((upload || capture || collection) && Number(request.headers.get("content-length")) > maximum) {
+      return withExtensionCors(request, Response.json({ detail: sizeError }, { status: 413 }));
     }
-    const uploadBody = upload || capture ? await boundedUpload(request, maximum) : undefined;
-    if ((upload || capture) && uploadBody === null) {
-      return withExtensionCors(request, Response.json({ detail: capture ? "Capture exceeds 16 KB" : "HTML page exceeds 2 MB" }, { status: 413 }));
+    const uploadBody = upload || capture || collection ? await boundedUpload(request, maximum) : undefined;
+    if ((upload || capture || collection) && uploadBody === null) {
+      return withExtensionCors(request, Response.json({ detail: sizeError }, { status: 413 }));
     }
     const upstream = await fetch(`${API_ORIGIN}${path}`, {
       method: request.method,
       headers,
       body: request.method === "GET" || request.method === "HEAD" ? undefined
-        : upload || capture ? new Blob([uploadBody!]) : await request.text(),
+        : upload || capture || collection ? new Blob([uploadBody!]) : await request.text(),
       cache: "no-store",
     });
     const responseHeaders = new Headers();

@@ -1,8 +1,95 @@
 import assert from "node:assert/strict";
 import test from "node:test";
-import { assertPermittedEvidence, captureSelectedDom, supportedOffer, type TaobaoCapture } from "./capture";
+import { assertPermittedEvidence, captureSelectedDom, supportedOffer, type LegacyCapture, type TaobaoCapture } from "./capture";
 
 const OFFER_URL = "https://detail.1688.com/offer/996518024136.html";
+
+function selected1688(elements: Map<string, unknown[]>): LegacyCapture {
+  const before = [globalThis.location, globalThis.document, globalThis.getComputedStyle];
+  try {
+    Object.defineProperty(globalThis, "location", { configurable: true, value: new URL(OFFER_URL) });
+    Object.defineProperty(globalThis, "document", { configurable: true, value: {
+      get cookie() { throw new Error("Cookie read"); },
+      get documentElement() { throw new Error("Full document read"); },
+      querySelector: () => null,
+      querySelectorAll: (selector: string) => elements.get(selector) ?? [],
+    }});
+    Object.defineProperty(globalThis, "getComputedStyle", { configurable: true,
+      value: () => ({ visibility: "visible", display: "block", opacity: "1" }) });
+    return captureSelectedDom() as LegacyCapture;
+  } finally {
+    for (const [index, key] of ["location", "document", "getComputedStyle"].entries())
+      Object.defineProperty(globalThis, key, { configurable: true, value: before[index] });
+  }
+}
+
+const selectedNode = (text: string, selectors = new Map<string, unknown[]>(), shown = true) => ({
+  innerText: text, getClientRects: () => shown ? [{}] : [],
+  querySelectorAll: (selector: string) => selectors.get(selector) ?? [],
+});
+
+test("1688 preserves qualified prices and both SKU price and inventory, excluding hidden rows", () => {
+  const sku = selectedNode("", new Map([
+    [".item-label", [selectedNode("Mixed sizes")]],
+    [".item-price-stock", [selectedNode("¥8.7"), selectedNode("Inventory790pc"), selectedNode("PRIVATE_SENTINEL", undefined, false)]],
+  ]));
+  const capture = selected1688(new Map([
+    ["#mainPrice .price-component", [selectedNode("After coupon ¥0.10 first item"), selectedNode("¥8.70 Minimum order 1 piece"), selectedNode("PRIVATE_SENTINEL", undefined, false)]],
+    ["#skuSelection .expand-view-item", [sku]],
+  ]));
+  assert.equal(capture.fields.price_details, "After coupon ¥0.10 first item | ¥8.70 Minimum order 1 piece");
+  assert.deepEqual(capture.fields.sku_options, [{name: "Mixed sizes", value: "¥8.7 · Inventory790pc"}]);
+  assert.ok(!JSON.stringify(capture).includes("PRIVATE_SENTINEL"));
+});
+
+test("1688 captures later attributes and distinct repeated labels without unbounded tables", () => {
+  const labels = Array.from({length: 55}, (_, index) => ({
+    ...selectedNode(index < 2 ? "Style" : `Attribute ${index}`),
+    nextElementSibling: {...selectedNode(`Value ${index}`), classList: {contains: () => true}},
+  }));
+  const capture = selected1688(new Map([["#productAttributes th.ant-descriptions-item-label", labels]]));
+  assert.equal(capture.fields.product_attributes?.length, 50);
+  assert.deepEqual(capture.fields.product_attributes?.slice(0, 2), [{name:"Style",value:"Value 0"},{name:"Style",value:"Value 1"}]);
+  assert.equal(capture.fields.product_attributes?.[40].value, "Value 40");
+});
+
+test("1688 bounds UTF-8 capture size while retaining review extents and exact zero rating", () => {
+  const capture = selected1688(new Map([
+    ["#productEvaluation .header-label-desc em.hl", [selectedNode("0")]],
+    ["#productEvaluation .evaluation-content .content-text", Array.from({length:25}, (_, i) => selectedNode(`${i} ${"厚".repeat(3000)}`))],
+  ]));
+  assert.equal(capture.fields.rating, 0);
+  assert.ok(new TextEncoder().encode(JSON.stringify(capture)).length <= 16384);
+  assert.ok(capture.fields.reviews!.length > 0 && capture.fields.reviews!.length < 20);
+  assert.equal(capture.fields.reviews![0].original_length, 3002);
+  assert.equal(Array.from(capture.fields.reviews![0].text).length, 2000);
+});
+
+test("1688 prefers the visible review drawer and preserves repeated review cards", () => {
+  const drawer = selectedNode("PRIVATE_BUYER_AVATAR_SENTINEL", new Map([
+    [".evaluate-panel-title-star", [selectedNode("4.6 40+Number of reviews")]],
+    [".evaluate-panel-title-star em.hl", [selectedNode("4.6")]],
+    [".evaluate-panel-list .evaluation-content .content-info .content-text", [selectedNode("Good fabric"), selectedNode("Good fabric"), selectedNode("Different review"), selectedNode("PRIVATE_SENTINEL", undefined, false)]],
+  ]));
+  const capture = selected1688(new Map([
+    [".ant-drawer-body .evaluate-panel-content", [drawer]],
+    ["#productEvaluation .evaluation-content .content-text", [selectedNode("INLINE_DUPLICATE")]],
+  ]));
+  assert.equal(capture.fields.rating, 4.6);
+  assert.equal(capture.fields.review_summary, "4.6 40+Number of reviews");
+  assert.deepEqual(capture.fields.reviews?.map(x => x.text), ["Good fabric", "Good fabric", "Different review"]);
+  assert.ok(!JSON.stringify(capture).includes("PRIVATE"));
+  assert.ok(!JSON.stringify(capture).includes("INLINE_DUPLICATE"));
+});
+
+test("1688 ignores closed drawers and rejects multiple visible review panels", () => {
+  const capture = selected1688(new Map([
+    [".ant-drawer-body .evaluate-panel-content", [selectedNode("", undefined, false)]],
+    ["#productEvaluation .evaluation-content .content-text", [selectedNode("Inline review")]],
+  ]));
+  assert.deepEqual(capture.fields.reviews?.map(x => x.text), ["Inline review"]);
+  assert.throws(() => selected1688(new Map([[".ant-drawer-body .evaluate-panel-content", [selectedNode(""), selectedNode("")]]])), /Ambiguous/);
+});
 
 test("only a canonical HTTPS 1688 offer is supported", () => {
   assert.deepEqual(supportedOffer(`${OFFER_URL}?spm=home`), {
@@ -26,7 +113,7 @@ test("capture selects bounded visible text without touching page session data", 
     getClientRects: () => visible ? [{}] : [],
   });
   const elements = new Map<string, unknown[]>([
-    [".shop-company-name h1", [node("  Visible supplier \n")]],
+    ["#shopNavigation .shop-company-name h1", [node("  Visible supplier \n")]],
     [".title-content h1", [node(" Dress  ")]],
     [".price", [node("unrelated price")]],
     [".company-name", [node("unrelated company")]],
@@ -62,7 +149,7 @@ test("capture truncates by code points without splitting a surrogate pair", () =
     Object.defineProperty(globalThis, "location", { configurable: true, value: new URL(OFFER_URL) });
     Object.defineProperty(globalThis, "document", { configurable: true, value: {
       querySelector: () => null,
-      querySelectorAll: (selector: string) => selector === ".shop-company-name h1" ? [{
+      querySelectorAll: (selector: string) => selector === "#shopNavigation .shop-company-name h1" ? [{
         innerText: "a".repeat(239) + "😀" + "b",
         querySelectorAll: () => [],
         getClientRects: () => [{}],

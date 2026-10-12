@@ -14,7 +14,7 @@ from backend.app.extraction.contracts import EVIDENCE_FIELDS
 
 
 SCHEMA_VERSION = "supplier-interpretation.v1"
-PROMPT_VERSION = "supplier-interpretation.prompt.v1"
+PROMPT_VERSION = "supplier-interpretation.prompt.v2"
 PIPELINE_VERSION = "analysis-intelligence.v0.1"
 _ALLOWED_EVIDENCE_FIELDS = frozenset(EVIDENCE_FIELDS)
 

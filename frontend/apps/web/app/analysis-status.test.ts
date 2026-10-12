@@ -4,6 +4,14 @@ import type { ExtractionStatus } from "@vct/contracts";
 
 import { analysisPresentation, extractionRecovery } from "./analysis-status";
 
+test("completed legacy tracer explicitly discloses absent score, report and preview", () => {
+  const view = analysisPresentation({ status: "COMPLETED", attempt_count: 1, failure_code: null, extraction_method: "FIXTURE" });
+  assert.equal(view.shouldPoll, false);
+  assert.match(view.headline, /tracer tổng hợp/);
+  assert.match(view.detail, /không tạo điểm rủi ro.*bản xem trước/);
+  assert.doesNotMatch(view.headline, /Báo cáo đã sẵn sàng/);
+});
+
 test("server public browser evidence preserves partial and terminal presentation", () => {
   const source_url = "https://detail.1688.com/offer/987654321012.html";
   for (const extraction_status of ["PARTIAL", "BLOCKED", "AUTH_REQUIRED"] as const) {

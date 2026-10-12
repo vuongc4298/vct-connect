@@ -83,8 +83,8 @@ export function analysisPresentation(analysis: StatusInput) {
     detail = "Bằng chứng đã được lưu. Báo cáo đánh giá đã lưu sẽ xuất hiện bên dưới khi khả dụng; nếu chưa có, VCT Connect vẫn giữ nguyên bằng chứng trích xuất.";
     pillLabel = extractionStatus === "PARTIAL" ? "TRÍCH XUẤT MỘT PHẦN" : "HOÀN TẤT";
   } else if (complete) {
-    headline = "Báo cáo đã sẵn sàng";
-    detail = "Phân tích đã hoàn tất và kết quả đã được lưu.";
+    headline = "Đã hoàn tất tracer tổng hợp";
+    detail = "Luồng demo đã lưu kết quả kiểm tra tổng hợp. Tracer không tạo điểm rủi ro, báo cáo đánh giá hoặc bản xem trước nhà cung cấp thực.";
     pillLabel = "HOÀN TẤT";
   } else if (status === "FAILED_FINAL") {
     headline = "Phân tích chưa thể hoàn tất";

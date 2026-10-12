@@ -1,5 +1,6 @@
 import os
 import json
+from contextlib import contextmanager
 from uuid import UUID, uuid4
 from pathlib import Path
 
@@ -280,6 +281,141 @@ def remove_user(store: Store, clerk_user_id: str):
         )
 
 
+@pytest.mark.parametrize("path", ["url", "import", "capture", "renormalize"])
+@pytest.mark.parametrize("trial_state", ["active", "expired", "future"])
+def test_all_customer_admissions_agree_with_effective_trial_quota(store, path, trial_state):
+    url = "https://detail.1688.com/offer/996518024136.html"
+    owner = store.resolve_user("quota_audit_" + uuid4().hex)
+    html = (Path(__file__).parent / "fixtures" / "1688_offer_996518024136.html").read_text(encoding="utf-8")
+    source_id = store.submit_customer(url, owner["id"], azure=False, customer_limit=20, window_seconds=86400)
+    claim = store.claim_processing(source_id, 60, 5)
+    store.complete_processing(source_id, claim["token"], parse_1688_page(html, url))
+    ids = [source_id]
+    try:
+        starts, expires = {
+            "active": ("-1 day", "1 day"), "expired": ("-2 days", "-1 day"),
+            "future": ("1 day", "2 days"),
+        }[trial_state]
+        with store.connect() as conn:
+            conn.execute(
+                """INSERT INTO entitlements
+                   (id, user_id, entitlement, source, starts_at, expires_at, status)
+                   VALUES (%s, %s, 'ANALYSIS_ACCESS', 'MVP_TRIAL',
+                           now() + %s::interval, now() + %s::interval, 'ACTIVE')""",
+                (uuid4(), owner["id"], starts, expires),
+            )
+            conn.execute(
+                """INSERT INTO admission_counters (scope, subject, window_number, used)
+                   VALUES ('CUSTOMER', %s, floor(extract(epoch FROM now()) / 86400)::bigint, 1)
+                   ON CONFLICT (scope, subject, window_number) DO UPDATE SET used = 1""",
+                (str(owner["id"]),),
+            )
+        kwargs = dict(customer_limit=1, trial_limit=2, window_seconds=86400)
+        if path == "url":
+            admit = lambda: store.submit_customer(url, owner["id"], azure=False, **kwargs)
+        elif path == "import":
+            payload = parse_1688_page(html, url, extraction_method="USER_UPLOAD")
+            admit = lambda: store.import_customer_page(url, owner["id"], payload, **kwargs)
+        elif path == "capture":
+            payload = normalize_capture(DomCapture.model_validate({
+                "source_url": url, "offer_id": "996518024136", "fields": {"supplier_name": "Quota supplier"},
+            }))
+            admit = lambda: store.capture_customer_page(url, owner["id"], payload, **kwargs)
+        else:
+            admit = lambda: store.renormalize_customer_snapshot(source_id, owner["id"], **kwargs)
+        account = store.get_account_state(owner["id"], **kwargs)
+        assert account["usage"]["limit"] == (2 if trial_state == "active" else 1)
+        if trial_state == "active":
+            ids.append(admit())
+        with store.connect() as conn:
+            before = conn.execute(
+                "SELECT count(*) AS n FROM analyses WHERE user_id = %s", (owner["id"],),
+            ).fetchone()["n"]
+            queued = conn.execute(
+                "SELECT count(*) AS n FROM local_queue q JOIN analyses a ON a.id = q.analysis_id WHERE a.user_id = %s",
+                (owner["id"],),
+            ).fetchone()["n"]
+        with pytest.raises(AdmissionDenied):
+            admit()
+        with store.connect() as conn:
+            assert conn.execute("SELECT count(*) AS n FROM analyses WHERE user_id = %s", (owner["id"],)).fetchone()["n"] == before
+            assert conn.execute(
+                "SELECT count(*) AS n FROM local_queue q JOIN analyses a ON a.id = q.analysis_id WHERE a.user_id = %s",
+                (owner["id"],),
+            ).fetchone()["n"] == queued
+            assert conn.execute("SELECT used FROM admission_counters WHERE scope = 'CUSTOMER' AND subject = %s", (str(owner["id"]),)).fetchone()["used"] == account["usage"]["limit"]
+    finally:
+        for analysis_id in reversed(ids):
+            remove(store, analysis_id)
+        with store.connect() as conn:
+            conn.execute("DELETE FROM entitlements WHERE user_id = %s", (owner["id"],))
+            conn.execute("DELETE FROM admission_counters WHERE scope = 'CUSTOMER' AND subject = %s", (str(owner["id"]),))
+        remove_user(store, owner["clerk_user_id"])
+
+
+@pytest.mark.parametrize("azure", [False, True])
+@pytest.mark.parametrize("blocked", [False, True])
+def test_import_handoff_selects_transport_and_keeps_blocked_evidence_terminal(store, azure, blocked):
+    url = "https://detail.1688.com/offer/996518024136.html"
+    owner = store.resolve_user("import_transport_" + uuid4().hex)
+    html = '<title>Security verification</title>' if blocked else f'<link rel="canonical" href="{url}"><div class="title-content"><h1>Dress</h1></div>'
+    api = TestClient(create_app(store=store, settings=Settings(store.database_url, "azure" if azure else "local", None, None, True), verifier=HeaderSubjectVerifier()))
+    response = api.post("/api/v1/analyses/import", params={"source_url": url}, content=html,
+                        headers={"Authorization": "Bearer subject:" + owner["clerk_user_id"], "Content-Type": "text/html"})
+    analysis_id = UUID(response.json()["id"])
+    try:
+        assert response.status_code == 201
+        assert response.json()["status"] == ("COMPLETED" if blocked else "ASSESSING")
+        row = store.get_for_user(analysis_id, owner["id"])
+        assert row["status"] == response.json()["status"]
+        assert (row["supplier_snapshot_id"] is None) is blocked
+        with store.connect() as conn:
+            local = conn.execute("SELECT 1 FROM local_queue WHERE analysis_id = %s", (analysis_id,)).fetchone()
+            outbox = conn.execute("SELECT 1 FROM analysis_outbox WHERE analysis_id = %s", (analysis_id,)).fetchone()
+            assert bool(local) is (not blocked and not azure)
+            assert bool(outbox) is (not blocked and azure)
+    finally:
+        remove(store, analysis_id)
+        remove_user(store, owner["clerk_user_id"])
+
+
+@pytest.mark.parametrize("azure", [False, True])
+def test_import_queue_failure_rolls_back_admission_analysis_and_snapshot(store, monkeypatch, azure):
+    url = "https://detail.1688.com/offer/996518024136.html"
+    owner = store.resolve_user("import_rollback_" + uuid4().hex)
+    payload = parse_1688_page(f'<link rel="canonical" href="{url}"><div class="title-content"><h1>Dress</h1></div>', url, extraction_method="USER_UPLOAD")
+    original_connect = store.connect
+
+    class QueueFailure:
+        def __init__(self, conn):
+            self.conn = conn
+
+        def __getattr__(self, name):
+            return getattr(self.conn, name)
+
+        def execute(self, query, *args, **kwargs):
+            if query.startswith("INSERT INTO " + ("analysis_outbox" if azure else "local_queue")):
+                raise RuntimeError("queue failure")
+            return self.conn.execute(query, *args, **kwargs)
+
+    @contextmanager
+    def failing_connect():
+        with original_connect() as conn:
+            yield QueueFailure(conn)
+
+    try:
+        with monkeypatch.context() as patch:
+            patch.setattr(store, "connect", failing_connect)
+            with pytest.raises(RuntimeError, match="queue failure"):
+                store.import_customer_page(url, owner["id"], payload, customer_limit=1, window_seconds=86400, azure=azure)
+        with store.connect() as conn:
+            assert conn.execute("SELECT count(*) AS n FROM analyses WHERE user_id = %s", (owner["id"],)).fetchone()["n"] == 0
+            assert conn.execute("SELECT 1 FROM admission_counters WHERE scope = 'CUSTOMER' AND subject = %s", (str(owner["id"]),)).fetchone() is None
+            assert conn.execute("SELECT 1 FROM supplier_snapshots WHERE normalized_data->>'extracted_at' = %s", (payload["supplier_data"]["extracted_at"],)).fetchone() is None
+    finally:
+        remove_user(store, owner["clerk_user_id"])
+
+
 @pytest.mark.parametrize("method", ["PUBLIC_HTTP", "PUBLIC_BROWSER"])
 @pytest.mark.parametrize("platform,layout", [
     ("1688", "offer"), ("TAOBAO", "item"), ("TAOBAO", "shop"),
@@ -519,19 +655,13 @@ def test_taobao_user_evidence_atomic_ownership_replay_quota_and_shared_metadata(
             persist = store.import_customer_page
         analysis_id = persist(url, owner["id"], payload, customer_limit=1, window_seconds=86400)
         row = store.get_for_user(analysis_id, owner["id"])
-        assert row["status"] == ("ASSESSING" if browser else "COMPLETED") and row["supplier_data"]["platform"] == "TAOBAO"
+        assert row["status"] == "ASSESSING" and row["supplier_data"]["platform"] == "TAOBAO"
         if browser and not shop:
             expected = [{"text": "Original captured review", "source_url": url}]
             assert row["supplier_data"]["reviews"] == expected
             assert row["reviews"] == expected
             assert row["raw_evidence"]["selected_fields"]["reviews"] == [{"text": "  Original captured review  ", "original_length": 28}]
         assert store.get_for_user(analysis_id, other["id"]) is None
-        if not browser:
-            assert store.complete_processing(analysis_id, uuid4(), payload) == "replay"
-            changed = json.loads(json.dumps(payload))
-            changed["raw_payload"]["different"] = True
-            with pytest.raises(ResultConflict):
-                store.complete_processing(analysis_id, uuid4(), changed)
         with pytest.raises(AdmissionDenied):
             persist(url, owner["id"], payload, customer_limit=1, window_seconds=86400)
         with store.connect() as conn:
@@ -539,7 +669,7 @@ def test_taobao_user_evidence_atomic_ownership_replay_quota_and_shared_metadata(
             assert supplier["name"] == "Shared supplier"
             assert conn.execute("SELECT count(*) AS total FROM analyses WHERE user_id = %s", (owner["id"],)).fetchone()["total"] == 2
             queued = conn.execute("SELECT 1 FROM local_queue WHERE analysis_id = %s", (analysis_id,)).fetchone()
-            assert (queued is not None) is browser
+            assert queued is not None
             assert not conn.execute("SELECT 1 FROM analysis_outbox WHERE analysis_id = %s", (analysis_id,)).fetchone()
     finally:
         if analysis_id:
@@ -676,20 +806,20 @@ def test_saved_page_import_is_atomic_owner_scoped_and_quota_limited(store):
         analysis_id = store.import_customer_page(url, owner["id"], payload,
                                                  customer_limit=1, window_seconds=86400)
         row = store.get_for_user(analysis_id, owner["id"])
-        assert row["status"] == "COMPLETED"
+        assert row["status"] == "ASSESSING"
         assert row["extraction_method"] == "USER_UPLOAD"
         assert row["supplier_data"]["extraction_method"] == "USER_UPLOAD"
         assert row["supplier_data"]["supplier_name"] == "Uploaded name"
         assert row["reviews"] == [{"text": "Accessible review", "source_url": url}]
         assert html not in str(row["raw_evidence"])
         assert store.get_for_user(analysis_id, other["id"]) is None
-        assert [event["status"] for event in row["events"]] == ["QUEUED", "PROCESSING", "COMPLETED"]
+        assert [event["status"] for event in row["events"]] == ["QUEUED", "PROCESSING", "ASSESSING"]
         with store.connect() as conn:
             shared = conn.execute(
                 "SELECT name, source_url FROM suppliers WHERE id = %s", (supplier_id,),
             ).fetchone()
             assert shared == {"name": "Existing name", "source_url": original_url}
-            assert conn.execute("SELECT 1 FROM local_queue WHERE analysis_id = %s", (analysis_id,)).fetchone() is None
+            assert conn.execute("SELECT 1 FROM local_queue WHERE analysis_id = %s", (analysis_id,)).fetchone() is not None
             assert conn.execute("SELECT 1 FROM analysis_outbox WHERE analysis_id = %s", (analysis_id,)).fetchone() is None
         with pytest.raises(AdmissionDenied):
             store.import_customer_page(url, owner["id"], payload,
@@ -813,10 +943,19 @@ def test_extension_capture_merges_only_same_owner_page_and_rejects_secrets(store
         assert len(repeated_row["reviews"]) == 1
         assert len(repeated_row["supplier_data"]["products"]) == 1
         assert repeated_row["raw_evidence"]["merged_from_snapshot_id"] == str(prior["supplier_snapshot_id"])
+        drawer_capture = {**capture, "fields": {**capture["fields"], "reviews": [
+            {"text": "Repeated review", "original_length": 15} for _ in range(3)]}}
+        drawer_response = client.post("/api/v1/analyses/capture", headers=headers, json=drawer_capture)
+        assert drawer_response.status_code == 201
+        drawer_id = UUID(drawer_response.json()["id"])
+        ids.append(drawer_id)
+        drawer_row = client.get(f"/api/v1/analyses/{drawer_id}", headers=headers).json()
+        assert len([r for r in drawer_row["reviews"] if r["text"] == "Repeated review"]) == 3
+        assert len(drawer_row["supplier_data"]["reviews"]) == 4  # Three current cards and one inherited review.
         with store.connect() as conn:
             used = conn.execute("SELECT used FROM admission_counters WHERE scope = 'CUSTOMER' AND subject = %s",
                                 (subject,)).fetchone()["used"]
-            assert used == 3  # public submission and two accepted captures only
+            assert used == 4  # public submission and three accepted captures only
     finally:
         for analysis_id in reversed(ids):
             remove(store, analysis_id)

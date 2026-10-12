@@ -9,7 +9,7 @@ test("selecting a saved file submits its bytes and polls the imported analysis",
   globalThis.fetch = async (input, init) => {
     calls.push({ url: String(input), method: init?.method ?? "GET", body: init?.body });
     return Response.json(init?.method === "POST"
-      ? { id: "imported-id", status: "COMPLETED" }
+      ? { id: "imported-id", status: "ASSESSING" }
       : { id: "imported-id", status: "COMPLETED", extraction_method: "USER_UPLOAD",
           result: { extraction_status: "PARTIAL" } },
     { status: init?.method === "POST" ? 201 : 200 });

@@ -1,4 +1,25 @@
 import { supportedOffer } from "./capture";
+import type { Analysis, ReportV1 } from "@vct/contracts";
+import { ApiError } from "@vct/api-client";
+
+export async function loadScopedResult(analysisId: string, actions: {
+  current: () => boolean;
+  analysis: (id: string) => Promise<Analysis>;
+  report: (id: string) => Promise<ReportV1>;
+  publish: (analysis: Analysis, report: ReportV1 | null) => void;
+}): Promise<void> {
+  const analysis = await actions.analysis(analysisId);
+  if (!actions.current()) return;
+  actions.publish(analysis, null);
+  if (analysis.status !== "COMPLETED") return;
+  try {
+    const report = await actions.report(analysisId);
+    if (actions.current()) actions.publish(analysis, report);
+  } catch (cause) {
+    if (!actions.current() || cause instanceof ApiError && cause.status === 404) return;
+    throw cause;
+  }
+}
 
 export type LastCapture = { analysisId: string; sourceUrl: string; ownerId: string };
 

@@ -1,6 +1,7 @@
 from decimal import Decimal
 import json
 import os
+from uuid import uuid4
 
 import pytest
 
@@ -8,8 +9,10 @@ from backend.app.intelligence.assessment import build_assessment
 from backend.app.intelligence.contracts import SCHEMA_VERSION
 from backend.app.intelligence.media import MEDIA_SCHEMA_VERSION, ReviewMediaInput
 from backend.app.intelligence.provider import EmbeddingResponse, ProviderResponse, ProviderUsage
-from backend.app.storage import Store
-from backend.worker.main import process_local_once
+from backend.app.config import Settings
+from backend.app.extraction.extension1688 import DomCapture, normalize_capture
+from backend.app.storage import ResultConflict, Store
+from backend.worker.main import dispatch_outbox_once, process_azure_once, process_local_once
 
 
 SOURCE_URL = "https://detail.1688.com/offer/996518024136.html"
@@ -177,8 +180,14 @@ def cleanup(store, analysis_id):
             )
 
 
-def test_worker_persists_report_completes_once_and_replay_spends_no_ai(store):
+@pytest.mark.parametrize("admission", ["public", "import", "import_azure", "capture", "capture_azure"])
+def test_worker_persists_report_completes_once_and_replay_spends_no_ai(store, admission):
     data = supplier_data()
+    owner = store.resolve_user("evidence_worker_" + uuid4().hex) if admission != "public" else None
+    azure = admission.endswith("_azure")
+    settings = Settings(store.database_url, "azure" if azure else "local", None, None, True, processing_max_attempts=1)
+    if owner:
+        data.update(extraction_method="USER_UPLOAD", analysis_mode="ACCOUNT_PUBLIC")
     payload = {
         "source_url": SOURCE_URL,
         "extraction_status": "PARTIAL",
@@ -186,6 +195,15 @@ def test_worker_persists_report_completes_once_and_replay_spends_no_ai(store):
         "reviews": data["reviews"],
         "supplier_data": data,
     }
+    if admission.startswith("capture"):
+        payload = normalize_capture(DomCapture.model_validate({
+            "source_url": SOURCE_URL, "offer_id": "996518024136",
+            "fields": {"supplier_name": "Synthetic worker supplier", "product_title": "Synthetic bag",
+                       "company_location": "Guangdong", "price_text": "12 CNY", "review_count": 10},
+        }))
+        data = payload["supplier_data"]
+    expected_chat_calls = 2 if data["reviews"] else 1
+    expected_embedding_calls = 1 if data["reviews"] else 0
     provider = WorkerProvider()
     assessor_calls = 0
 
@@ -201,18 +219,43 @@ def test_worker_persists_report_completes_once_and_replay_spends_no_ai(store):
             metadata={"feature": "worker_test"},
         )
 
-    analysis_id = store.submit_local(SOURCE_URL)
+    persist = store.capture_customer_page if admission.startswith("capture") else store.import_customer_page
+    analysis_id = persist(SOURCE_URL, owner["id"], payload, customer_limit=20, window_seconds=86400, azure=azure) if owner else store.submit_local(SOURCE_URL)
     try:
-        assert process_local_once(
-            store,
-            compute=lambda _url: payload,
+        if owner:
+            assert store.get(analysis_id)["attempt_count"] == 0
+            snapshot_id = store.get(analysis_id)["supplier_snapshot_id"]
+        if azure:
+            from backend.tests.test_tracer import Queue, Receiver
+            queue = Queue(Receiver(str(analysis_id)))
+            queue.fail_publish = True
+            assert dispatch_outbox_once(store, queue, settings)
+            queue.fail_publish = False
+            with store.connect() as conn:
+                conn.execute("UPDATE analysis_outbox SET next_attempt_at = now() WHERE analysis_id = %s", (analysis_id,))
+            assert dispatch_outbox_once(store, queue, settings)
+            assert queue.published == [analysis_id, analysis_id]
+            process = lambda **kwargs: process_azure_once(store, queue, settings, **kwargs)
+        else:
+            process = lambda **kwargs: process_local_once(store, settings, **kwargs)
+        assert process(
+            compute=lambda _url: (_ for _ in ()).throw(AssertionError("stored evidence re-extracted")) if owner else payload,
             assess=assessor,
         )
         row = store.get(analysis_id)
         assert row["status"] == "COMPLETED"
         assert assessor_calls == 1
-        assert provider.chat_calls == 2
-        assert provider.embedding_calls == 1
+        assert provider.chat_calls == expected_chat_calls
+        assert provider.embedding_calls == expected_embedding_calls
+        if owner:
+            assert row["supplier_snapshot_id"] == snapshot_id
+            assert store.get_report_for_user(analysis_id, owner["id"]) is not None
+            assert store.get_report_for_user(analysis_id, uuid4()) is None
+        assert store.complete_processing(analysis_id, uuid4(), payload) == "replay"
+        changed = json.loads(json.dumps(payload))
+        changed["raw_payload"]["different"] = True
+        with pytest.raises(ResultConflict):
+            store.complete_processing(analysis_id, uuid4(), changed)
 
         with store.connect() as conn:
             assessment = conn.execute(
@@ -226,7 +269,7 @@ def test_worker_persists_report_completes_once_and_replay_spends_no_ai(store):
                 "SELECT count(*) AS n FROM llm_review_runs "
                 "WHERE assessment_id = %s",
                 (assessment["id"],),
-            ).fetchone()["n"] == 2
+            ).fetchone()["n"] == expected_chat_calls
             assert conn.execute(
                 "SELECT count(*) AS n FROM analysis_findings "
                 "WHERE assessment_id = %s",
@@ -246,34 +289,43 @@ def test_worker_persists_report_completes_once_and_replay_spends_no_ai(store):
             assert report["schema_version"] == "report.v1"
             assert report["language"] == "vi"
             assert report["payload"]["risk"]["scoring_version"] == "v0.1.0"
-            assert report["payload"]["risk"]["coverage"] == 0.75
+            risk = report["payload"]["risk"]
+            supported_weight = sum(item["configured_weight"] for item in risk["dimensions"]
+                                   if item["risk"] is not None and item["effective_confidence"] > 0)
+            assert risk["coverage"] == pytest.approx(min(data["completeness"], supported_weight))
+            if risk["coverage"] < 0.45:
+                assert risk["label"] == "INSUFFICIENT_INFORMATION"
+                assert risk["overall_risk"] is None
             assert report["payload"]["supplier_summary_vi"]
             assert report["payload"]["recommended_actions_vi"]
             assert report["payload"]["limitations_vi"]
-            assert report["payload"]["missing_data"]["source_fields"] == [
-                "certifications", "delivery_information", "activity_history"
-            ]
-            assert any(
-                item["evidence_id"] == "review:0"
-                for item in report["payload"]["evidence"]
-            )
+            assert report["payload"]["missing_data"]["source_fields"] == data["missing_fields"]
+            if data["reviews"]:
+                assert any(item["evidence_id"] == "review:0" for item in report["payload"]["evidence"])
 
-            conn.execute(
-                "INSERT INTO local_queue (analysis_id) VALUES (%s)",
-                (analysis_id,),
-            )
+            if not azure:
+                conn.execute("INSERT INTO local_queue (analysis_id) VALUES (%s)", (analysis_id,))
+            else:
+                assert conn.execute("SELECT state FROM analysis_outbox WHERE analysis_id = %s", (analysis_id,)).fetchone()["state"] == "PUBLISHED"
 
-        assert process_local_once(
-            store,
+        assert process(
             compute=lambda _url: (_ for _ in ()).throw(AssertionError("replay re-extracted")),
             assess=lambda _snapshot: (_ for _ in ()).throw(AssertionError("replay spent AI")),
         )
         assert assessor_calls == 1
-        assert provider.chat_calls == 2
-        assert provider.embedding_calls == 1
+        assert provider.chat_calls == expected_chat_calls
+        assert provider.embedding_calls == expected_embedding_calls
         assert store.get(analysis_id)["status"] == "COMPLETED"
+        assert store.get(analysis_id)["attempt_count"] == 1
+        if azure:
+            assert queue.receiver.completed == 2
+            assert queue.receiver.dead_letters == []
     finally:
         cleanup(store, analysis_id)
+        if owner:
+            with store.connect() as conn:
+                conn.execute("DELETE FROM admission_counters WHERE scope = 'CUSTOMER' AND subject = %s", (str(owner["id"]),))
+                conn.execute("DELETE FROM users WHERE id = %s", (owner["id"],))
 
 
 def test_worker_media_loader_enriches_same_reporting_path_without_persisting_bytes(store):
