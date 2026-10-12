@@ -69,6 +69,41 @@ function setup({ permission = true, navigation = false } = {}) {
 
 }
 
+test('late supplier navigation still pauses for shop HTML instead of opening a report', async () => {
+  const original = globalThis.fetch;
+  try {
+    const h = setup();
+    const execute = chrome.scripting.executeScript;
+    let reads = 0;
+    chrome.scripting.executeScript = async options => {
+      if (options.args?.[0] === 'PRODUCT_LINK' && ++reads < 3) return [{ result: null }];
+      return execute(options);
+    };
+    assert.ok((await h.send()).id);
+    assert.equal(reads, 3);
+    assert.equal(h.stored.collectionJob.stage, 'WAITING_COMPANY');
+    assert.equal(h.created.length, 0);
+    assert.equal(h.requests.length, 1);
+    assert.ok(h.cues.some(cue => cue.args[0] === 'SHOP'));
+  } finally { globalThis.fetch = original; }
+});
+
+test('missing shop link shows actionable error without submitting or opening a product-only report', async () => {
+  const original = globalThis.fetch;
+  try {
+    const h = setup();
+    const execute = chrome.scripting.executeScript;
+    chrome.scripting.executeScript = async options => options.args?.[0] === 'PRODUCT_LINK'
+      ? [{ result: null }] : execute(options);
+    const reply = await h.send();
+    assert.match(reply.error, /supplier shop link.*No analysis was submitted/);
+    assert.equal(h.requests.length, 0);
+    assert.equal(h.created.length, 0);
+    assert.equal(h.downloads.length, 0);
+    assert.equal(h.stored.guidedCollection, undefined);
+  } finally { globalThis.fetch = original; }
+});
+
 test('guided product capture pauses, survives popup closure and finishes company under the same reservation', async () => {
   const original = globalThis.fetch;
   try {
@@ -93,6 +128,28 @@ test('guided product capture pauses, survives popup closure and finishes company
     assert.equal(h.downloads.length, 3); assert.equal(h.removed.length, 0);
     assert.equal(h.created.length, 1); assert.ok(h.created[0].url.includes(first.id));
     assert.ok(!JSON.stringify(h.stored).includes('short-lived-test-token'));
+  } finally { globalThis.fetch = original; }
+});
+
+test('named shop follows product, shop and factory capture under one reservation', async () => {
+  const original = globalThis.fetch;
+  try {
+    const h = setup();
+    const named = 'https://hztxsy.1688.com/';
+    const execute = chrome.scripting.executeScript;
+    chrome.scripting.executeScript = async options => JSON.parse(JSON.stringify(await execute(options)).replaceAll(shop, named));
+    const first = await h.send();
+    assert.ok(first.id);
+    assert.equal(h.stored.collectionJob.companyUrl, named);
+    assert.equal(h.stored.collectionJob.stage, 'WAITING_COMPANY');
+    h.tabs.set(2, { id: 2, url: named + '?offerId=778418840629', status: 'complete' });
+    assert.equal((await h.send('CONTINUE_GUIDED', 2)).id, first.id);
+    assert.equal(h.stored.collectionJob.stage, 'WAITING_FACTORY');
+    h.tabs.set(3, { id: 3, url: factory, status: 'complete' });
+    assert.equal((await h.send('CONTINUE_GUIDED', 3)).id, first.id);
+    assert.equal(h.requests.length, 2);
+    assert.equal(h.requests[1].bundle.shop_url, named);
+    assert.deepEqual(h.requests[1].bundle.html_sources.map(item => item.page), ['PRODUCT', 'SHOP', 'FACTORY']);
   } finally { globalThis.fetch = original; }
 });
 

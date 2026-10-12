@@ -11,17 +11,9 @@ from .extension1688 import DomCapture, NamedValue, normalize_capture
 from .extension_merge import reject_sensitive_page_state
 from .evidence import validate_json_evidence
 from .browser_html import enrich_browser_html, MAX_HTML_BUNDLE_BYTES
+from .shop1688_identity import shop_identity
 
 MAX_BUNDLE_BYTES = 32_768
-
-
-def shop_identity(value: str) -> str:
-    p = urlsplit(value)
-    if (p.scheme != "https" or p.username or p.password or p.port or
-            not re.fullmatch(r"shop[a-z0-9]{6,30}\.1688\.com", p.netloc) or
-            p.path not in {"", "/"}):
-        raise ValueError("Unsupported supplier shop link")
-    return f"https://{p.netloc}/"
 
 
 def factory_identity(value: str) -> str:

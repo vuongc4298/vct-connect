@@ -13,6 +13,7 @@ from urllib.parse import parse_qs, urlsplit
 from .contracts import evidence_coverage, evidence_status
 from .dom import active, tree
 from .urls import normalize_1688_url
+from .shop1688_identity import shop_host
 
 MAX_PAGE_BYTES = 2_000_000
 
@@ -20,7 +21,7 @@ MAX_PAGE_BYTES = 2_000_000
 def _shop(value):
     url = urlsplit(value)
     if (url.scheme != "https" or url.username or url.password or url.port or
-            not re.fullmatch(r"shop[a-z0-9]{6,30}\.1688\.com", url.netloc)):
+            not shop_host(url.netloc)):
         raise ValueError("Unsupported linked shop identity")
     return f"https://{url.netloc}/"
 

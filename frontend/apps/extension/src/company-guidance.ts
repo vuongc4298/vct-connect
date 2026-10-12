@@ -1,11 +1,11 @@
 // Visible cues only. The user controls navigation and closes any CAPTCHA overlay.
 export function showCompanyGuidance(mode: "SHOP" | "FACTORY" | "SHOP_CAPTURE" | "FACTORY_CAPTURE", expectedShop: string): boolean {
   document.getElementById("vct-company-guidance")?.remove();
-  const selector = mode === "SHOP" ? "#shopNavigation a.shop-company-name[href]" : "#hd a, #shopNavigation a, #pcTopNav a";
+  const selector = mode === "SHOP" ? "#shopNavigation a[href]" : "#hd a, #shopNavigation a, #pcTopNav a";
   const targets = Array.from(document.querySelectorAll<HTMLAnchorElement>(selector))
     .filter(a => a.getClientRects().length && (mode === "SHOP" ? a.href.split("?")[0] === expectedShop
       : /^(工厂档案|工厂介绍|工厂名片|工厂资料|Factory profile)$/i.test((a.textContent || "").trim())));
-  const target = targets.length === 1 && ["SHOP", "FACTORY"].includes(mode) ? targets[0] : null;
+  const target = targets.length >= 1 && ["SHOP", "FACTORY"].includes(mode) && (mode === "SHOP" || targets.length === 1) ? targets[0] : null;
   if (target) {
     target.style.outline = "4px solid #16a085";
     target.style.outlineOffset = "4px";
