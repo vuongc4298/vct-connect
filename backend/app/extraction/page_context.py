@@ -29,8 +29,10 @@ def collect_context(parsed, page, url, html_sha256):
         heading = root.css_first('h1,h2,h3,h4')
         label = ' '.join(heading.text().split())[:120] if heading else root.attributes.get('id', page)
         candidates = root.css('p,li,tr,dl')
-        # Include leaf divs, preserving local label/value text within the source module.
-        candidates += [node for node in root.css('div') if not node.css('div,p,li,tr,dl')]
+        # Preserve compact label/value groups as well as leaf text.
+        candidates += [node for node in root.css('div')
+                       if not node.css('p,li,tr,dl') and len(node.css('div')) <= 8
+                       and len(' '.join(node.text(separator=' ').split())) <= 900]
         if not candidates: candidates = [root]
         for node in candidates[:500]:
             text = ' '.join(node.text(separator=' ').split())
