@@ -14,6 +14,28 @@ const getToken = async () => "token";
 const analysis = { id, status: "COMPLETED", source_url: source, result: { source_url: source, extraction_status: "PARTIAL" }, supplier_data: { supplier_name: "First owner supplier", completeness: 0.5 } };
 const report = { analysis_id: id, risk: { label: "HIGH", confidence: 0.7, coverage: 0.5 } };
 
+test("Vietnamese default recognizes the named factory; language preference survives reopening", async () => {
+  environment();
+  let stored = { collectionJob: { id, ownerId: record.ownerId, sourceUrl: source, startedAt: Date.now(),
+    expiresAt: Date.now() + 1800000, stage: "WAITING_FACTORY", companyUrl: "https://hztxsy.1688.com/",
+    factoryUrl: "https://www.1688.com/factory/hztxsy.html" } };
+  chrome.tabs.query = async () => [{ id: 3, url: "https://sale.1688.com/factory/card.html?memberId=hztxsy&facMemId=hztxsy" }];
+  chrome.runtime = { sendMessage: async () => ({ ok: true }) };
+  chrome.storage.local = { get: async () => stored, set: async value => { stored = { ...stored, ...value }; } };
+  let mounted;
+  try {
+    await act(async () => { mounted = create(React.createElement(App)); });
+    assert.match(text(mounted), /Đã lưu cửa hàng · tiếp theo là nhà máy/);
+    assert.equal(mounted.root.findAllByType("button").find(b => b.children.join("") === "Lưu HTML nhà máy và phân tích").props.disabled, false);
+    await act(async () => mounted.root.findAllByType("button").find(b => b.children.join("") === "EN").props.onClick());
+    assert.equal(stored.uiLanguage, "en");
+    assert.equal(stored.collectionJob.stage, "WAITING_FACTORY");
+    await act(async () => mounted.unmount()); mounted = null;
+    await act(async () => { mounted = create(React.createElement(App)); });
+    assert.match(text(mounted), /Shop saved · factory next/);
+  } finally { if (mounted) await act(async () => mounted.unmount()); }
+});
+
 function environment() {
   globalThis.__mountedAuth = { isLoaded: true, isSignedIn: true, userId: record.ownerId, getToken };
   globalThis.chrome = {
@@ -33,14 +55,14 @@ test("guided popup enables company capture only for the product's linked company
   globalThis.fetch = async () => { throw new Error("No report yet"); };
   let mounted;
   try {
-    await act(async () => { mounted = create(React.createElement(App)); });
-    assert.match(text(mounted), /Product captured · company evidence needed/);
-    assert.match(text(mounted), /Close any CAPTCHA overlay with X/);
+    await act(async () => { mounted = create(React.createElement(App, { initialLanguage: "en" })); });
+    assert.match(text(mounted), /Product captured · shop next/);
+    assert.match(text(mounted), /close it with X/);
     assert.equal(mounted.root.findAllByType("button").find(b => b.children.join("") === "Save shop HTML").props.disabled, false);
     await act(async () => mounted.unmount());
     mounted = null;
     globalThis.chrome.tabs.query = async () => [{ id: 2, url: "https://shopwrong123.1688.com/" }];
-    await act(async () => { mounted = create(React.createElement(App)); });
+    await act(async () => { mounted = create(React.createElement(App, { initialLanguage: "en" })); });
     assert.equal(mounted.root.findAllByType("button").find(b => b.children.join("") === "Save shop HTML").props.disabled, true);
   } finally {
     if (mounted) await act(async () => mounted.unmount());
@@ -57,11 +79,11 @@ test("reopened popup restores supplier collection progress only for its owner", 
   globalThis.fetch = async () => { throw new Error("No completed result should be fetched"); };
   let mounted;
   try {
-    await act(async () => { mounted = create(React.createElement(App)); });
+    await act(async () => { mounted = create(React.createElement(App, { initialLanguage: "en" })); });
     assert.match(text(mounted), /Reading factory profile/);
     assert.match(text(mounted), /You can close this popup/);
     globalThis.__mountedAuth = { ...globalThis.__mountedAuth, userId: "owner-two" };
-    await act(async () => mounted.update(React.createElement(App)));
+    await act(async () => mounted.update(React.createElement(App, { initialLanguage: "en" })));
     assert.doesNotMatch(text(mounted), /Reading factory profile/);
   } finally {
     if (mounted) await act(async () => mounted.unmount());
@@ -80,7 +102,7 @@ test("mounted popup automatically restores report without Reload and suppresses 
   };
   let mounted;
   try {
-    await act(async () => { mounted = create(React.createElement(App)); });
+    await act(async () => { mounted = create(React.createElement(App, { initialLanguage: "en" })); });
     assert.deepEqual(requests, [`https://vct.example/api/v1/analyses/${id}`, `https://vct.example/api/v1/analyses/${id}/report`]);
     assert.match(text(mounted), /Loading saved assessment report/);
     assert.doesNotMatch(text(mounted), /No scored report available|full assessment report is not available/);
@@ -106,9 +128,9 @@ for (const stage of ["analysis", "report"]) {
     };
     let mounted;
     try {
-      await act(async () => { mounted = create(React.createElement(App)); });
+      await act(async () => { mounted = create(React.createElement(App, { initialLanguage: "en" })); });
       globalThis.__mountedAuth = { ...globalThis.__mountedAuth, userId: "owner-two" };
-      await act(async () => mounted.update(React.createElement(App)));
+      await act(async () => mounted.update(React.createElement(App, { initialLanguage: "en" })));
       await act(async () => pending.resolve(Response.json(stage === "analysis" ? analysis : report)));
       assert.doesNotMatch(text(mounted), /First owner supplier|Last page:|High|Reload last result/);
       assert.equal(requests.length, stage === "analysis" ? 1 : 2);
@@ -136,7 +158,7 @@ test("mounted popup successful automatic poll clears a previous lookup error", a
   };
   let mounted;
   try {
-    await act(async () => { mounted = create(React.createElement(App)); });
+    await act(async () => { mounted = create(React.createElement(App, { initialLanguage: "en" })); });
     await act(async () => interval());
     assert.match(text(mounted), /Temporary lookup failure/);
     await act(async () => interval());
@@ -162,13 +184,13 @@ test("shop-saved popup offers factory capture or product-shop finish without ano
   globalThis.fetch=async()=>{throw new Error("Not reporting yet");};
   let mounted;
   try {
-    await act(async()=>{mounted=create(React.createElement(App));});
-    assert.match(text(mounted),/Shop HTML saved · factory evidence next/);
+    await act(async()=>{mounted=create(React.createElement(App, { initialLanguage: "en" }));});
+    assert.match(text(mounted),/Shop saved · factory next/);
     assert.match(text(mounted),/Finish with captured product & shop/);
     assert.equal(mounted.root.findAllByType("button").find(b=>b.children.join("")==="Save factory HTML & analyze").props.disabled,false);
     await act(async()=>mounted.unmount());mounted=null;
     chrome.tabs.query=async()=>[{id:3,url:"https://www.1688.com/factory/b2b-other123.html"}];
-    await act(async()=>{mounted=create(React.createElement(App));});
+    await act(async()=>{mounted=create(React.createElement(App, { initialLanguage: "en" }));});
     assert.equal(mounted.root.findAllByType("button").find(b=>b.children.join("")==="Save factory HTML & analyze").props.disabled,true);
   } finally {if(mounted)await act(async()=>mounted.unmount());globalThis.fetch=original;}
 });

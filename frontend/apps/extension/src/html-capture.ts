@@ -44,8 +44,10 @@ export function capturePublicHtml(page: HtmlSource["page"], expected: string): H
         // Preserve public identities, strip tracking/query state; factory card IDs only.
         if (href.protocol === "https:" && !href.username && !href.password && !href.port &&
             (href.hostname === "1688.com" || href.hostname.endsWith(".1688.com"))) {
-          const member = href.hostname === "sale.1688.com" && href.pathname === "/factory/card.html" ? href.searchParams.get("memberId") : null;
-          out.setAttribute("href", member && /^b2b-[a-z0-9]{6,60}$/.test(member)
+          const ids = href.searchParams.getAll("memberId"), fac = href.searchParams.getAll("facMemId");
+          const member = href.hostname === "sale.1688.com" && href.pathname === "/factory/card.html" && ids.length === 1 &&
+            (!fac.length || (fac.length === 1 && fac[0] === ids[0])) ? ids[0] : null;
+          out.setAttribute("href", member && /^[a-z0-9][a-z0-9_-]{0,62}[a-z0-9]$/.test(member)
             ? `https://www.1688.com/factory/${member}.html` : href.origin + href.pathname);
         }
       } catch { /* no unsafe link */ }

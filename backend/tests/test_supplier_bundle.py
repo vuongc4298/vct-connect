@@ -3,6 +3,7 @@ from uuid import uuid4
 import pytest
 from backend.app.extraction.supplier_bundle import SupplierBundle, normalize_bundle
 from backend.app.extraction.shop1688_identity import shop_identity
+from backend.app.extraction.factory1688_identity import factory_identity
 
 SHOP = "https://shopabcdef123.1688.com/"
 FACTORY = "https://www.1688.com/factory/b2b-abcdef123.html"
@@ -33,6 +34,22 @@ def test_named_shop_bundle_preserves_identity_across_all_sources():
     value["factory"]["shop_url"] = SHOP
     with pytest.raises(ValueError):
         normalize(value)
+
+
+def test_named_factory_card_and_canonical_profile_resolve_to_one_identity():
+    named = "https://www.1688.com/factory/hztxsy.html"
+    assert factory_identity("https://sale.1688.com/factory/card.html?memberId=hztxsy&facMemId=hztxsy") == named
+    assert factory_identity(named) == named
+    import json
+    value = json.loads(json.dumps(selected()).replace(SHOP, "https://hztxsy.1688.com/").replace(FACTORY, named))
+    normalize(value)
+
+
+@pytest.mark.parametrize("url", ["https://sale.1688.com/factory/card.html?memberId=hztxsy&memberId=",
+    "https://sale.1688.com/factory/card.html?memberId=hztxsy&facMemId=other",
+    "https://www.1688.com/factory/..%2Fhztxsy.html", "https://sale.1688.com:443/factory/card.html?memberId=hztxsy"])
+def test_named_factory_rejects_ambiguous_or_unsafe_identity(url):
+    with pytest.raises(ValueError): factory_identity(url)
 
 
 @pytest.mark.parametrize("url", ["https://detail.1688.com/", "https://sale.1688.com/",

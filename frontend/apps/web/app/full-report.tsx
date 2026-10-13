@@ -5,6 +5,8 @@ import { safeSourceUrl } from "./source-url";
 import { reportFreshness } from "./report-freshness";
 import {
   REPORT_DIMENSION_LABELS,
+  REPORT_FINDING_LABELS,
+  FACTORY_CLASSIFICATION_LABELS,
   REPORT_FIELD_LABELS,
   REPORT_SOURCE_KIND_LABELS,
   optionalReportPercent,
@@ -21,7 +23,7 @@ function FindingCard({ finding, availableEvidenceIds }: { finding: ReportFinding
   const statement = reportPayloadText(finding.payload);
   return <article className="report-finding">
     <div className="report-finding-head">
-      <span>{REPORT_DIMENSION_LABELS[finding.dimension ?? ""] ?? finding.finding_type.replaceAll("_", " ")}</span>
+      <span>{REPORT_DIMENSION_LABELS[finding.dimension ?? ""] ?? REPORT_FINDING_LABELS[finding.finding_type] ?? "Phát hiện từ bằng chứng"}</span>
       {finding.confidence !== null && <small>{reportPercent(finding.confidence)} tin cậy</small>}
     </div>
     <h4>{reportFindingTitle(finding)}</h4>
@@ -194,7 +196,7 @@ export function FullReport({ report, extractionMethod }: { report: ReportV1; ext
       <article className="identity-card">
         <div className="section-heading">
           <div><span className="card-label">NHÀ MÁY / THƯƠNG MẠI</span><h3>Nhận định loại hình</h3></div>
-          <span>{typeof factory.classification === "string" ? factory.classification : "UNCERTAIN"}</span>
+          <span>{typeof factory.classification === "string" ? FACTORY_CLASSIFICATION_LABELS[factory.classification] ?? "Chưa xác định" : "Chưa xác định"}</span>
         </div>
         <div className="identity-bars">
           <div><span><b>Khả năng nhà máy</b><small>{optionalReportPercent(factory.factory_likelihood)}</small></span><i><b style={{ width: reportBarWidth(factory.factory_likelihood) }} /></i></div>

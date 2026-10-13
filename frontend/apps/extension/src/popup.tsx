@@ -1,4 +1,5 @@
 import { ClerkProvider, UserButton, useAuth } from "@clerk/chrome-extension";
+import { enUS, viVN } from "@clerk/localizations";
 import { ApiError, getAnalysis, getReport, submitBrowserEvidence } from "@vct/api-client";
 import type { Analysis, ReportV1 } from "@vct/contracts";
 import React, { useEffect, useRef, useState } from "react";
@@ -8,6 +9,7 @@ import { loadScopedResult, restoreLastCapture, saveOpenAndLoadResult, type LastC
 import { canSubmitEnhancedEvidence, classifyExtensionPage, extensionGate, type ExtensionPageState } from "./extension-shell";
 import { extensionVerdict } from "./extension-verdict";
 import { restoreCollectionJob, type CollectionJob } from "./linked-capture";
+import { errorText, uiText, type UiLanguage } from "./ui-language";
 
 const LAST_CAPTURE_KEY = "lastCapture";
 
@@ -15,7 +17,19 @@ function openWebSignIn() {
   return chrome.tabs.create({ url: `${VCT_WEB_ORIGIN}/` });
 }
 
-export function App() {
+export function App({ initialLanguage = "vi", onLanguageChange }: { initialLanguage?: UiLanguage; onLanguageChange?: (language: UiLanguage) => void } = {}) {
+  const [language, setLanguage] = useState<UiLanguage>(initialLanguage);
+  const t = (text: string) => uiText(text, language);
+  useEffect(() => {
+    void chrome.storage.local.get("uiLanguage").then(stored => {
+      if (stored.uiLanguage === "vi" || stored.uiLanguage === "en") setLanguage(stored.uiLanguage);
+    }).catch(() => {});
+  }, []);
+  function chooseLanguage(next: UiLanguage) {
+    setLanguage(next);
+    onLanguageChange?.(next);
+    void chrome.storage.local.set({ uiLanguage: next }).catch(() => {});
+  }
   const { getToken, isLoaded, isSignedIn, userId } = useAuth();
   const [busy, setBusy] = useState(false);
   const [error, setError] = useState("");
@@ -138,11 +152,11 @@ export function App() {
     (["WAITING_COMPANY", "WAITING_FACTORY", "FINISHING"].includes(collectionJob.stage) && (page.sourceUrl === collectionJob.companyUrl || (page.kind === "1688-factory" && (!collectionJob.factoryUrl || page.sourceUrl === collectionJob.factoryUrl)))));
 
   useEffect(() => {
-    if (!guidedWaiting || !linkedPage || !canCapturePage || !userId) return;
+    if (!guidedWaiting || !canCapturePage || !userId) return;
     void chrome.tabs.query({ active: true, currentWindow: true }).then(([tab]) => {
       if (tab?.id) return chrome.runtime.sendMessage({ type: "SHOW_GUIDANCE", tabId: tab.id, ownerId: userId });
     }).catch(() => {});
-  }, [guidedWaiting, linkedPage, canCapturePage, userId]);
+  }, [guidedWaiting, linkedPage, canCapturePage, userId, language]);
 
   async function finishGuided() {
     const expectedOwner = owner.current;
@@ -253,67 +267,76 @@ export function App() {
     return () => { active = false; clearInterval(timer); };
   }, [isSignedIn, lastCapture?.analysisId, result?.status]);
 
-  return <main>
-    <h1>VCT Connect</h1>
-    <p>Analyze selected visible evidence from a supported 1688 offer or Taobao item/shop.</p>
+  return <main lang={language}>
+    <header className="popup-header"><div><span className="eyebrow">{t("Source evidence")}</span><h1>VCT Connect</h1></div><div className="language-switch" role="group" aria-label="Language / Ngôn ngữ"><button aria-pressed={language === "vi"} onClick={() => chooseLanguage("vi")}>VI</button><button aria-pressed={language === "en"} onClick={() => chooseLanguage("en")}>EN</button></div></header>
+    <p className="intro">{t("Capture product, shop and factory evidence for one supplier report.")}</p>
     {page.status === "supported"
-      ? <p className="page-state">Supported page detected · {page.kind}</p>
+      ? <p className="page-state">✓ {t("Supported page")} · {t(page.kind === "1688-company" || page.kind === "taobao-shop" ? "Shop" : page.kind === "1688-factory" ? "Factory" : "Product")}</p>
       : page.status === "unsupported"
-        ? <p className="page-state">This page is not supported. Open a 1688 offer or Taobao item/shop.</p>
-        : <p className="page-state">Checking the active page…</p>}
+        ? <p className="page-state">{t("Open a supported product, shop or linked factory page.")}</p>
+        : <p className="page-state">{t("Checking the active page…")}</p>}
     {gate === "loading-auth" ? <>
-      <p>{signInDelayed ? "Sign-in is taking longer than expected. Sign in on the web, then close and reopen this popup." : "Checking your VCT Connect session…"}</p>
-      {signInDelayed && <button onClick={() => void openWebSignIn()}>Open VCT Connect</button>}
+      <p>{t(signInDelayed ? "Sign-in is taking longer than expected. Sign in on the web, then reopen this popup." : "Checking your VCT Connect session…")}</p>
+      {signInDelayed && <button onClick={() => void openWebSignIn()}>{t("Open VCT Connect")}</button>}
     </> : gate === "signed-out" ? <>
-      <button onClick={() => void openWebSignIn()}>Sign in on VCT Connect</button>
-      <p>Finish sign-in in the web tab, then return to the source page and reopen this popup. Use the same Chrome profile.</p>
+      <button onClick={() => void openWebSignIn()}>{t("Sign in on VCT Connect")}</button>
+      <p>{t("Sign in on the web, then reopen this extension in the same browser profile.")}</p>
     </> : <>
       <UserButton />
-      {gate === "checking-page" && <p>Checking whether this page can be analyzed…</p>}
-      {gate === "unsupported-page" && <p>Enhanced analysis is disabled on unsupported pages.</p>}
-      {gate === "ready" && <p><button disabled={busy || Boolean(collecting) || !canCapturePage} onClick={() => void capture()}>{busy || collecting ? "Working…" : collectionJob?.stage === "FINISHING" ? "Retry saved upload" : linkedPage && page.status === "supported" ? page.kind === "1688-factory" ? "Save factory HTML & analyze" : "Save shop HTML" : "Analyze this page"}</button></p>}
-      {gate === "ready" && page.status === "supported" && page.kind === "1688" && <p>Capture the product, save the shop HTML, then save its factory profile HTML. You may close CAPTCHA overlays with X when company content remains visible. Each capture downloads cleaned HTML; the saved sources are uploaded together when you finish. You have 30 minutes.</p>}
+      {gate === "checking-page" && <p>{t("Checking the active page…")}</p>}
+      {gate === "unsupported-page" && <p>{t("This page cannot be captured. Open a supported source.")}</p>}
+      {gate === "ready" && <p><button className="primary-action" disabled={busy || Boolean(collecting) || !canCapturePage} onClick={() => void capture()}>{t(busy || collecting ? "Working…" : collectionJob?.stage === "FINISHING" ? "Retry saved upload" : linkedPage && page.status === "supported" ? page.kind === "1688-factory" ? "Save factory HTML & analyze" : "Save shop HTML" : "Analyze this page")}</button></p>}
+      {gate === "ready" && page.status === "supported" && page.kind === "1688" && !guidedWaiting && <p className="capture-note">{t("Capture the product first. Then follow the supplier cue to save shop and factory HTML. Finish within 30 minutes.")}</p>}
     </>}
-    {isSignedIn && linkedPage && !canCapturePage && <p>Start with the product page. Company capture is available only for its pending linked supplier.</p>}
+    {isSignedIn && linkedPage && !canCapturePage && <p>{t("Start from a product and follow its linked supplier page.")}</p>}
     {isSignedIn && guidedWaiting && collectionJob && <div className="status" aria-live="polite">
-      <strong>{collectionJob.stage === "FINISHING" ? "Capture saved · retry upload" : collectionJob.stage === "WAITING_FACTORY" ? "Shop HTML saved · factory evidence next" : "Product captured · company evidence needed"}</strong>
-      <p>{collectionJob.stage === "FINISHING" ? "The upload response was interrupted. Retry the saved upload; the same evidence and analysis ID will be reused." : "Close any CAPTCHA overlay with X if possible. Save shop HTML in this popup when the supplier header or company introduction is visible, then follow the highlighted Factory profile / 工厂档案 link and choose Save factory HTML & analyze. If company content is absent, finish with the available evidence."}</p>
-      {collectionJob.error && <p role="status">{collectionJob.error}</p>}
-      {collectionJob.factoryUrl && <p><a href={collectionJob.factoryUrl} target="_blank" rel="noreferrer">Open linked factory profile</a></p>}
-      {collectionJob.companyUrl && <p><a href={collectionJob.companyUrl} target="_blank" rel="noreferrer">Open linked company page</a></p>}
-      <p><button disabled={busy} onClick={() => void finishGuided()}>{collectionJob.stage === "FINISHING" ? "Retry saved upload" : collectionJob.stage === "WAITING_FACTORY" ? "Finish with captured product & shop" : "Finish with product evidence only"}</button></p>
-      <small>Same analysis and quota slot. Only visible company content is captured; no CAPTCHA solving is required by VCT Connect. Finish within 30 minutes; otherwise the server processes the stored product.</small>
+      <ol className="capture-steps" aria-label={t("Source evidence")}>{["Product", "Shop", "Factory"].map((step, i) => <li key={step} className={i === (collectionJob.stage === "WAITING_COMPANY" ? 1 : 2) ? "current" : ""}><span>{i + 1}</span>{t(step)}</li>)}</ol>
+      <strong>{t(collectionJob.stage === "FINISHING" ? "Capture saved · retry upload" : collectionJob.stage === "WAITING_FACTORY" ? "Shop saved · factory next" : "Product captured · shop next")}</strong>
+      <p>{t(collectionJob.stage === "FINISHING" ? "Retry the stored upload. Your evidence and analysis ID are retained." : collectionJob.stage === "WAITING_FACTORY" ? "Open Factory profile / 工厂档案 from the shop. When factory details are visible, save factory HTML to complete the report." : "Open the supplier shop using the link below or the highlighted name. If an overlay covers visible company content, close it with X, then save shop HTML.")}</p>
+      {collectionJob.error && <p role="status">{errorText(collectionJob.error, language)}</p>}
+      {collectionJob.factoryUrl && <p><a href={collectionJob.factoryUrl} target="_blank" rel="noreferrer">{t("Open linked factory profile")} ↗</a></p>}
+      {collectionJob.companyUrl && <p><a href={collectionJob.companyUrl} target="_blank" rel="noreferrer">{t("Open linked company page")} ↗</a></p>}
+      <p><button className="secondary-action" disabled={busy} onClick={() => void finishGuided()}>{t(collectionJob.stage === "FINISHING" ? "Retry saved upload" : collectionJob.stage === "WAITING_FACTORY" ? "Finish with captured product & shop" : "Finish with product evidence only")}</button></p>
+      <small>{t("One analysis. HTML is downloaded at each capture and uploaded together when you finish. Only visible content is collected.")}</small>
     </div>}
-    {error && <p className="error" role="alert">{error}</p>}
-    {isSignedIn && collectionJob?.ownerId === userId && !guidedWaiting && <div className="status" aria-live="polite">
-      <strong>{collectionJob.stage === "ERROR" ? "Collection interrupted" : collecting ?
+    {error && <div className="error" role="alert"><p>{errorText(error, language)}</p>{language === "vi" && <details><summary>{t("Technical details")}</summary><p>{error}</p></details>}</div>}
+    {isSignedIn && collectionJob?.ownerId === userId && !guidedWaiting && !error && <div className="status" aria-live="polite">
+      <strong>{t(collectionJob.stage === "ERROR" ? "Collection interrupted" : collecting ?
         ({ STARTING: "Reading product", SHOP: "Reading supplier shop", FACTORY: "Reading factory profile" } as Record<string, string>)[collectionJob.stage]
-        : collectionJob.stage === "ASSESSING" ? "Collection finished · assessment continues" : "Collection deadline reached · stored product awaits processing"}</strong>
-      <p>{collectionJob.error || "You can close this popup. Open the web result to follow assessment and reporting."}</p>
+        : collectionJob.stage === "ASSESSING" ? "Capture finished · assessment continues" : "Collection deadline reached")}</strong>
+      <p>{collectionJob.error ? errorText(collectionJob.error, language) : t("You can close this popup. Open the web result to follow assessment and reporting.")}</p>
     </div>}
-    {isSignedIn && lastCapture?.ownerId === userId && result && <div className="status" aria-live="polite">
-      <strong>{verdict.headline}</strong>
-      <p>{result.status === "COMPLETED" && reportLoading ? "Loading saved assessment report…" : verdict.detail}</p>
-      {result.supplier_data && <p>{result.supplier_data.supplier_name || "Supplier name missing"} · Extraction coverage: {Math.round(result.supplier_data.completeness * 100)}%</p>}
-      {verdict.riskLabel && <p>Risk: {verdict.riskLabel}{verdict.confidence !== null ? ` · Confidence: ${Math.round(verdict.confidence * 100)}%` : ""}{verdict.coverage !== null ? ` · Coverage: ${Math.round(verdict.coverage * 100)}%` : ""}</p>}
-      {result.status === "COMPLETED" && !reportLoading && verdict.riskLabel === null && <small>No scored report available. Missing evidence is not low risk.</small>}
+    {isSignedIn && lastCapture?.ownerId === userId && result && !guidedWaiting && <div className="status" aria-live="polite">
+      <strong>{t(verdict.headline)}</strong>
+      <p>{t(result.status === "COMPLETED" && reportLoading ? "Loading saved assessment report…" : verdict.detail)}</p>
+      {result.supplier_data && <p>{result.supplier_data.supplier_name || t("Supplier name missing")} · {t("Extraction coverage")}: {Math.round(result.supplier_data.completeness * 100)}%</p>}
+      {verdict.riskLabel && <p>{t("Risk")}: {t(verdict.riskLabel)}{verdict.confidence !== null ? ` · ${t("Confidence")}: ${Math.round(verdict.confidence * 100)}%` : ""}{verdict.coverage !== null ? ` · ${t("Coverage")}: ${Math.round(verdict.coverage * 100)}%` : ""}</p>}
+      {result.status === "COMPLETED" && !reportLoading && verdict.riskLabel === null && <small>{t("No scored report available. Missing evidence is not low risk.")}</small>}
     </div>}
     {isSignedIn && lastCapture?.ownerId === userId && lastCapture && <div className="status">
-      <small>Last page: {lastCapture.sourceUrl}</small>
-      {isSignedIn && <p><button disabled={busy} onClick={() => void retryResult()}>Reload last result</button></p>}
-      <p><button onClick={() => void chrome.tabs.create({ url: `${VCT_WEB_ORIGIN}/?analysis=${encodeURIComponent(lastCapture.analysisId)}` })}>Open web result</button></p>
-      <small>Sign into the same VCT Connect account on the web to view this result.</small>
+      <small>{t("Last page")}: {lastCapture.sourceUrl}</small>
+      {isSignedIn && <p><button className="secondary-action" disabled={busy} onClick={() => void retryResult()}>{t("Reload last result")}</button></p>}
+      <p><button onClick={() => void chrome.tabs.create({ url: `${VCT_WEB_ORIGIN}/?analysis=${encodeURIComponent(lastCapture.analysisId)}` })}>{t("Open web result")}</button></p>
+      <small>{t("Use the same VCT Connect account to view this report.")}</small>
     </div>}
   </main>;
 }
 
 const root = document.getElementById("root");
-if (root) createRoot(root).render(
-  <ClerkProvider publishableKey={VCT_CLERK_PUBLISHABLE_KEY}
+function ExtensionRoot() {
+  const [language, setLanguage] = useState<UiLanguage>("vi");
+  useEffect(() => {
+    void chrome.storage.local.get("uiLanguage").then(stored => {
+      if (stored.uiLanguage === "vi" || stored.uiLanguage === "en") setLanguage(stored.uiLanguage);
+    }).catch(() => {});
+  }, []);
+  return <ClerkProvider publishableKey={VCT_CLERK_PUBLISHABLE_KEY}
+    localization={language === "vi" ? viVN : enUS}
     syncHost={VCT_CLERK_SYNC_HOST}
     afterSignOutUrl={VCT_WEB_ORIGIN}
     signInFallbackRedirectUrl={VCT_WEB_ORIGIN}
     signUpFallbackRedirectUrl={VCT_WEB_ORIGIN}>
-    <App />
-  </ClerkProvider>,
-);
+    <App initialLanguage={language} onLanguageChange={setLanguage} />
+  </ClerkProvider>;
+}
+if (root) createRoot(root).render(<ExtensionRoot />);

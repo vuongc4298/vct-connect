@@ -7,13 +7,13 @@ import copy
 import json
 from datetime import datetime, timezone
 from hashlib import sha256
-import re
-from urllib.parse import parse_qs, urlsplit
+from urllib.parse import urlsplit
 
 from .contracts import evidence_coverage, evidence_status
 from .dom import active, tree
 from .urls import normalize_1688_url
 from .shop1688_identity import shop_host
+from .factory1688_identity import factory_identity
 
 MAX_PAGE_BYTES = 2_000_000
 
@@ -68,14 +68,7 @@ def enrich_saved_factory(base, *, product_html, shop_html, factory_html, factory
     factory_links = {n.attributes["href"].split("?")[0] for n in factory.css("#pc_card_baseinfo a[href]")}
     if shop_url not in factory_links:
         raise ValueError("Factory profile does not link back to the supplier shop")
-    supplied = urlsplit(factory_url)
-    ids = parse_qs(supplied.query).get("memberId", [])
-    fac_ids = parse_qs(supplied.query).get("facMemId", [])
-    if (supplied.scheme != "https" or supplied.netloc != "sale.1688.com" or
-            supplied.path != "/factory/card.html" or len(ids) != 1 or
-            not re.fullmatch(r"b2b-[a-z0-9]{6,60}", ids[0]) or fac_ids not in ([], ids)):
-        raise ValueError("Unsupported factory profile identity")
-    profile_url = f"https://www.1688.com/factory/{ids[0]}.html"
+    profile_url = factory_identity(factory_url)
     profile_canonical = factory.css_first('link[rel="canonical"]')
     if profile_canonical is None or profile_canonical.attributes.get("href") != profile_url:
         raise ValueError("Factory member does not match saved canonical identity")

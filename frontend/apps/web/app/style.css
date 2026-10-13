@@ -1,3 +1,6 @@
+.saved-html-picker { position: relative; display: flex; align-items: center; gap: 12px; flex-wrap: wrap; margin-top: 8px; }
+.saved-html-picker span { color: #60766f; font-size: 13px; overflow-wrap: anywhere; }
+.file-input-hidden { position: absolute; width: 1px; height: 1px; opacity: 0; overflow: hidden; }
 :root {
   --ink: #17231f; --muted: #697772; --line: #dfe7e3; --soft: #f3f7f5;
   --green: #187957; --green-dark: #0f563f; --green-soft: #e9f5ef;
