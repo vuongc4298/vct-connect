@@ -52,7 +52,7 @@ DIMENSION_WEIGHTS: dict[RiskDimension, float] = {
 
 # v0.2.0 removes delivery/communication at the product owner's request and
 # preserves the relative weights of the remaining five dimensions.
-CURRENT_SCORING_VERSION = "v0.2.0"
+CURRENT_SCORING_VERSION = "v0.2.1"
 CURRENT_DIMENSION_WEIGHTS = {"PRODUCT_QUALITY": 0.3125, "SUPPLIER_IDENTITY": 0.1875,
                              "REVIEW_MANIPULATION": 0.1875, "AFTER_SALES": 0.1875, "PRICING": 0.125}
 
@@ -144,7 +144,7 @@ class RiskAssessment(BaseModel):
     model_config = ConfigDict(extra="forbid")
 
     schema_version: Literal["supplier-risk.v0.1"] = RISK_SCHEMA_VERSION
-    scoring_version: Literal["v0.1.0", "v0.2.0"] = SCORING_VERSION
+    scoring_version: Literal["v0.1.0", "v0.2.0", "v0.2.1"] = SCORING_VERSION
     overall_risk: float | None = Field(default=None, ge=0, le=100)
     confidence: float = Field(ge=0, le=1)
     data_coverage: float = Field(ge=0, le=1)
@@ -217,10 +217,10 @@ def score_supplier_risk(
     dimensions: Sequence[DimensionInput | Mapping[str, object]],
     *,
     confidence_factors: ConfidenceFactors | Mapping[str, object],
-    scoring_version: Literal["v0.1.0", "v0.2.0"] = SCORING_VERSION,
+    scoring_version: Literal["v0.1.0", "v0.2.0", "v0.2.1"] = SCORING_VERSION,
 ) -> RiskAssessment:
     """Compute one reproducible assessment under the selected scoring policy."""
-    weights = CURRENT_DIMENSION_WEIGHTS if scoring_version == CURRENT_SCORING_VERSION else DIMENSION_WEIGHTS
+    weights = CURRENT_DIMENSION_WEIGHTS if scoring_version != SCORING_VERSION else DIMENSION_WEIGHTS
     inputs = [
         value if isinstance(value, DimensionInput) else DimensionInput.model_validate(value)
         for value in dimensions

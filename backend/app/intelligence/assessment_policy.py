@@ -84,6 +84,8 @@ def media_review_factors(media_run: MediaInterpretationRun | None) -> dict[str, 
 def review_score_inputs(
     review_analysis: ReviewAnalysis | SemanticReviewRun,
     media_run: MediaInterpretationRun | None = None,
+    *,
+    accessible_reviews: list[dict] | None = None,
 ) -> tuple[list[DimensionInput], list[dict], list[dict], float]:
     findings: list[dict] = []
     evidence: list[dict] = []
@@ -199,6 +201,33 @@ def review_score_inputs(
     if manipulation_signals:
         by_dimension["REVIEW_MANIPULATION"] = manipulation_signals
 
+    elif accessible_reviews is not None:
+        # Ten public reviews permit a preliminary check, not population verification.
+        deterministic = (review_analysis.deterministic_analysis
+                         if isinstance(review_analysis, SemanticReviewRun) else review_analysis)
+        if deterministic.review_count >= 10:
+            confidence = min(review_confidence, 0.6)
+            if 'review_timestamps' in deterministic.missing_inputs:
+                confidence = min(confidence, 0.45)
+            if 'review_ratings' in deterministic.missing_inputs:
+                confidence = min(confidence, 0.4)
+            evidence_id = 'review-sample:credibility'
+            statement = (f'Kiểm tra sơ bộ {deterministic.review_count} đánh giá đã thu thập chưa thấy '
+                         'mẫu bất thường trong các phép kiểm tra khả dụng; mẫu được chọn có thể thiên lệch '
+                         'và không xác minh tính xác thực của toàn bộ đánh giá.')
+            by_dimension['REVIEW_MANIPULATION'] = [RiskSignal(
+                evidence_id=evidence_id, dimension='REVIEW_MANIPULATION', severity=35,
+                reliability=confidence, source_kind='DERIVED', explanation=statement,
+            )]
+            evidence.append({'evidence_id': evidence_id, 'source_kind': 'DERIVED',
+                             'source_field': 'reviews', 'payload': {
+                                 'statement_vi': statement, 'sample_count': deterministic.review_count,
+                                 'evidence_ids': [item['evidence_id'] for item in accessible_reviews],
+                                 'missing_inputs': deterministic.missing_inputs,
+                                 'policy': 'accessible-review-sample.v1', 'confidence_cap': confidence,
+                                 'independently_verified': False,
+                             }})
+
     # Preserve existing suspicious-pattern evidence payloads when a review is
     # also part of a recurring complaint topic. Final evidence dedupe is
     # first-write-wins, so deferred topic linkage is appended afterward.
@@ -207,11 +236,15 @@ def review_score_inputs(
     dimensions = [
         DimensionInput(
             dimension=dimension,
-            confidence=review_confidence,
+            confidence=min(review_confidence, signals[0].reliability) if dimension == 'REVIEW_MANIPULATION' and not manipulation_signals else review_confidence,
             signals=signals,
         )
         for dimension, signals in by_dimension.items()
     ]
+    dimensions = [item.model_copy(update={'confidence': min(item.confidence, 0.6),
+                  'signals': [signal.model_copy(update={'reliability': min(signal.reliability, 0.6)})
+                              for signal in item.signals]}) if item.dimension == 'AFTER_SALES' else item
+                  for item in dimensions]
     return dimensions, findings, evidence, review_reliability
 
 
@@ -343,9 +376,14 @@ def supplier_score_inputs(run: InterpretationRun) -> tuple[list[DimensionInput],
             continue
         review_derived = "reviews" in fields
         # One isolated review cannot support a generalized dimension assessment.
-        if review_derived and len(normalized_reviews(source)) < 2:
+        single_after_sales_concern = (item.dimension == 'AFTER_SALES' and item.severity in {'MEDIUM', 'HIGH'})
+        if review_derived and len(normalized_reviews(source)) < 2 and not single_after_sales_concern:
             continue
         confidence = min(item.confidence, run.interpretation.confidence, 0.7)
+        if item.dimension == 'AFTER_SALES':
+            confidence = min(confidence, 0.6)
+            if review_derived and len(normalized_reviews(source)) < 2:
+                confidence = min(confidence, 0.4)
         if confidence <= 0:
             continue
         evidence_id = f"supplier-dimension:{item.dimension.lower()}"
@@ -362,7 +400,8 @@ def supplier_score_inputs(run: InterpretationRun) -> tuple[list[DimensionInput],
             "evidence_id": evidence_id, "source_kind": "MODEL_INTERPRETATION",
             "source_field": None,
             "payload": {**item.model_dump(mode="json"), "confidence": confidence,
-                        "policy": "supplier-dimensions.v1", "independently_verified": False},
+                        "policy": "supplier-dimensions.v2", "independently_verified": False,
+                        "preliminary": item.dimension == "AFTER_SALES"},
         })
     return dimensions, evidence
 

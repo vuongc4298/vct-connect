@@ -102,6 +102,11 @@ def _user_prompt(payload: dict) -> str:
     )
 
 
+SYSTEM_PROMPT += """
+Always assess AFTER_SALES from available evidence: explicit return/refund protections, dispute resolution or return/exchange experience metrics, and buyer feedback about seller support. Two relevant reviews or a clearly labeled policy/metric can support a preliminary LOW assessment with confidence at most 0.6; a single specific unresolved refund/return/support complaint can support MEDIUM/HIGH with confidence at most 0.4. Quote the exact relevant policy, feedback or complete metric and explain the limited scope in Vietnamese. Do not discard a concrete signal solely because the public sample is limited to ten reviews or independently unverified. Generic product praise, generic service scores, repeat-purchase rates and absence of complaints alone do not establish good after-sales. If no relevant evidence exists, return UNKNOWN and explain the precise missing support. Never imply that a policy guarantees future fulfillment.
+"""
+
+
 def interpret_supplier_data(
     supplier_data: Mapping[str, object],
     *,

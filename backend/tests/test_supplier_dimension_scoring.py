@@ -33,7 +33,7 @@ def test_captured_supplier_evidence_scores_without_embeddings_and_keeps_missing_
     assert "PRICING" not in bundle.risk.missing_dimensions
     assert "SUPPLIER_IDENTITY" in bundle.risk.missing_dimensions
     assert len(bundle.risk.dimensions) == 5
-    assert bundle.risk.scoring_version == "v0.2.0"
+    assert bundle.risk.scoring_version == "v0.2.1"
     # A single supported category must not turn the overall supplier into low risk.
     assert bundle.risk.label == "INSUFFICIENT_INFORMATION"
     assert bundle.risk.overall_risk is None

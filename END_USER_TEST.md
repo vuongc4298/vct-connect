@@ -263,3 +263,15 @@ The captured phone supplier replay supported product-quality and delivery concer
 5. Reopen a historical report. Removed dimensions are hidden, while its saved overall score and coverage remain unchanged with a legacy-model notice. Create a new analysis for scoring version **v0.2.0**; refreshing cannot rerun the model.
 
 Read-only live inspection of report `9478c7c2-c2cb-47de-8b8f-9b7d2e536a84` verified 10 reviews, displayed 6000+ reviews, two prices (3.60 and 23.80), and MOQ one. These values are public source claims, not independent verification. This inspection did not change the report or run the provider. Native extension guidance remains an operator acceptance check.
+
+### Preliminary public-review and after-sales assessment — scoring v0.2.1
+
+Create a fresh analysis after release. A sample of at least ten usable reviews with no detected suspicious patterns now supports a preliminary credibility score of 35/100. Confidence is capped at 60%, reduced to 45% without complete timestamps and 40% without complete ratings. Suspicious patterns take precedence; fewer than ten reviews do not get this clean-sample fallback. This checks the accessible sample and does not authenticate all platform reviews.
+
+After-sales may use relevant refund/return policies, correctly labeled service metrics and buyer feedback, with at most 60% confidence. A single specific unresolved refund/support allegation can support a concern at at most 40%; one positive review, generic product praise or absence of complaints cannot establish good after-sales. With no relevant evidence the category stays unknown.
+
+1. Capture product/shop/factory and create a new report; confirm scoring v0.2.1 and the visible preliminary-assessment disclosure.
+2. Inspect review credibility and follow the source link for the sampled-review check and missing metadata. Repeated text should produce the suspicious-pattern assessment rather than the clean-sample score.
+3. Inspect after-sales rationale and source quotes. Confirm it describes actual policy, return/refund feedback or a specifically labeled metric.
+4. Check that sparse evidence still leaves unsupported categories and potentially the overall score unknown.
+5. Reopen a historical report: its saved scores should not change. The extension remains version 0.6.1 because this update changes server scoring and the web report.
