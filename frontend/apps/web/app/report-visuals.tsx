@@ -39,7 +39,7 @@ export function MetricRing({ value, label, suffix = "%", tone = "green" }: {
 export function RiskBar({ value, label }: { value: number | null; label: string }) {
   const known = value !== null && Number.isFinite(value);
   return <div className={`risk-chart-track ${known ? "" : "unknown"}`} role="img"
-    aria-label={`${label}: ${known ? `${Math.round(value!)} trên 100` : "chưa đủ bằng chứng"}`}>
+    aria-label={`${label}: ${known ? `${Math.round(value!)} trên 100` : "chưa thể kết luận"}`}>
     {known && <span style={{ width: `${Math.max(0, Math.min(100, value!))}%` }} />}
   </div>;
 }

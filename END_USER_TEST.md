@@ -253,3 +253,13 @@ Create a **new analysis** after this release. Existing reports remain saved snap
 5. Reopen the same report from history. Its scores and quotes should persist without another AI request. To compare later evidence, create another analysis rather than expecting the old report to change.
 
 The captured phone supplier replay supported product-quality and delivery concerns (55/100 each, with reduced confidence); the other five categories stayed unknown and overall coverage stayed 40%. These are recorded replay results, not promised scores for subsequent model runs.
+
+### Five-factor assessment and captured evidence — extension 0.6.1
+
+1. Reload the unpacked live extension in Chrome/Brave and confirm **0.6.1**. Select **VI**, capture a product and save its shop HTML. Factory next-step guidance should remain Vietnamese when marketplace translation is enabled.
+2. Capture the matching factory and finish. A new report should list five categories: product quality, supplier identity, review authenticity, after-sales, and pricing. Delivery and communication should not contribute to scoring or coverage.
+3. Check the captured review sample separately from the platform total. For the inspected umbrella report, the sample contains 10 reviews and the source displays `4.8 6000+条评价`; do not treat 6000+ as an exact total or proof of review authenticity.
+4. Follow the pricing source link and check the displayed prices, MOQ and offer conditions against the source. Available data with an inconclusive assessment must say **Đã có dữ liệu · chưa thể kết luận**, with the reason and source links, rather than imply no pricing data was captured.
+5. Reopen a historical report. Removed dimensions are hidden, while its saved overall score and coverage remain unchanged with a legacy-model notice. Create a new analysis for scoring version **v0.2.0**; refreshing cannot rerun the model.
+
+Read-only live inspection of report `9478c7c2-c2cb-47de-8b8f-9b7d2e536a84` verified 10 reviews, displayed 6000+ reviews, two prices (3.60 and 23.80), and MOQ one. These values are public source claims, not independent verification. This inspection did not change the report or run the provider. Native extension guidance remains an operator acceptance check.

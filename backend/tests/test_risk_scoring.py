@@ -1,5 +1,21 @@
 import pytest
 
+
+def test_five_factor_policy_excludes_removed_inputs_from_scores_and_critical_floors():
+    from backend.app.intelligence.scoring import CURRENT_DIMENSION_WEIGHTS
+    assert sum(CURRENT_DIMENSION_WEIGHTS.values()) == 1
+    removed = DimensionInput(dimension="DELIVERY", confidence=1, signals=[signal("removed", "DELIVERY", 100,
+        source_kind="VERIFIED_DOCUMENT", independently_verified=True, corroborating_evidence_count=2, critical_candidate=True)])
+    current = score_supplier_risk([removed], scoring_version="v0.2.0", confidence_factors=ConfidenceFactors(
+        data_coverage=0, source_reliability=1, sample_adequacy=1, data_freshness=1))
+    assert len(current.dimensions) == 5
+    assert current.scoring_version == "v0.2.0"
+    assert current.overall_risk is None and current.critical_floor is None
+    assert not {"DELIVERY", "COMMUNICATION"}.intersection(current.missing_dimensions)
+    legacy = score_supplier_risk([removed], confidence_factors=ConfidenceFactors(
+        data_coverage=1, source_reliability=1, sample_adequacy=1, data_freshness=1))
+    assert len(legacy.dimensions) == 7 and legacy.scoring_version == "v0.1.0"
+
 from backend.app.intelligence.scoring import (
     CONFIDENCE_FACTOR_WEIGHTS,
     CRITICAL_RISK_FLOOR,

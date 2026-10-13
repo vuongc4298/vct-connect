@@ -273,7 +273,7 @@ def test_worker_persists_report_completes_once_and_replay_spends_no_ai(store, ad
                 (analysis_id,),
             ).fetchone()
             assert assessment is not None
-            assert assessment["scoring_version"] == "v0.1.0"
+            assert assessment["scoring_version"] == "v0.2.0"
             assert conn.execute(
                 "SELECT count(*) AS n FROM llm_review_runs "
                 "WHERE assessment_id = %s",
@@ -297,7 +297,7 @@ def test_worker_persists_report_completes_once_and_replay_spends_no_ai(store, ad
             assert report is not None
             assert report["schema_version"] == "report.v1"
             assert report["language"] == "vi"
-            assert report["payload"]["risk"]["scoring_version"] == "v0.1.0"
+            assert report["payload"]["risk"]["scoring_version"] == "v0.2.0"
             risk = report["payload"]["risk"]
             if supplier_dimensions:
                 pricing = next(item for item in risk["dimensions"] if item["dimension"] == "PRICING")

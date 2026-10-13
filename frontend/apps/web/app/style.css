@@ -1,4 +1,6 @@
 .saved-html-picker { position: relative; display: flex; align-items: center; gap: 12px; flex-wrap: wrap; margin-top: 8px; }
+.dimension-availability { color: #60766f; font-size: 13px; line-height: 1.65; margin: 8px 0; }
+.dimension-availability a { color: #087d70; margin-left: 5px; }
 .saved-html-picker span { color: #60766f; font-size: 13px; overflow-wrap: anywhere; }
 .file-input-hidden { position: absolute; width: 1px; height: 1px; opacity: 0; overflow: hidden; }
 :root {

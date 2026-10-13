@@ -3,6 +3,7 @@ import { MetricRing, ReportPages, RiskBar } from "./report-visuals";
 import type { ReportEvidence, ReportFinding, ReportV1 } from "@vct/contracts";
 import { safeSourceUrl } from "./source-url";
 import { reportFreshness } from "./report-freshness";
+import { capturedReviewSummary, dimensionEvidence, REMOVED_RISK_DIMENSIONS } from "./dimension-evidence";
 import {
   REPORT_DIMENSION_LABELS,
   REPORT_FINDING_LABELS,
@@ -84,12 +85,12 @@ export function FullReport({ report, extractionMethod }: { report: ReportV1; ext
   const sourceFreshness = reportFreshness(report.extracted_at);
   const availableEvidenceIds = new Set(report.evidence.map(item => item.evidence_id));
   const evidenceById = new Map(report.evidence.map(item => [item.evidence_id, item]));
+  const riskDimensions = report.risk.dimensions.filter(item => !REMOVED_RISK_DIMENSIONS.has(String(item.dimension)));
+  const missingRiskDimensions = report.missing_data.risk_dimensions.filter(item => !REMOVED_RISK_DIMENSIONS.has(item));
   const reviewReliability = typeof review.review_reliability === "number"
     ? review.review_reliability
     : typeof review.reliability === "number" ? review.reliability : null;
-  const reviewCount = typeof review.review_count === "number"
-    ? review.review_count
-    : Array.isArray(review.findings) ? review.findings.length : null;
+  const capturedReviews = capturedReviewSummary(report.evidence);
 
   useEffect(() => {
     const revealSource = () => {
@@ -158,21 +159,24 @@ export function FullReport({ report, extractionMethod }: { report: ReportV1; ext
     <section id="report-risk-dimensions" className="report-dimensions" aria-label="Các chiều rủi ro">
       <div className="section-heading">
         <div><span className="card-label">CÁC CHIỀU RỦI RO</span><h3>Rủi ro tập trung ở đâu?</h3></div>
-        <span>{report.risk.dimensions.length} hạng mục</span>
+        <span>{riskDimensions.length} hạng mục</span>
       </div>
-      <p className="chart-caption">Điểm càng cao, rủi ro càng lớn. Vùng kẻ sọc là hạng mục chưa đủ bằng chứng.</p>
+      <p className="chart-caption">Điểm càng cao, rủi ro càng lớn. Vùng kẻ sọc là hạng mục chưa chấm điểm; dữ liệu đã thu thập và khả năng kết luận được hiển thị riêng.</p>
+      {report.risk.scoring_version === "v0.1.0" && <p className="chart-caption">Báo cáo này lưu theo mô hình cũ gồm 7 hạng mục. Giao hàng và giao tiếp đã được ẩn; điểm tổng thể và độ phủ đã lưu chưa được tính lại. Tạo phân tích mới để dùng mô hình 5 hạng mục.</p>}
       <div className="risk-chart-scale" aria-hidden="true"><span>0</span><span>50</span><span>100</span></div>
       <div className="report-dimension-list">
-        {report.risk.dimensions.map((item, index) => {
+        {riskDimensions.map((item, index) => {
           const dimension = typeof item.dimension === "string" ? item.dimension : `dimension-${index}`;
           const dimensionRisk = typeof item.risk === "number" ? item.risk : null;
           const confidence = typeof item.effective_confidence === "number" ? item.effective_confidence : null;
+          const availability = dimensionEvidence(dimension, report.evidence);
           const ids = Array.isArray(item.evidence_ids)
             ? item.evidence_ids.filter((value): value is string => typeof value === "string")
             : [];
           return <article className={`report-dimension ${dimensionRisk === null ? "unknown" : ""}`} key={dimension}>
-            <div><strong>{REPORT_DIMENSION_LABELS[dimension] ?? dimension}</strong><span>{dimensionRisk === null ? "Chưa đủ bằng chứng" : `${Math.round(dimensionRisk)}/100`}</span></div>
+            <div><strong>{REPORT_DIMENSION_LABELS[dimension] ?? dimension}</strong><span>{dimensionRisk === null ? availability.captured.length ? "Đã có dữ liệu · chưa thể kết luận" : "Chưa đủ bằng chứng" : `${Math.round(dimensionRisk)}/100`}</span></div>
             <RiskBar value={dimensionRisk} label={REPORT_DIMENSION_LABELS[dimension] ?? dimension} />
+            {dimensionRisk === null && <p className="dimension-availability">{availability.explanation} {availability.captured.map(source => <a key={source.evidence_id} href={`#${reportEvidenceAnchor(source.evidence_id)}`}>{REPORT_FIELD_LABELS[source.source_field ?? ""] ?? "Nguồn"} ↗ </a>)}</p>}
             <details className="dimension-detail"><summary>Độ tin cậy & nguồn</summary><div className="dimension-meta">
               <small>Độ tin cậy hiệu dụng: {confidence === null ? "chưa xác định" : reportPercent(confidence)}</small>
               {ids.map(id => {
@@ -212,8 +216,9 @@ export function FullReport({ report, extractionMethod }: { report: ReportV1; ext
         </div>
         <dl className="report-summary-stats">
           <div><dt>Độ tin cậy đánh giá</dt><dd>{reviewReliability === null ? "Chưa xác định" : reportPercent(reviewReliability)}</dd></div>
-          <div><dt>Mẫu / phát hiện</dt><dd>{reviewCount ?? "Chưa xác định"}</dd></div>
+          <div><dt>Đánh giá đã thu thập trong mẫu</dt><dd>{capturedReviews.count ?? "Chưa xác định"}</dd></div>
         </dl>
+        {capturedReviews.totalDisplay && <p className="identity-note">Tổng đánh giá hiển thị trên nguồn: {capturedReviews.totalDisplay}. Tổng này khác với số đánh giá đã thu thập trong mẫu.</p>}
         {Array.isArray(review.missing_inputs) && review.missing_inputs.length > 0 &&
           <p className="identity-note">Thiếu đầu vào đánh giá: {review.missing_inputs.join(", ")}</p>}
       </article>
@@ -256,9 +261,9 @@ export function FullReport({ report, extractionMethod }: { report: ReportV1; ext
       <section aria-label="Thông tin còn thiếu">
         <span className="card-label">THÔNG TIN CÒN THIẾU</span>
         <MissingList tags title="Trường nguồn chưa có" values={report.missing_data.source_fields} />
-        <MissingList tags title="Chiều rủi ro chưa đủ bằng chứng" values={report.missing_data.risk_dimensions} />
+        <MissingList tags title="Hạng mục chưa thể kết luận" values={missingRiskDimensions} />
         <MissingList title="Điểm chưa chắc chắn" values={report.missing_data.uncertainties_vi} />
-        {!report.missing_data.source_fields.length && !report.missing_data.risk_dimensions.length && !report.missing_data.uncertainties_vi.length &&
+        {!report.missing_data.source_fields.length && !missingRiskDimensions.length && !report.missing_data.uncertainties_vi.length &&
           <p>Không có mục thiếu được ghi nhận trong payload báo cáo.</p>}
       </section>
       <section aria-label="Giới hạn báo cáo">

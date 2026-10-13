@@ -15,8 +15,8 @@ from .scoring import RiskDimension
 
 
 SCHEMA_VERSION = "supplier-interpretation.v1"
-PROMPT_VERSION = "supplier-interpretation.prompt.v3"
-PIPELINE_VERSION = "analysis-intelligence.v0.2"
+PROMPT_VERSION = "supplier-interpretation.prompt.v4"
+PIPELINE_VERSION = "analysis-intelligence.v0.3"
 _ALLOWED_EVIDENCE_FIELDS = frozenset(EVIDENCE_FIELDS)
 
 

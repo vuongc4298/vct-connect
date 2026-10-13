@@ -25,7 +25,7 @@ from .interpretation import InterpretationRun, interpret_supplier_data
 from .media import MediaInterpretationRun, ReviewMediaInput, interpret_review_media
 from .provider import EmbeddingProvider, LLMProvider, MultimodalLLMProvider
 from .reviews import ReviewAnalysis, analyze_review_signals
-from .scoring import DIMENSION_WEIGHTS, ConfidenceFactors, RiskAssessment, score_supplier_risk
+from .scoring import CURRENT_DIMENSION_WEIGHTS, CURRENT_SCORING_VERSION, ConfidenceFactors, RiskAssessment, score_supplier_risk
 from .semantic_reviews import SemanticReviewRun, interpret_reviews
 
 
@@ -142,18 +142,20 @@ def build_assessment(
     review_supported = {item.dimension for item in dimensions
                         if any(signal.review_derived for signal in item.signals)}
     supplier_dimensions = [item for item in supplier_dimensions
-                           if not (item.dimension in review_supported
+                           if item.dimension in CURRENT_DIMENSION_WEIGHTS
+                           and not (item.dimension in review_supported
                                    and any(signal.review_derived for signal in item.signals))]
     used_ids = {signal.evidence_id for item in supplier_dimensions for signal in item.signals}
     supplier_evidence.extend(item for item in dimension_evidence if item["evidence_id"] in used_ids)
-    dimensions = merge_dimension_inputs(dimensions + supplier_dimensions)
+    dimensions = merge_dimension_inputs([item for item in dimensions + supplier_dimensions
+                                         if item.dimension in CURRENT_DIMENSION_WEIGHTS])
     media_findings, media_evidence = media_records(media_run)
 
     # A populated profile does not establish coverage of risk dimensions.
     # Only dimensions with usable scored evidence count toward that coverage.
     supported = {item.dimension for item in dimensions if item.confidence > 0
                  and any(signal.reliability > 0 for signal in item.signals)}
-    dimension_coverage = sum(DIMENSION_WEIGHTS[name] for name in supported)
+    dimension_coverage = sum(CURRENT_DIMENSION_WEIGHTS[name] for name in supported)
     coverage = min(float(supplier_data.get("completeness") or 0.0), dimension_coverage)
     reliabilities = [supplier_run.interpretation.confidence]
     if reviews:
@@ -165,6 +167,7 @@ def build_assessment(
 
     risk = score_supplier_risk(
         dimensions,
+        scoring_version=CURRENT_SCORING_VERSION,
         confidence_factors=ConfidenceFactors(
             data_coverage=max(0.0, min(1.0, coverage)),
             source_reliability=max(0.0, min(1.0, source_reliability)),

@@ -1,7 +1,7 @@
 """Versioned deterministic supplier-risk scoring for Epic 3 / Story 3.5.
 
 The scorer follows Technical Specification section 14:
-- seven fixed v0.1.0 dimension weights,
+- versioned weights (seven legacy dimensions; five current dimensions),
 - reliability-weighted signal severity per dimension,
 - confidence-weighted dimension aggregation,
 - separate Risk, Confidence and Coverage,
@@ -49,6 +49,12 @@ DIMENSION_WEIGHTS: dict[RiskDimension, float] = {
     "PRICING": 0.10,
     "COMMUNICATION": 0.05,
 }
+
+# v0.2.0 removes delivery/communication at the product owner's request and
+# preserves the relative weights of the remaining five dimensions.
+CURRENT_SCORING_VERSION = "v0.2.0"
+CURRENT_DIMENSION_WEIGHTS = {"PRODUCT_QUALITY": 0.3125, "SUPPLIER_IDENTITY": 0.1875,
+                             "REVIEW_MANIPULATION": 0.1875, "AFTER_SALES": 0.1875, "PRICING": 0.125}
 
 CONFIDENCE_FACTOR_WEIGHTS = {
     "data_coverage": 0.40,
@@ -138,7 +144,7 @@ class RiskAssessment(BaseModel):
     model_config = ConfigDict(extra="forbid")
 
     schema_version: Literal["supplier-risk.v0.1"] = RISK_SCHEMA_VERSION
-    scoring_version: Literal["v0.1.0"] = SCORING_VERSION
+    scoring_version: Literal["v0.1.0", "v0.2.0"] = SCORING_VERSION
     overall_risk: float | None = Field(default=None, ge=0, le=100)
     confidence: float = Field(ge=0, le=1)
     data_coverage: float = Field(ge=0, le=1)
@@ -211,12 +217,15 @@ def score_supplier_risk(
     dimensions: Sequence[DimensionInput | Mapping[str, object]],
     *,
     confidence_factors: ConfidenceFactors | Mapping[str, object],
+    scoring_version: Literal["v0.1.0", "v0.2.0"] = SCORING_VERSION,
 ) -> RiskAssessment:
-    """Compute one reproducible v0.1.0 assessment."""
+    """Compute one reproducible assessment under the selected scoring policy."""
+    weights = CURRENT_DIMENSION_WEIGHTS if scoring_version == CURRENT_SCORING_VERSION else DIMENSION_WEIGHTS
     inputs = [
         value if isinstance(value, DimensionInput) else DimensionInput.model_validate(value)
         for value in dimensions
     ]
+    inputs = [item for item in inputs if item.dimension in weights]
     by_dimension = {value.dimension: value for value in inputs}
     if len(by_dimension) != len(inputs):
         raise ValueError("each risk dimension may be supplied at most once")
@@ -239,7 +248,7 @@ def score_supplier_risk(
     weighted_risk_numerator = 0.0
     weighted_risk_denominator = 0.0
 
-    for dimension, configured_weight in DIMENSION_WEIGHTS.items():
+    for dimension, configured_weight in weights.items():
         item = by_dimension.get(dimension)
         if item is None or not item.signals:
             missing.append(dimension)
@@ -301,6 +310,7 @@ def score_supplier_risk(
     overall_rounded = round(overall, 4) if overall is not None else None
     confidence_rounded = round(confidence, 4)
     return RiskAssessment(
+        scoring_version=scoring_version,
         overall_risk=overall_rounded,
         confidence=confidence_rounded,
         data_coverage=factors.data_coverage,

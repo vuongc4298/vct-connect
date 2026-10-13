@@ -25,26 +25,28 @@ def provider_with(*items):
 
 
 def test_captured_supplier_evidence_scores_without_embeddings_and_keeps_missing_unknown():
-    data = supplier_fixture() | {"delivery_information": {"note": "Late deliveries"}}
-    bundle = build_assessment(data, provider=provider_with(assessment()), model="fixture")
-    delivery = next(item for item in bundle.risk.dimensions if item.dimension == "DELIVERY")
+    data = supplier_fixture() | {"price_information": {"display_text": "CNY 8.70; minimum order 1 piece"}}
+    bundle = build_assessment(data, provider=provider_with(assessment("PRICING", "MEDIUM", "price_information", "CNY 8.70; minimum order 1 piece")), model="fixture")
+    delivery = next(item for item in bundle.risk.dimensions if item.dimension == "PRICING")
     assert delivery.risk == 55
     assert delivery.base_confidence == 0.7
-    assert "DELIVERY" not in bundle.risk.missing_dimensions
-    assert "PRICING" in bundle.risk.missing_dimensions
+    assert "PRICING" not in bundle.risk.missing_dimensions
+    assert "SUPPLIER_IDENTITY" in bundle.risk.missing_dimensions
+    assert len(bundle.risk.dimensions) == 5
+    assert bundle.risk.scoring_version == "v0.2.0"
     # A single supported category must not turn the overall supplier into low risk.
     assert bundle.risk.label == "INSUFFICIENT_INFORMATION"
     assert bundle.risk.overall_risk is None
     evidence = {item["evidence_id"]: item for item in bundle.evidence}
     assert evidence[delivery.evidence_ids[0]]["payload"]["evidence_quotes"] == {
-        "delivery_information": "Late deliveries"}
+        "price_information": "CNY 8.70; minimum order 1 piece"}
     assert evidence[delivery.evidence_ids[0]]["payload"]["independently_verified"] is False
     report = build_report(analysis_id="dimension-regression", source_url=data["source_url"],
         snapshot={"normalized_data": data},
         assessment={"risk_assessment": bundle.risk.model_dump(mode="json"),
                     "supplier_interpretation": bundle.supplier_run.interpretation.model_dump(mode="json")},
         findings=bundle.findings, evidence=bundle.evidence, raw_reviews=data["reviews"])
-    projected = next(item for item in report.risk.dimensions if item["dimension"] == "DELIVERY")
+    projected = next(item for item in report.risk.dimensions if item["dimension"] == "PRICING")
     assert projected["risk"] == 55
     assert any(item.evidence_id == projected["evidence_ids"][0] for item in report.evidence)
 
