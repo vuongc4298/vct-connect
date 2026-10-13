@@ -2,9 +2,9 @@
 from __future__ import annotations
 
 from collections.abc import Mapping, Sequence
-import re
 
 from ..extraction.contracts import EVIDENCE_FIELDS
+from ..extraction.factory1688_identity import factory_identity
 from .contracts import ReportEvidence, ReportFinding, ReportPayload, ReportRisk
 
 
@@ -231,9 +231,12 @@ def build_report(
         )
     company = _as_dict(normalized.get("company_information"))
     profile_url = company.get("factory_profile_source_url")
+    try:
+        valid_profile = isinstance(profile_url, str) and factory_identity(profile_url) == profile_url
+    except ValueError:
+        valid_profile = False
     if (normalized.get("extractor_version") in {"1688-saved-factory-enrichment.v1", "1688-linked-browser-bundle.v1", "1688-linked-browser-bundle.v2"}
-            and isinstance(profile_url, str)
-            and re.fullmatch(r"https://www\.1688\.com/factory/b2b-[a-z0-9]{6,60}\.html", profile_url)):
+            and valid_profile):
         evidence_by_id["supplier:factory_profile"] = ReportEvidence(
             evidence_id="supplier:factory_profile", source_kind="SUPPLIER_DATA",
             source_field="company_information.factory_profile",

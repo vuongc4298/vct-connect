@@ -267,7 +267,7 @@ export function App({ initialLanguage = "vi", onLanguageChange }: { initialLangu
     return () => { active = false; clearInterval(timer); };
   }, [isSignedIn, lastCapture?.analysisId, result?.status]);
 
-  return <main lang={language}>
+  return <main lang={language} translate="no">
     <header className="popup-header"><div><span className="eyebrow">{t("Source evidence")}</span><h1>VCT Connect</h1></div><div className="language-switch" role="group" aria-label="Language / Ngôn ngữ"><button aria-pressed={language === "vi"} onClick={() => chooseLanguage("vi")}>VI</button><button aria-pressed={language === "en"} onClick={() => chooseLanguage("en")}>EN</button></div></header>
     <p className="intro">{t("Capture product, shop and factory evidence for one supplier report.")}</p>
     {page.status === "supported"

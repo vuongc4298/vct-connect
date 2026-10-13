@@ -31,7 +31,7 @@ await mkdir(output, { recursive: true });
 const manifest = {
   manifest_version: 3,
   name: "VCT Connect Source Evidence",
-  version: "0.6.0",
+  version: "0.6.1",
   description: "Capture selected visible 1688 and Taobao evidence on request.",
   key: publicKey,
   permissions: ["activeTab", "scripting", "cookies", "storage", "downloads"],

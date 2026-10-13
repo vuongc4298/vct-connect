@@ -2,6 +2,29 @@ import assert from "node:assert/strict";
 import test from "node:test";
 import { assertPermittedEvidence, captureSelectedDom, supportedOffer, type LegacyCapture, type TaobaoCapture } from "./capture";
 import { captureLinkedDom } from "./linked-capture";
+import { showCompanyGuidance } from "./company-guidance";
+
+test("factory cue defaults to Vietnamese and protects its entire body from page translation", () => {
+  const previous = globalThis.document;
+  const appended: any[] = [];
+  const element = () => ({ attributes: {} as Record<string, string>, children: [] as any[],
+    style: {}, classList: {add() {}}, setAttribute(name: string, value: string) {this.attributes[name] = value;},
+    append(child: any) {this.children.push(child);}, addEventListener() {}, remove() {} });
+  try {
+    Object.defineProperty(globalThis, "document", {configurable: true, value: {
+      getElementById: () => null, querySelectorAll: () => [], createElement: element,
+      body: { append: (item: any) => appended.push(item) },
+    }});
+    showCompanyGuidance("FACTORY", "https://hztxsy.1688.com/");
+    const cue = appended[0];
+    assert.equal(cue.lang, "vi");
+    assert.equal(cue.attributes.translate, "no");
+    assert.match(cue.children[1].textContent, /Đã lưu cửa hàng.*Lưu HTML nhà máy và phân tích/);
+    assert.doesNotMatch(cue.children[1].textContent, /Saved store|choose Save/);
+  } finally {
+    Object.defineProperty(globalThis, "document", {configurable: true, value: previous});
+  }
+});
 
 test("product shop discovery accepts wrapper markup but rejects ambiguous supplier identities", () => {
   const before = [globalThis.location, globalThis.document, globalThis.getComputedStyle];

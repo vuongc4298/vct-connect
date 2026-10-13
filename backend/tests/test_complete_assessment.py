@@ -143,11 +143,11 @@ def test_complete_assessment_composes_review_identity_and_versioned_score():
     )
     assert provider.chat_calls == 2
     assert provider.embedding_calls == 1
-    assert bundle.risk.scoring_version == "v0.1.0"
-    # Only quality and manipulation have scored evidence (weights .25 + .15).
-    assert bundle.risk.data_coverage == 0.4
-    assert bundle.risk.label == "INSUFFICIENT_INFORMATION"
-    assert bundle.risk.overall_risk is None
+    assert bundle.risk.scoring_version == "v0.2.0"
+    # Only quality and manipulation have scored evidence (weights .3125 + .1875).
+    assert bundle.risk.data_coverage == 0.5
+    assert bundle.risk.label == "HIGH"
+    assert bundle.risk.overall_risk is not None
     assert bundle.identity.supplier_risk_penalty == 0
     assert bundle.review_analysis.assessment.findings[0].category == "QUALITY"
     assert any(finding["finding_type"] == "REVIEW_FINDING" for finding in bundle.findings)
@@ -160,7 +160,7 @@ def test_populated_profile_and_duplicate_reviews_cannot_imply_low_supplier_risk(
     fixture["completeness"] = 1.0
     fixture["reviews"] = [{"text": "Excellent product", "source_url": "https://example.test/r1"}] * 10
     bundle = build_assessment(fixture, provider=FakeProvider(), model="fixture-chat")
-    assert bundle.risk.data_coverage == 0.15
+    assert bundle.risk.data_coverage == 0.1875
     assert bundle.risk.label == "INSUFFICIENT_INFORMATION"
     assert bundle.risk.overall_risk is None
     assert "PRODUCT_QUALITY" in bundle.risk.missing_dimensions
@@ -185,7 +185,7 @@ def test_missing_embedding_model_degrades_to_deterministic_review_without_second
     )
     assert provider.chat_calls == 1
     assert provider.embedding_calls == 0
-    assert bundle.risk.scoring_version == "v0.1.0"
+    assert bundle.risk.scoring_version == "v0.2.0"
     assert hasattr(bundle.review_analysis, "suspicious_patterns")
 
 
@@ -218,7 +218,7 @@ def test_recurring_complaint_topics_are_persistable_findings_but_not_new_risk_si
     )
     assert quality.risk is None
     assert "PRODUCT_QUALITY" in bundle.risk.missing_dimensions
-    assert bundle.risk.scoring_version == "v0.1.0"
+    assert bundle.risk.scoring_version == "v0.2.0"
 
 
 def test_deferred_topic_linkage_does_not_replace_existing_pattern_evidence_payload():

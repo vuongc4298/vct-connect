@@ -4,9 +4,10 @@ from backend.app.reporting.builder import build_report
 from backend.app.reporting.contracts import REPORT_SCHEMA_VERSION
 
 
-def test_saved_factory_evidence_is_distinct_from_product_evidence():
+@pytest.mark.parametrize("member", ["b2b-222030383828763a1d", "hztxsy"])
+def test_saved_factory_evidence_is_distinct_from_product_evidence(member):
     assessment, snapshot, findings, evidence, reviews = source_fixture()
-    url = "https://www.1688.com/factory/b2b-222030383828763a1d.html"
+    url = f"https://www.1688.com/factory/{member}.html"
     snapshot["normalized_data"].update(extractor_version="1688-saved-factory-enrichment.v1",
         company_information={"factory_profile_source_url": url, "established_date_claim": "2025-07-14",
                              "factory_profile_claims_display_text": "员工总数: 11~50人"})

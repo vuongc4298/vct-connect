@@ -5,6 +5,24 @@ import { renderToStaticMarkup } from "react-dom/server";
 
 import type { ReportV1 } from "@vct/contracts";
 import { FullReport } from "./full-report";
+import { capturedReviewSummary, dimensionEvidence } from "./dimension-evidence";
+
+test("captured review sample and lower-bound platform total remain distinct from authenticity", () => {
+  const evidence: ReportV1["evidence"] = [
+    { evidence_id: "supplier:reviews", source_kind: "SUPPLIER_DATA", source_field: "reviews", payload: { value: Array.from({length: 10}, () => ({text: "good"})) } },
+    { evidence_id: "supplier:transaction_signals", source_kind: "SUPPLIER_DATA", source_field: "transaction_signals", payload: { value: { review_count_display_text: "4.8 6000+条评价" } } },
+    { evidence_id: "supplier:price_information", source_kind: "SUPPLIER_DATA", source_field: "price_information", payload: { value: {display_text: "¥3.60 ¥23.80 1件起批"} } },
+  ];
+  assert.deepEqual(capturedReviewSummary(evidence), {count: 10, totalDisplay: "4.8 6000+条评价"});
+  assert.match(dimensionEvidence("REVIEW_MANIPULATION", evidence).explanation, /10 đánh giá.*6000\+.*không tự xác minh/);
+  const report = reportFixture("INSUFFICIENT_INFORMATION");
+  report.risk.dimensions = [{ ...report.risk.dimensions[2], risk: null }];
+  report.evidence.push(...evidence);
+  const html = renderToStaticMarkup(<FullReport report={report} />);
+  assert.match(html, /Đã có dữ liệu · chưa thể kết luận/);
+  assert.match(html, /Đã thu thập giá và điều kiện/);
+  assert.match(html, /href="#evidence-supplier-price_information"/);
+});
 
 function reportFixture(label: ReportV1["risk"]["label"] = "MODERATE"): ReportV1 {
   const insufficient = label === "INSUFFICIENT_INFORMATION";
@@ -160,12 +178,12 @@ test("full report renders real score, identity, review, actions and evidence tra
   assert.match(html, /Xác minh giấy phép kinh doanh trước khi đặt cọc/);
   assert.match(html, /Chưa có chứng nhận được xác minh/);
   assert.match(html, /Chất lượng sản phẩm/);
-  assert.match(html, /Giao hàng/);
+  assert.doesNotMatch(html, /<strong>Giao hàng<\/strong>/);
   assert.match(html, /Giá và điều khoản/);
-  assert.match(html, /Giao tiếp/);
+  assert.doesNotMatch(html, /<strong>Giao tiếp<\/strong>/);
   assert.doesNotMatch(html, />PRICING</);
   assert.doesNotMatch(html, />COMMUNICATION</);
-  assert.match(html, /Chưa đủ bằng chứng/);
+  assert.match(html, /mô hình cũ/);
   assert.match(html, /href="#evidence-review-0"/);
   assert.match(html, /id="evidence-review-0"/);
   assert.match(html, /review:0/);
@@ -179,7 +197,7 @@ test("full report renders real score, identity, review, actions and evidence tra
 test("supplier dimension scores show their assessment reason and captured source quotes", () => {
   const report = reportFixture("INSUFFICIENT_INFORMATION");
   report.risk.dimensions[1] = {
-    ...report.risk.dimensions[1], risk: 55, effective_confidence: 0.6,
+    ...report.risk.dimensions[1], dimension: "PRICING", risk: 55, effective_confidence: 0.6,
     evidence_ids: ["supplier-dimension:delivery"],
   };
   report.evidence.push({evidence_id: "supplier-dimension:delivery",
@@ -278,6 +296,7 @@ test("internal scorer references are labeled without pretending to be source anc
 test("insufficient reports suppress a contradictory numeric risk in the overview chart", () => {
   const report = reportFixture("INSUFFICIENT_INFORMATION");
   report.risk.overall_risk = 12;
+  report.risk.dimensions[2].risk = null;
   const html = renderToStaticMarkup(<FullReport report={report} />);
   assert.match(html, /Rủi ro tổng thể: chưa đủ dữ liệu/);
   assert.doesNotMatch(html, /12\/100/);

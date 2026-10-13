@@ -24,6 +24,9 @@ export function showCompanyGuidance(mode: "SHOP" | "FACTORY" | "SHOP_CAPTURE" | 
   cue.id = "vct-company-guidance";
   cue.setAttribute("role", "status");
   cue.lang = language;
+  // The marketplace's translation layer can rewrite injected Vietnamese text.
+  cue.setAttribute("translate", "no");
+  cue.classList.add("notranslate");
   cue.style.cssText = "position:fixed;top:16px;right:16px;z-index:2147483647;background:#fff;color:#163b32;border:2px solid #087d70;border-radius:16px;padding:18px;max-width:320px;font:15px/1.5 system-ui,sans-serif;box-shadow:0 8px 32px #0003";
   const title = document.createElement("strong");
   title.textContent = language === "vi" ? "VCT Connect · Bước tiếp theo" : "VCT Connect · Next step";
