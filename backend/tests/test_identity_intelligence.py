@@ -277,6 +277,8 @@ def test_captured_factory_profile_is_considered_without_inventing_manufacturing_
     assert "self_claim_only" in result.uncertainty_reasons
     assert not any(item.source_field.endswith("factory_area_sqm") for item in result.supporting_evidence)
     assert any(item.direction == "NEUTRAL" and "2100m²" in str(item.value) for item in result.supporting_evidence)
+    assert next(item for item in result.supporting_evidence if "2100m²" in str(item.value)).source_field == "company_information.factory_description_display_text"
+    assert next(item for item in result.supporting_evidence if "4人" in str(item.value)).source_field == "company_information.factory_profile_claims_display_text"
 
 
 def test_unrelated_factory_url_does_not_activate_factory_claims():

@@ -157,6 +157,8 @@ def supplier_identity_evidence(supplier_data: Mapping[str, object]) -> list[Iden
 
     claims = stored_factory_claims(company)
     labeled_claims = set(claims)
+    structured_claims = isinstance(company.get("factory_profile_claims"), dict)
+    processing_source_present = "processing_methods_display_text" in company
     # Older snapshots retained company area in the labeled factory description.
     if "企业面积" not in claims:
         description = company.get("factory_description_display_text")
@@ -181,7 +183,7 @@ def supplier_identity_evidence(supplier_data: Mapping[str, object]) -> list[Iden
             if claims.get(label):
                 evidence.append(IdentityEvidence(
                     evidence_id=f"company_information.factory_profile_claims.{label}",
-                    source_field=("company_information.factory_profile_claims" if isinstance(company.get("factory_profile_claims"), dict)
+                    source_field=("company_information.factory_profile_claims" if structured_claims
                                   else "company_information.factory_profile_claims_display_text" if label in labeled_claims
                                   else "company_information.factory_description_display_text"),
                     direction="NEUTRAL", strength=0, reliability=0.6, source_kind="PLATFORM_PROFILE",
@@ -193,7 +195,9 @@ def supplier_identity_evidence(supplier_data: Mapping[str, object]) -> list[Iden
         if any(token in processing for token in ("来样加工", "来图加工", "生产", "加工定制")):
             evidence.append(IdentityEvidence(
                 evidence_id="company_information.processing_methods_display_text",
-                source_field="company_information.processing_methods_display_text",
+                source_field=("company_information.processing_methods_display_text" if processing_source_present
+                              else "company_information.factory_profile_claims" if structured_claims
+                              else "company_information.factory_profile_claims_display_text"),
                 direction="FACTORY", strength=0.6, reliability=0.55, source_kind="SELF_CLAIM",
                 statement="Hồ sơ công bố nhận gia công; đây là tuyên bố của nguồn, chưa kiểm chứng độc lập.",
                 value=processing,
