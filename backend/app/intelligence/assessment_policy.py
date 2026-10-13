@@ -15,6 +15,8 @@ from .media import MediaInterpretationRun
 from .reviews import ReviewAnalysis
 from .scoring import DimensionInput, RiskSignal
 from .semantic_reviews import SemanticReviewRun
+from ..extraction.page_context import matching_context_sections
+import re
 
 
 SEVERITY = {"NONE": 0.0, "LOW": 25.0, "MEDIUM": 55.0, "HIGH": 80.0}
@@ -23,8 +25,8 @@ DIMENSION_FIELDS = {
     "SUPPLIER_IDENTITY": {"company_information", "certifications", "activity_history"},
     "DELIVERY": {"delivery_information", "transaction_signals", "reviews"},
     "REVIEW_MANIPULATION": {"reviews"},
-    "AFTER_SALES": {"reviews", "transaction_signals", "company_information"},
-    "PRICING": {"price_information"},
+    "AFTER_SALES": {"reviews", "transaction_signals", "company_information", "page_context"},
+    "PRICING": {"price_information", "page_context"},
     "COMMUNICATION": {"reviews", "transaction_signals"},
 }
 MEDIA_MULTIPLIER = {
@@ -348,6 +350,18 @@ def supplier_score_inputs(run: InterpretationRun) -> tuple[list[DimensionInput],
                 or fields != set(item.evidence_quotes)
                 or not fields.intersection(DIMENSION_FIELDS[item.dimension])):
             continue
+        context_matches = []
+        if 'page_context' in fields:
+            quote = item.evidence_quotes['page_context']
+            context_matches = matching_context_sections(source.get('page_context'), quote)
+            if not context_matches: continue
+            if re.search(r'回头率|store return rate|return customer rate|dropshipping buyer.s return rate', quote, re.I):
+                continue
+            if item.dimension == 'AFTER_SALES' and not re.search(
+                r'售后|退款|退货|换货|赔付|refund|return|exchange|warranty|after.sales|dispute|hoàn tiền|đổi trả|hậu mãi', quote, re.I):
+                continue
+            if item.dimension == 'PRICING' and not re.search(r'¥|￥|价格|起批|USD|CNY|RMB|price|MOQ|minimum|payment', quote, re.I):
+                continue
         metrics = source.get("transaction_signals")
         if "transaction_signals" in fields and isinstance(metrics, Mapping):
             raw_metrics = metrics.get("source_metrics")
@@ -402,7 +416,8 @@ def supplier_score_inputs(run: InterpretationRun) -> tuple[list[DimensionInput],
             "source_field": None,
             "payload": {**item.model_dump(mode="json"), "confidence": confidence,
                         "policy": "supplier-dimensions.v2", "independently_verified": False,
-                        "preliminary": item.dimension == "AFTER_SALES"},
+                        "preliminary": item.dimension == "AFTER_SALES",
+                        "context_sources": context_matches},
         })
     return dimensions, evidence
 
@@ -447,8 +462,13 @@ def supplier_records(run: InterpretationRun) -> tuple[list[dict], list[dict]]:
                     "evidence_id": f"supplier:{field}",
                     "source_kind": "SUPPLIER_DATA",
                     "source_field": field,
-                    "payload": {"field": field},
+                    "payload": {"field": field, **({"value": run.input_payload["evidence"].get("page_context")} if field == "page_context" else {})},
                 })
+    context = run.input_payload['evidence'].get('page_context')
+    if context:
+        evidence.append({'evidence_id': 'supplier:page_context', 'source_kind': 'SUPPLIER_DATA',
+                         'source_field': 'page_context', 'payload': {'value': context,
+                         'statement_vi': 'Ngữ cảnh đã làm sạch từ các trang đã thu thập; nội dung nguồn chưa được xác minh độc lập.'}})
     return findings, evidence
 
 

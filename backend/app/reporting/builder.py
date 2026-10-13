@@ -129,6 +129,8 @@ def _limitations(
                    if isinstance(item, Mapping) and item.get("status") != "OK"]
     if unavailable:
         result.append("Một số trang nhà cung cấp chưa thu thập được: " + "; ".join(unavailable) + ". Báo cáo vẫn giữ bằng chứng sản phẩm đã thu thập.")
+    if _as_dict(snapshot.get("normalized_data")).get('page_context'):
+        result.append("Ngữ cảnh trang gồm các đoạn văn bản đã làm sạch, có giới hạn dung lượng; không đại diện toàn bộ trang và không xác minh độc lập tuyên bố nguồn.")
     html_status = _as_list(_as_dict(snapshot.get("normalized_data")).get("html_capture_status"))
     incomplete_html = [str(item.get("page")) + ": " + str(item.get("status")) for item in html_status
                        if isinstance(item, Mapping) and item.get("status") != "PARSED"]

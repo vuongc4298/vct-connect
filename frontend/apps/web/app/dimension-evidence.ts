@@ -12,12 +12,20 @@ const fields: Record<string, string[]> = {
   PRODUCT_QUALITY: ["reviews", "transaction_signals", "certifications"],
   SUPPLIER_IDENTITY: ["company_information", "certifications", "activity_history"],
   REVIEW_MANIPULATION: ["reviews", "rating", "transaction_signals"],
-  AFTER_SALES: ["reviews", "transaction_signals", "company_information"],
-  PRICING: ["price_information"],
+  AFTER_SALES: ["reviews", "transaction_signals", "company_information", "page_context"],
+  PRICING: ["price_information", "page_context"],
 };
 
 export function dimensionEvidence(dimension: string, evidence: ReportEvidence[]) {
-  const captured = evidence.filter(item => item.source_kind === "SUPPLIER_DATA" &&
+  const contextRelevant = (item: ReportEvidence) => {
+    if (item.source_field !== "page_context") return true;
+    const packet = item.payload.value as { sections?: Array<{text?: unknown}> } | null;
+    return Array.isArray(packet?.sections) && packet.sections.some(section =>
+      typeof section.text === "string" && (dimension === "AFTER_SALES"
+        ? /售后|退款|退货|换货|refund|return|exchange|warranty|after.sales|dispute|hoàn tiền|đổi trả|hậu mãi/i
+        : /¥|￥|价格|起批|USD|CNY|RMB|price|MOQ|minimum|payment/i).test(section.text));
+  };
+  const captured = evidence.filter(item => item.source_kind === "SUPPLIER_DATA" && contextRelevant(item) &&
     fields[dimension]?.includes(item.source_field ?? "") &&
     item.payload.value !== null && item.payload.value !== undefined && item.payload.value !== "" &&
     JSON.stringify(item.payload.value) !== "[]" && JSON.stringify(item.payload.value) !== "{}");

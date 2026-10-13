@@ -9,6 +9,16 @@ export function safeSourceUrl(value: string | undefined): string | null {
   return null;
 }
 
+export function safeContextSourceUrl(value: string | undefined): string | null {
+  const existing = safeSourceUrl(value);
+  if (existing) return existing;
+  if (!value) return null;
+  const shop = /^https:\/\/([a-z0-9][a-z0-9_-]{0,61}[a-z0-9])\.1688\.com\/$/.exec(value);
+  if (shop && !new Set(["www", "detail", "sale", "login", "passport", "m", "factory"]).has(shop[1])) return value;
+  if (/^https:\/\/www\.1688\.com\/factory\/[a-z0-9][a-z0-9_-]{0,62}[a-z0-9]\.html$/.test(value)) return value;
+  return null;
+}
+
 export function sourceLabel(value: string | undefined): "Taobao" | "1688" | "Alibaba" {
   const safe = safeSourceUrl(value);
   return safe?.includes("taobao.com") ? "Taobao" : safe?.includes(".alibaba.com/") ? "Alibaba" : "1688";

@@ -30,6 +30,7 @@ export const REPORT_SOURCE_KIND_LABELS: Record<string, string> = {
 };
 
 export const REPORT_FIELD_LABELS: Record<string, string> = {
+  page_context: "Ngữ cảnh trang đã thu thập",
   supplier_name: "Tên nhà cung cấp", company_information: "Hồ sơ công ty",
   years_active: "Thời gian hoạt động", certifications: "Chứng nhận",
   activity_history: "Lịch sử hoạt động", products: "Sản phẩm",
