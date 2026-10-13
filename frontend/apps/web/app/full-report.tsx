@@ -163,7 +163,7 @@ export function FullReport({ report, extractionMethod }: { report: ReportV1; ext
       </div>
       <p className="chart-caption">Điểm càng cao, rủi ro càng lớn. Vùng kẻ sọc là hạng mục chưa chấm điểm; dữ liệu đã thu thập và khả năng kết luận được hiển thị riêng.</p>
       {report.risk.scoring_version === "v0.1.0" && <p className="chart-caption">Báo cáo này lưu theo mô hình cũ gồm 7 hạng mục. Giao hàng và giao tiếp đã được ẩn; điểm tổng thể và độ phủ đã lưu chưa được tính lại. Tạo phân tích mới để dùng mô hình 5 hạng mục.</p>}
-      {report.risk.scoring_version === "v0.2.1" && <p className="chart-caption">Đánh giá sơ bộ từ mẫu đánh giá công khai và bằng chứng hiện có. Mẫu 10 đánh giá đủ cho kiểm tra ban đầu; mẫu được chọn có thể thiên lệch. Độ tin cậy đánh giá và hậu mãi được giới hạn tối đa 60%; một phản ánh hậu mãi riêng lẻ tối đa 40%. Không xác minh toàn bộ đánh giá hoặc bảo đảm dịch vụ tương lai.</p>}
+      {report.risk.scoring_version === "v0.2.1" && <p className="chart-caption">Đánh giá sơ bộ từ mẫu đánh giá công khai và bằng chứng hiện có. Mẫu 10 đánh giá đủ cho kiểm tra ban đầu; mẫu được chọn có thể thiên lệch. Kết luận thuận lợi về mẫu đánh giá và các nhận định hậu mãi có độ tin cậy tối đa 60%; một phản ánh hậu mãi riêng lẻ tối đa 40%. Không xác minh toàn bộ đánh giá hoặc bảo đảm dịch vụ tương lai.</p>}
       <div className="risk-chart-scale" aria-hidden="true"><span>0</span><span>50</span><span>100</span></div>
       <div className="report-dimension-list">
         {riskDimensions.map((item, index) => {
