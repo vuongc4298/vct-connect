@@ -17,6 +17,7 @@ export const REPORT_FINDING_LABELS: Record<string, string> = {
 
 export const FACTORY_CLASSIFICATION_LABELS: Record<string, string> = {
   FACTORY: "Nhà máy", TRADER: "Thương mại", MIXED: "Kết hợp", UNCERTAIN: "Chưa xác định",
+  FACTORY_LIKELY: "Nghiêng về nhà máy", TRADER_LIKELY: "Nghiêng về thương mại",
 };
 
 export const REPORT_SOURCE_KIND_LABELS: Record<string, string> = {
