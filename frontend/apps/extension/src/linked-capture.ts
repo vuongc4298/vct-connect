@@ -38,12 +38,12 @@ export function factoryUrl(value: string): string | null {
   try {
     const u = new URL(value);
     if (u.protocol !== "https:" || u.port || u.username || u.password) return null;
-    let member = /^\/factory\/(b2b-[a-z0-9]{6,60})\.html$/.exec(u.pathname)?.[1];
+    let member = /^\/factory\/([a-z0-9][a-z0-9_-]{0,62}[a-z0-9])\.html$/.exec(u.pathname)?.[1];
     if (u.hostname === "sale.1688.com" && u.pathname === "/factory/card.html") {
       const ids = u.searchParams.getAll("memberId"), fac = u.searchParams.getAll("facMemId");
       member = ids.length === 1 && (!fac.length || (fac.length === 1 && fac[0] === ids[0])) ? ids[0] : undefined;
     } else if (u.hostname !== "www.1688.com") return null;
-    return member && /^b2b-[a-z0-9]{6,60}$/.test(member) ? `https://www.1688.com/factory/${member}.html` : null;
+    return member && /^[a-z0-9][a-z0-9_-]{0,62}[a-z0-9]$/.test(member) ? `https://www.1688.com/factory/${member}.html` : null;
   } catch { return null; }
 }
 
@@ -74,12 +74,12 @@ export function captureLinkedDom(mode: "PRODUCT_LINK" | "SHOP" | "FACTORY" | "OP
   function factory(value: string): string | null {
     try {
       const u = new URL(value); if (u.protocol !== "https:" || u.port || u.username || u.password) return null;
-      let id = /^\/factory\/(b2b-[a-z0-9]{6,60})\.html$/.exec(u.pathname)?.[1];
+      let id = /^\/factory\/([a-z0-9][a-z0-9_-]{0,62}[a-z0-9])\.html$/.exec(u.pathname)?.[1];
       if (u.hostname === "sale.1688.com" && u.pathname === "/factory/card.html") {
         const ids = u.searchParams.getAll("memberId"), fac = u.searchParams.getAll("facMemId");
         id = ids.length === 1 && (!fac.length || (fac.length === 1 && fac[0] === ids[0])) ? ids[0] : undefined;
       } else if (u.hostname !== "www.1688.com") return null;
-      return id && /^b2b-[a-z0-9]{6,60}$/.test(id) ? `https://www.1688.com/factory/${id}.html` : null;
+      return id && /^[a-z0-9][a-z0-9_-]{0,62}[a-z0-9]$/.test(id) ? `https://www.1688.com/factory/${id}.html` : null;
     } catch { return null; }
   }
   if (mode === "PRODUCT_LINK") {

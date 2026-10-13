@@ -10,6 +10,15 @@ export const REPORT_DIMENSION_LABELS: Record<string, string> = {
   COMMUNICATION: "Giao tiếp",
 };
 
+export const REPORT_FINDING_LABELS: Record<string, string> = {
+  SUPPLIER_RISK: "Rủi ro nhà cung cấp", SUPPLIER_POSITIVE: "Tín hiệu tích cực",
+  SUPPLIER_UNCERTAINTY: "Điểm chưa chắc chắn", IDENTITY_CONTRADICTION: "Thông tin danh tính mâu thuẫn",
+};
+
+export const FACTORY_CLASSIFICATION_LABELS: Record<string, string> = {
+  FACTORY: "Nhà máy", TRADER: "Thương mại", MIXED: "Kết hợp", UNCERTAIN: "Chưa xác định",
+};
+
 export const REPORT_SOURCE_KIND_LABELS: Record<string, string> = {
   SUPPLIER_DATA: "Dữ liệu nhà cung cấp",
   REVIEW: "Đánh giá người mua",

@@ -123,7 +123,7 @@ function Pill({ children, tone = "neutral" }: { children: ReactNode; tone?: "neu
 }
 
 function Landing() {
-  const [guestUrl, setGuestUrl] = useState(FIXTURE_URL);
+  const [guestUrl, setGuestUrl] = useState("");
   const [guestId, setGuestId] = useState<string | null>(null);
   const [guestAnalysis, setGuestAnalysis] = useState<Analysis | null>(null);
   const [guestPreview, setGuestPreview] = useState<GuestPreviewV1 | null>(null);
@@ -177,7 +177,7 @@ function Landing() {
       <Brand />
       <div className="landing-actions">
         <SignInButton><button type="button" className="button button-ghost">Đăng nhập</button></SignInButton>
-        <SignUpButton><button type="button" className="button button-dark">Dùng bản demo</button></SignUpButton>
+        <SignUpButton><button type="button" className="button button-dark">Tạo tài khoản</button></SignUpButton>
       </div>
     </nav>
     <main className="landing-main">
@@ -190,11 +190,11 @@ function Landing() {
           <span className="hero-note">Không cần thẻ thanh toán</span>
         </div>
         <form onSubmit={submitGuest} className="guest-demo-form">
-          <p>Gửi URL nguồn được hỗ trợ hoặc thử tracer tổng hợp mà không cần tài khoản. Giới hạn tạm thời áp dụng cho trình duyệt này.</p>
+          <p>Dán liên kết nhà cung cấp để xem trước kết quả. Đăng nhập để thu thập thêm thông tin cửa hàng, nhà máy và lưu báo cáo.</p>
           <label htmlFor="guest-source-url">Liên kết 1688 / Taobao / Alibaba</label>
-          <input id="guest-source-url" type="url" required value={guestUrl} onChange={event => setGuestUrl(event.target.value)} />
+          <input id="guest-source-url" type="url" required placeholder="https://detail.1688.com/offer/…html" value={guestUrl} onChange={event => setGuestUrl(event.target.value)} />
           <button type="submit" className="button button-ghost" disabled={guestBusy}>
-            {guestBusy ? "Đang gửi…" : "Thử demo khách"}
+            {guestBusy ? "Đang gửi…" : "Xem trước phân tích"}
           </button>
         </form>
         {guestError && <p role="alert" className="error-banner">{guestError}</p>}
@@ -207,13 +207,13 @@ function Landing() {
           </div>
         </>}
         <div className="trust-row">
-          <div><strong>01</strong><span>luồng demo hoàn chỉnh</span></div>
-          <div><strong>&lt; 2 phút</strong><span>mục tiêu phân tích</span></div>
-          <div><strong>Demo</strong><span>dữ liệu minh hoạ</span></div>
+          <div><strong>3 nguồn</strong><span>Sản phẩm · Cửa hàng · Nhà máy</span></div>
+          <div><strong>Rõ nguồn</strong><span>Kiểm tra từng bằng chứng</span></div>
+          <div><strong>Đã lưu</strong><span>Xem lại báo cáo trong tài khoản</span></div>
         </div>
       </section>
       <section className="preview-window" aria-label="Bản xem trước báo cáo demo">
-        <div className="window-bar"><span /><span /><span /><small>BÁO CÁO DEMO</small></div>
+        <div className="window-bar"><span /><span /><span /><small>BÁO CÁO MINH HOẠ</small></div>
         <div className="preview-content">
           <div className="preview-heading">
             <div><span className="platform-chip">1688</span><h2>Guangzhou Future Tech</h2><p>Nhà cung cấp · Guangdong, CN</p></div>
@@ -232,7 +232,7 @@ function Landing() {
         <div className="floating-proof"><span>✓</span><div><strong>Phân tích hoàn tất</strong><small>12 trường dữ liệu minh hoạ</small></div></div>
       </section>
     </main>
-    <footer className="landing-footer"><span>Dữ liệu demo · Không phải đánh giá nhà cung cấp thực tế</span><span>Nguồn fixture: 1688</span></footer>
+    <footer className="landing-footer"><span>Thu thập bằng chứng · Đánh giá rủi ro · Lưu báo cáo</span><span>Báo cáo bên trên dùng dữ liệu minh hoạ.</span></footer>
   </div>;
 }
 
@@ -242,7 +242,7 @@ function Sidebar({ view, historyCount, watchlistCount, onViewChange }: { view: W
     <nav className="side-nav" aria-label="Điều hướng sản phẩm">
       <button type="button" aria-label="Phân tích mới" className={view === "analysis" ? "active" : ""} aria-current={view === "analysis" ? "page" : undefined} onClick={() => onViewChange("analysis")}><span>◇</span><span className="nav-label">Phân tích mới</span></button>
       <button type="button" aria-label={`Lịch sử, ${historyCount} mục`} className={view === "history" ? "active" : ""} aria-current={view === "history" ? "page" : undefined} onClick={() => onViewChange("history")}><span>◷</span><span className="nav-label">Lịch sử</span><span className="nav-count">{historyCount}</span></button>
-      <button type="button" aria-label={`Watchlist, ${watchlistCount} mục`} className={view === "watchlist" ? "active" : ""} aria-current={view === "watchlist" ? "page" : undefined} onClick={() => onViewChange("watchlist")}><span>☆</span><span className="nav-label">Watchlist</span><span className="nav-count">{watchlistCount}</span></button>
+      <button type="button" aria-label={`Theo dõi, ${watchlistCount} mục`} className={view === "watchlist" ? "active" : ""} aria-current={view === "watchlist" ? "page" : undefined} onClick={() => onViewChange("watchlist")}><span>☆</span><span className="nav-label">Theo dõi</span><span className="nav-count">{watchlistCount}</span></button>
       <button type="button" aria-label="Tài khoản" className={view === "account" ? "active" : ""} aria-current={view === "account" ? "page" : undefined} onClick={() => onViewChange("account")}><span>◎</span><span className="nav-label">Tài khoản</span></button>
     </nav>
     <div className="sidebar-footer"><span>?</span><div><strong>Trung tâm trợ giúp</strong><small>Hướng dẫn sử dụng</small></div></div>
@@ -430,7 +430,7 @@ function DemoReport({ analysisId, sourceUrl }: { analysisId: string; sourceUrl: 
 
 export default function Page() {
   const { getToken, isLoaded, isSignedIn, userId } = useAuth();
-  const [url, setUrl] = useState(FIXTURE_URL);
+  const [url, setUrl] = useState("");
   const savedPageInput = useRef<HTMLInputElement>(null);
   const reopenedId = useRef<string | null>(null);
   const [savedPage, setSavedPage] = useState<File | null>(null);
@@ -496,7 +496,7 @@ export default function Page() {
       cause => {
         if (!active) return;
         setWatchlist([]);
-        setWatchlistError(cause instanceof Error ? cause.message : "Không thể tải Watchlist");
+        setWatchlistError(cause instanceof Error ? cause.message : "Không thể tải danh sách theo dõi");
       },
     ).finally(() => { if (active) setWatchlistLoading(false); });
     return () => { active = false; };
@@ -627,7 +627,7 @@ export default function Page() {
       await addWatchlist(id, { getToken });
       setWatchlist(await getWatchlist({ getToken }));
     } catch (cause) {
-      setWatchlistError(cause instanceof Error ? cause.message : "Không thể lưu Watchlist");
+      setWatchlistError(cause instanceof Error ? cause.message : "Không thể lưu nhà cung cấp");
     } finally {
       setWatchlistBusy(false);
     }
@@ -640,7 +640,7 @@ export default function Page() {
       await removeWatchlist(entry.id, { getToken });
       setWatchlist(current => current.filter(item => item.id !== entry.id));
     } catch (cause) {
-      setWatchlistError(cause instanceof Error ? cause.message : "Không thể xoá khỏi Watchlist");
+      setWatchlistError(cause instanceof Error ? cause.message : "Không thể xoá khỏi danh sách theo dõi");
     } finally {
       setWatchlistRemovingId(null);
     }
@@ -699,33 +699,33 @@ export default function Page() {
     clearSavedPage();
   }
 
-  if (!isLoaded) return <div className="loading-screen"><Brand /><span>Đang khởi tạo bản demo…</span></div>;
+  if (!isLoaded) return <div className="loading-screen"><Brand /><span>Đang mở VCT Connect…</span></div>;
   if (!isSignedIn) return <Landing />;
 
   return <div className="product-shell">
     <Sidebar view={view} historyCount={analysisHistory.length} watchlistCount={watchlist.length} onViewChange={setView} />
     <div className="workspace">
-      <header className="workspace-header"><div><span>Không gian Pilot</span><i>/</i><strong>{view === "analysis" ? "Phân tích mới" : view === "history" ? "Lịch sử" : view === "watchlist" ? "Watchlist" : "Tài khoản"}</strong></div><nav className="mobile-nav" aria-label="Điều hướng di động"><button type="button" className={view === "analysis" ? "active" : ""} aria-current={view === "analysis" ? "page" : undefined} onClick={() => setView("analysis")}>Phân tích</button><button type="button" className={view === "history" ? "active" : ""} aria-current={view === "history" ? "page" : undefined} onClick={() => setView("history")}>Lịch sử</button><button type="button" className={view === "watchlist" ? "active" : ""} aria-current={view === "watchlist" ? "page" : undefined} onClick={() => setView("watchlist")}>Watchlist</button><button type="button" className={view === "account" ? "active" : ""} aria-current={view === "account" ? "page" : undefined} onClick={() => setView("account")}>Tài khoản</button></nav><div className="header-tools"><button type="button" className="icon-button" aria-label="Thông báo">♢<i /></button><span className="language">VI</span><UserButton /></div></header>
+      <header className="workspace-header"><div><span>Không gian làm việc</span><i>/</i><strong>{view === "analysis" ? "Phân tích mới" : view === "history" ? "Lịch sử" : view === "watchlist" ? "Theo dõi" : "Tài khoản"}</strong></div><nav className="mobile-nav" aria-label="Điều hướng di động"><button type="button" className={view === "analysis" ? "active" : ""} aria-current={view === "analysis" ? "page" : undefined} onClick={() => setView("analysis")}>Phân tích</button><button type="button" className={view === "history" ? "active" : ""} aria-current={view === "history" ? "page" : undefined} onClick={() => setView("history")}>Lịch sử</button><button type="button" className={view === "watchlist" ? "active" : ""} aria-current={view === "watchlist" ? "page" : undefined} onClick={() => setView("watchlist")}>Theo dõi</button><button type="button" className={view === "account" ? "active" : ""} aria-current={view === "account" ? "page" : undefined} onClick={() => setView("account")}>Tài khoản</button></nav><div className="header-tools"><span className="language">VI</span><UserButton /></div></header>
       {view === "history" ? <AnalysisHistory items={analysisHistory} loading={historyLoading} error={historyError} onOpen={openHistoryAnalysis} onNewAnalysis={showNewAnalysis} /> : view === "watchlist" ? <WatchlistView entries={watchlist} loading={watchlistLoading} error={watchlistError} removingId={watchlistRemovingId} onOpen={openWatchlistAnalysis} onRemove={deleteWatchlistEntry} /> : view === "account" ? (accountState ? <AccountStateView state={accountState} /> : <main className="dashboard account-dashboard"><section className="account-card" aria-live="polite">{accountLoading ? <p>Đang tải trạng thái tài khoản…</p> : <p role={accountError ? "alert" : undefined}>{accountError || "Chưa có trạng thái tài khoản."}</p>}</section></main>) : <main className="dashboard" id="analysis">
-        <section className="dashboard-intro"><div><Pill tone="good">BẢN DEMO TƯƠNG TÁC</Pill><h1>Phân tích nhà cung cấp</h1><p>Dán liên kết sản phẩm 1688, sản phẩm / cửa hàng Taobao hoặc sản phẩm / hồ sơ công ty Alibaba để xem bằng chứng công khai và độ phủ. URL mẫu chạy tracer tổng hợp để kiểm tra luồng xử lý.</p></div>{(analysis?.status === "COMPLETED" || analysis?.status === "FAILED_FINAL") && <button type="button" className="button button-ghost" onClick={showNewAnalysis}>+ Phân tích mới</button>}</section>
+        <section className="dashboard-intro"><div><Pill tone="good">THẨM ĐỊNH NHÀ CUNG CẤP</Pill><h1>Phân tích nhà cung cấp</h1><p>Bắt đầu với liên kết sản phẩm. Bổ sung thông tin cửa hàng và nhà máy bằng tiện ích VCT Connect để có báo cáo đầy đủ hơn.</p></div>{(analysis?.status === "COMPLETED" || analysis?.status === "FAILED_FINAL") && <button type="button" className="button button-ghost" onClick={showNewAnalysis}>+ Phân tích mới</button>}</section>
         <section className="analyze-card">
           <form onSubmit={submit}>
             <label htmlFor="source-url">LIÊN KẾT 1688 / TAOBAO / ALIBABA</label>
-            <div className="url-field"><span className="link-icon">↗</span><input id="source-url" type="url" required value={url} onChange={event => setUrl(event.target.value)} aria-describedby="url-help" /><button className="button button-primary" disabled={busy}>{busy ? <><i className="spinner" /> Đang gửi</> : <>{savedPage ? "Nhập trang đã lưu" : "Trích xuất"} <span>→</span></>}</button></div>
+            <div className="url-field"><span className="link-icon">↗</span><input id="source-url" type="url" required placeholder="https://detail.1688.com/offer/…html" value={url} onChange={event => setUrl(event.target.value)} aria-describedby="url-help" /><button className="button button-primary" disabled={busy}>{busy ? <><i className="spinner" /> Đang gửi</> : <>{savedPage ? "Nhập trang đã lưu" : "Trích xuất"} <span>→</span></>}</button></div>
             <label htmlFor="saved-page">Trang 1688 / Taobao đã lưu (HTML, tùy chọn)</label>
-            <input id="saved-page" ref={savedPageInput} type="file" accept=".html,.htm,text/html" onChange={event => setSavedPage(event.target.files?.[0] ?? null)} />
-            <div className="form-meta" id="url-help"><span><b>1688 / Taobao / Alibaba</b> URL HTTPS: detail.1688.com/offer/…html, item.taobao.com/item.htm?id=…, shop&lt;ID&gt;.taobao.com / shop&lt;ID&gt;.world.taobao.com, www.alibaba.com/product-detail/…_&lt;ID&gt;.html hoặc &lt;store&gt;.en.alibaba.com/company_profile.html. HTML đã lưu và tiện ích chụp trang hỗ trợ 1688 / Taobao. Alibaba chỉ hỗ trợ trích xuất URL công khai. URL mẫu hiện tại chạy fixture demo.</span><Pill>{savedPage ? "USER_UPLOAD" : url === FIXTURE_URL ? "Dữ liệu fixture" : "Trích xuất công khai"}</Pill></div>
+            <div className="saved-html-picker"><input id="saved-page" className="file-input-hidden" tabIndex={-1} ref={savedPageInput} type="file" accept=".html,.htm,text/html" onChange={event => setSavedPage(event.target.files?.[0] ?? null)} /><button type="button" className="button button-ghost" onClick={() => savedPageInput.current?.click()}>Chọn tệp HTML</button><span>{savedPage?.name || "Chưa chọn tệp"}</span></div>
+            <div className="form-meta" id="url-help"><span><b>1688 / Taobao / Alibaba</b> Dán liên kết HTTPS. Với 1688 / Taobao, dùng tiện ích hoặc nhập HTML đã lưu khi trang hạn chế truy cập. Alibaba hỗ trợ liên kết công khai.</span><Pill>{savedPage ? "HTML đã lưu" : url === FIXTURE_URL ? "Dữ liệu minh hoạ" : "Bằng chứng nguồn"}</Pill></div>
           </form>
         </section>
-        {error && <div role="alert" className="error-banner"><span>!</span><div><strong>Không thể tiếp tục</strong><p>{error === "Analysis not found" ? "Không tìm thấy phân tích. Vui lòng gửi lại dữ liệu demo." : error}</p></div></div>}
+        {error && <div role="alert" className="error-banner"><span>!</span><div><strong>Không thể tiếp tục</strong><p>{error === "Analysis not found" ? "Không tìm thấy phân tích. Vui lòng tạo phân tích mới." : error}</p></div></div>}
         {id && <ProgressCard analysis={analysis} delayed={delayed} requestedMethod={requestedMethod} reportAvailable={Boolean(report)} />}
         {id && analysis?.status === "COMPLETED" && reportLoading &&
           <section className="report-loading" aria-live="polite"><i className="spinner" /><span>Đang tải báo cáo đánh giá đã lưu…</span></section>}
-        {id && analysis?.status === "COMPLETED" && report && <><div className="report-watchlist-action"><button type="button" className="button button-ghost" disabled={watchlistBusy} onClick={() => { void saveCurrentSupplier(); }}>{watchlistBusy ? "Đang lưu…" : "☆ Lưu vào Watchlist"}</button>{watchlistError && <span role="alert">{watchlistError}</span>}</div><FullReport key={report.analysis_id} report={report} extractionMethod={analysis.extraction_method} /></>}
+        {id && analysis?.status === "COMPLETED" && report && <><div className="report-watchlist-action"><button type="button" className="button button-ghost" disabled={watchlistBusy} onClick={() => { void saveCurrentSupplier(); }}>{watchlistBusy ? "Đang lưu…" : "☆ Theo dõi nhà cung cấp"}</button>{watchlistError && <span role="alert">{watchlistError}</span>}</div><FullReport key={report.analysis_id} report={report} extractionMethod={analysis.extraction_method} /></>}
         {id && analysis?.status === "COMPLETED" && !reportLoading && !report && reportError &&
           <div className="report-unavailable" role="status"><span>i</span><div><strong>Chưa có báo cáo đánh giá đầy đủ</strong><p>{reportError}</p></div></div>}
         {id && analysis?.status === "COMPLETED" && !report && !isFixtureResult(analysis.result) && <ExtractionEvidence analysis={analysis} />}
-        {!id && <section className="empty-guide"><div className="guide-icon">◎</div><h2>Một URL, bằng chứng rõ nguồn</h2><p>URL 1688, Taobao và Alibaba công khai được trích xuất khi truy cập được; URL mẫu chạy tracer tổng hợp, không tạo điểm rủi ro. Trang bị chặn sẽ hiển thị trạng thái rõ ràng.</p><div><span>1</span>Gửi URL<i /><span>2</span>Chờ xử lý<i /><span>3</span>Xem kết quả</div></section>}
+        {!id && <section className="empty-guide"><div className="guide-icon">◎</div><h2>Thu thập đủ bằng chứng trước khi đặt hàng</h2><p>VCT Connect tổng hợp thông tin nguồn và chỉ chấm điểm những hạng mục có bằng chứng. Bạn có thể mở lại báo cáo và kiểm tra từng trích dẫn.</p><div><span>1</span>Thu thập nguồn<i /><span>2</span>Đánh giá bằng chứng<i /><span>3</span>Xem báo cáo</div></section>}
       </main>}
     </div>
   </div>;

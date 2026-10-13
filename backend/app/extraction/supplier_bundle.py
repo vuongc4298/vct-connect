@@ -1,8 +1,6 @@
 """Strict selected browser evidence for one linked 1688 collection."""
 from datetime import datetime, timezone
 import json
-from urllib.parse import parse_qs, urlsplit
-import re
 from uuid import UUID
 
 from pydantic import BaseModel, ConfigDict, Field, model_validator
@@ -12,26 +10,9 @@ from .extension_merge import reject_sensitive_page_state
 from .evidence import validate_json_evidence
 from .browser_html import enrich_browser_html, MAX_HTML_BUNDLE_BYTES
 from .shop1688_identity import shop_identity
+from .factory1688_identity import factory_identity
 
 MAX_BUNDLE_BYTES = 32_768
-
-
-def factory_identity(value: str) -> str:
-    p = urlsplit(value)
-    if p.scheme != "https" or p.username or p.password or p.port:
-        raise ValueError("Unsupported factory link")
-    member = None
-    if p.netloc == "sale.1688.com" and p.path == "/factory/card.html":
-        query = parse_qs(p.query)
-        ids = query.get("memberId", [])
-        if len(ids) == 1 and query.get("facMemId", []) in ([], ids):
-            member = ids[0]
-    elif p.netloc == "www.1688.com":
-        match = re.fullmatch(r"/factory/(b2b-[a-z0-9]{6,60})\.html", p.path)
-        member = match[1] if match else None
-    if not member or not re.fullmatch(r"b2b-[a-z0-9]{6,60}", member):
-        raise ValueError("Unsupported factory member identity")
-    return f"https://www.1688.com/factory/{member}.html"
 
 
 class ShopSelection(BaseModel):
