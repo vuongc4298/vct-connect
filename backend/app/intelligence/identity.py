@@ -7,6 +7,10 @@ factory/trader likelihoods, confidence, supporting evidence and uncertainty.
 from __future__ import annotations
 
 from typing import Literal, Mapping, Sequence
+import re
+
+from ..extraction.factory_claims import normalize_factory_claims, stored_factory_claims
+from ..extraction.factory1688_identity import factory_identity
 
 from pydantic import BaseModel, ConfigDict, Field, field_validator
 
@@ -148,8 +152,52 @@ def _text(value: object) -> str:
 def supplier_identity_evidence(supplier_data: Mapping[str, object]) -> list[IdentityEvidence]:
     """Conservatively map only present SupplierData fields into identity evidence."""
     company = supplier_data.get("company_information")
-    company = company if isinstance(company, Mapping) else {}
+    company = dict(company) if isinstance(company, Mapping) else {}
     evidence: list[IdentityEvidence] = []
+
+    claims = stored_factory_claims(company)
+    labeled_claims = set(claims)
+    # Older snapshots retained company area in the labeled factory description.
+    if "企业面积" not in claims:
+        description = company.get("factory_description_display_text")
+        if isinstance(description, str):
+            area = re.search(r"企业面积\s+([0-9]+(?:\.[0-9]+)?\s*(?:m²|m2|㎡|平方米))", description)
+            if area:
+                claims["企业面积"] = area[1]
+    try:
+        profile = factory_identity(company.get("factory_profile_source_url", ""))
+    except (ValueError, TypeError, AttributeError):
+        profile = None
+    if profile and claims:
+        company = {**normalize_factory_claims(claims), **company}
+        evidence.append(IdentityEvidence(
+            evidence_id="company_information.factory_profile_source_url",
+            source_field="company_information.factory_profile_source_url",
+            direction="FACTORY", strength=0.35, reliability=0.5, source_kind="SELF_CLAIM",
+            statement="Có hồ sơ nhà máy trên nền tảng; chưa xác minh độc lập hoạt động sản xuất.",
+            value=profile,
+        ))
+        for label in ("企业面积", "员工总数"):
+            if claims.get(label):
+                evidence.append(IdentityEvidence(
+                    evidence_id=f"company_information.factory_profile_claims.{label}",
+                    source_field=("company_information.factory_profile_claims" if isinstance(company.get("factory_profile_claims"), dict)
+                                  else "company_information.factory_profile_claims_display_text" if label in labeled_claims
+                                  else "company_information.factory_description_display_text"),
+                    direction="NEUTRAL", strength=0, reliability=0.6, source_kind="PLATFORM_PROFILE",
+                    statement=("Diện tích doanh nghiệp được công bố; có thể là văn phòng hoặc kho, chưa xác minh xưởng sản xuất."
+                               if label == "企业面积" else "Quy mô nhân sự được công bố; số nhân viên không tự xác minh loại hình sản xuất."),
+                    value=f"{label}: {claims[label]}",
+                ))
+        processing = claims.get("加工方式", "")
+        if any(token in processing for token in ("来样加工", "来图加工", "生产", "加工定制")):
+            evidence.append(IdentityEvidence(
+                evidence_id="company_information.processing_methods_display_text",
+                source_field="company_information.processing_methods_display_text",
+                direction="FACTORY", strength=0.6, reliability=0.55, source_kind="SELF_CLAIM",
+                statement="Hồ sơ công bố nhận gia công; đây là tuyên bố của nguồn, chưa kiểm chứng độc lập.",
+                value=processing,
+            ))
 
     business_type = _text(company.get("business_type"))
     if business_type:
@@ -182,6 +230,7 @@ def supplier_identity_evidence(supplier_data: Mapping[str, object]) -> list[Iden
         "qc_staff_count": (0.55, "QC staffing evidence is present."),
         "rd_team_count": (0.45, "R&D staffing evidence is present."),
         "employee_count": (0.3, "Employee-count evidence is present."),
+        "equipment_count": (0.6, "Hồ sơ công bố số lượng thiết bị sản xuất; cần xác minh thực tế."),
     }
     for field, (strength, statement) in numeric_factory_fields.items():
         raw = company.get(field)

@@ -98,3 +98,20 @@ def test_collection_metadata_does_not_manufacture_company_evidence():
     result = normalize(value)
     assert result["supplier_data"]["company_information"] is None
     assert "company_information" in result["supplier_data"]["missing_fields"]
+
+
+def test_company_area_and_staff_range_keep_their_actual_scope():
+    value = selected()
+    value['factory']['claims'].append({'name': '企业面积', 'value': '2100m²'})
+    company = normalize(value)['supplier_data']['company_information']
+    assert company['company_area_sqm'] == 2100
+    assert company['employee_count_display_text'] == '11~50人'
+    assert 'factory_area_sqm' not in company and 'employee_count' not in company
+    assert company['factory_profile_claims']['企业面积'] == '2100m²'
+
+
+def test_explicit_factory_area_and_production_lines_are_normalized():
+    value = selected()
+    value['factory']['claims'] += [{'name': '工厂面积', 'value': '3600m²'}, {'name': '生产线数量', 'value': '4条'}]
+    company = normalize(value)['supplier_data']['company_information']
+    assert company['factory_area_sqm'] == 3600 and company['production_line_count'] == 4

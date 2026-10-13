@@ -114,3 +114,68 @@ def test_local_metric_label_and_value_are_preserved_together():
         '<div><div>Return and exchange experience</div><div>4.7</div></div>')
     data = normalize(value)['supplier_data']
     assert matching_context_sections(data['page_context'], 'Return and exchange experience 4.7')
+
+
+def test_fact_first_context_omits_generic_price_definitions_and_duplicate_moq():
+    from backend.app.intelligence.interpretation import _supplier_input, _user_prompt
+    data = supplier_fixture()
+    data['page_context'] = select_context([
+        section('Pre-event price: the standard price excludes platform promotions.') | {'section_id': 'boilerplate'},
+        section(str(data['price_information'])) | {'section_id': 'duplicated-price'},
+        section(), section() | {'section_id': 'duplicate-policy'},
+    ])
+    payload = _supplier_input(data)
+    sections = payload['evidence']['page_context']['sections']
+    assert [item['text'] for item in sections] == [POLICY]
+    assert sections[0]['source_url'] == SHOP and sections[0]['html_sha256'] == 'a' * 64
+    prompt = _user_prompt(payload)
+    assert 'html_sha256' not in prompt and POLICY in prompt
+    assert 'Pre-event price:' not in prompt
+
+
+def test_advertised_product_refund_policy_scores_after_sales_but_generic_product_praise_does_not():
+    for quote, expected in [(POLICY, True), ('Excellent comfortable product.', False)]:
+        data = supplier_fixture()
+        data['products'] = [{'services_display_text': quote}]
+        run = interpret_supplier_data(data, provider=provider_with(
+            assessment('AFTER_SALES', 'LOW', 'products', quote)), model='fixture')
+        dimensions, _ = supplier_score_inputs(run)
+        assert bool(dimensions) is expected
+        if expected: assert dimensions[0].confidence == 0.6
+
+
+def test_translated_compensation_policy_can_support_preliminary_after_sales():
+    quote = 'Quality discrepancy, guaranteed compensation'
+    data = supplier_fixture() | {'page_context': select_context([section(quote)])}
+    run = interpret_supplier_data(data, provider=provider_with(
+        assessment('AFTER_SALES', 'LOW', 'page_context', quote)), model='fixture')
+    assert supplier_score_inputs(run)[0][0].confidence == 0.6
+
+
+def test_service_leaf_alias_recovers_only_an_exact_captured_policy_quote():
+    data = supplier_fixture()
+    data['products'] = [{'services_display_text': POLICY, 'description_display_text': 'Price definitions.'}]
+    item = assessment('AFTER_SALES', 'LOW', 'products', 'Price definitions.')
+    item['evidence_fields'].append('services_display_text')
+    item['evidence_quotes']['services_display_text'] = POLICY
+    run = interpret_supplier_data(data, provider=provider_with(item), model='fixture')
+    assert supplier_score_inputs(run)[0][0].confidence == 0.6
+    assert run.interpretation.dimension_assessments[0].evidence_quotes == {'products': POLICY}
+    assert run.provider_response.settings['source_field_aliases']['validation'] == 'exact captured service-text quote'
+
+
+def test_service_leaf_alias_cannot_accept_an_invented_policy():
+    data = supplier_fixture()
+    data['products'] = [{'services_display_text': POLICY}]
+    item = assessment('AFTER_SALES', 'LOW', 'services_display_text', 'All orders refunded forever.')
+    with pytest.raises(ValueError, match='schema'):
+        interpret_supplier_data(data, provider=provider_with(item), model='fixture')
+
+
+def test_unverified_positive_protection_alone_is_not_a_material_after_sales_concern():
+    data = supplier_fixture()
+    quote = 'Quality discrepancy, guaranteed compensation'
+    data['products'] = [{'services_display_text': quote}]
+    run = interpret_supplier_data(data, provider=provider_with(
+        assessment('AFTER_SALES', 'MEDIUM', 'products', quote)), model='fixture')
+    assert supplier_score_inputs(run) == ([], [])

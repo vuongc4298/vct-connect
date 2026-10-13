@@ -262,3 +262,26 @@ def test_identity_assessment_contract_has_no_supplier_risk_score():
     payload = result.model_dump()
     assert "risk_score" not in payload
     assert payload["supplier_risk_penalty"] == 0
+
+
+def test_captured_factory_profile_is_considered_without_inventing_manufacturing_capacity():
+    supplier = {"company_information": {
+        "factory_profile_source_url": "https://www.1688.com/factory/b2b-22181670143634e0da.html",
+        "factory_profile_claims_display_text": "成立时间: 2024.06.13; 员工总数: 4人; 接外贸订单: 不支持",
+        "factory_description_display_text": "工厂档案 成立时间 2024.06.13 企业面积 2100m² 员工总数 4人",
+    }}
+    result = assess_supplier_identity(supplier)
+    assert len(result.supporting_evidence) == 3
+    assert result.confidence > 0
+    assert result.classification == "UNCERTAIN"
+    assert "self_claim_only" in result.uncertainty_reasons
+    assert not any(item.source_field.endswith("factory_area_sqm") for item in result.supporting_evidence)
+    assert any(item.direction == "NEUTRAL" and "2100m²" in str(item.value) for item in result.supporting_evidence)
+
+
+def test_unrelated_factory_url_does_not_activate_factory_claims():
+    result = assess_supplier_identity({"company_information": {
+        "factory_profile_source_url": "https://example.com/factory/other.html",
+        "factory_profile_claims_display_text": "员工总数: 4人",
+    }})
+    assert result.supporting_evidence == []

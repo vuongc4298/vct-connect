@@ -162,6 +162,21 @@ function reportFixture(label: ReportV1["risk"]["label"] = "MODERATE"): ReportV1 
   };
 }
 
+test("unscored factory identity hides default probabilities and displays considered claims", () => {
+  const report = reportFixture();
+  report.factory_trader = { classification: "UNCERTAIN", confidence: 0,
+    factory_likelihood: 0.5, trader_likelihood: 0.5 };
+  let html = renderToStaticMarkup(<FullReport report={report} />);
+  assert.match(html, /Chưa có bằng chứng phân biệt/);
+  assert.doesNotMatch(html, /<b>Khả năng nhà máy/);
+  report.factory_trader.confidence = 0.125;
+  report.factory_trader.supporting_evidence = [{evidence_id: "area", statement: "Diện tích doanh nghiệp chưa xác minh xưởng sản xuất.", value: "2100m²"}];
+  html = renderToStaticMarkup(<FullReport report={report} />);
+  assert.match(html, /Đã xem xét thông tin hồ sơ/);
+  assert.match(html, /2100m²/);
+  assert.doesNotMatch(html, /<b>Khả năng nhà máy/);
+});
+
 test("full report renders real score, identity, review, actions and evidence traceability", () => {
   const html = renderToStaticMarkup(<FullReport report={reportFixture()} />);
 

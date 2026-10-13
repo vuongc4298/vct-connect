@@ -11,6 +11,7 @@ from .evidence import validate_json_evidence
 from .browser_html import enrich_browser_html, MAX_HTML_BUNDLE_BYTES
 from .shop1688_identity import shop_identity
 from .factory1688_identity import factory_identity
+from .factory_claims import FACTORY_FIELDS, normalize_factory_claims
 
 MAX_BUNDLE_BYTES = 32_768
 
@@ -100,7 +101,7 @@ def normalize_bundle(bundle: SupplierBundle, *, at=None):
             raise ValueError("Factory identity does not match supplier shop")
         data = result["supplier_data"]
         claims = {}
-        permitted = {"成立时间", "年交易额", "员工总数", "定制起订量", "贴牌起订量", "接外贸订单", "加工方式", "增值税发票"}
+        permitted = FACTORY_FIELDS
         for item in bundle.factory.claims:
             if item.name not in permitted:
                 raise ValueError("Unsupported factory field")
@@ -112,6 +113,7 @@ def normalize_bundle(bundle: SupplierBundle, *, at=None):
         company = data.get("company_information") or {}
         company.update(shop_source_url=expected_shop, factory_profile_source_url=profile,
                        factory_profile_claims_display_text="; ".join(f"{k}: {v}" for k, v in claims.items()))
+        company.update(normalize_factory_claims(claims))
         if bundle.factory.description:
             company["factory_description_display_text"] = bundle.factory.description
         if claims.get("成立时间"):

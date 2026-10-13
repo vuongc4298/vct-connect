@@ -6,6 +6,44 @@ import re
 VERSION = 'page-context.v1'
 MAX_CONTEXT_BYTES = 12_000
 MAX_SECTIONS = 24
+LLM_CONTEXT_BYTES = 4_000
+POLICY = re.compile(r'售后|退款|退货|换货|赔付|refund|return|exchange|warranty|after.sales|dispute|compensation|payment|MOQ|minimum.order|hậu mãi|hoàn tiền|đổi trả', re.I)
+BOILERPLATE = re.compile(r'pre.event price|underlined price|uncrossed price|release price|price under (?:non.)?platform activities|same style:|跨平台|划线价格|活动前价格', re.I)
+POLICY_DETAIL = re.compile(r'售后|退款|退货|换货|赔付|refund|return shipping|return damaged|exchange|warranty|after.sales|dispute|compensation|hoàn tiền|đổi trả|hậu mãi', re.I)
+
+
+def supplemental_context(context, evidence, max_bytes=LLM_CONTEXT_BYTES):
+    """Send only new relevant passages; retain full source provenance for audit."""
+    def fragments(value):
+        if isinstance(value, str):
+            yield ' '.join(value.split())
+        elif isinstance(value, dict):
+            for item in value.values():
+                yield from fragments(item)
+        elif isinstance(value, list):
+            for item in value:
+                yield from fragments(item)
+
+    represented = list(fragments(evidence))
+    candidates = []
+    for section in context.get('sections', []):
+        if not isinstance(section, dict) or not isinstance(section.get('text'), str):
+            continue
+        text = ' '.join(section['text'].split())
+        if BOILERPLATE.search(text) or not POLICY.search(text):
+            continue
+        # Keep one concise policy excerpt even when buried in a general field;
+        # its explicit policy routing is useful and adds little repeated text.
+        if any(text in existing for existing in represented) and not POLICY_DETAIL.search(text):
+            continue
+        if any(text in existing['text'] for existing in candidates):
+            continue
+        candidates = [existing for existing in candidates if existing['text'] not in text]
+        candidates.append({**section, 'text': text})
+    packet = select_context(candidates, max_bytes=max(0, max_bytes - 128))
+    packet['selection'] = 'fact-first: new policies and terms only; duplicates and platform price definitions omitted'
+    packet['truncated'] = packet['truncated'] or bool(context.get('truncated'))
+    return packet
 PRIORITY = re.compile(r'售后|退款|退货|换货|赔付|保障|认证|证书|价格|起批|refund|return|exchange|warranty|after.sales|certif|minimum.order|MOQ|payment|price|hậu mãi|hoàn tiền|đổi trả', re.I)
 
 
