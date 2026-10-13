@@ -275,3 +275,13 @@ After-sales may use relevant refund/return policies, correctly labeled service m
 3. Inspect after-sales rationale and source quotes. Confirm it describes actual policy, return/refund feedback or a specifically labeled metric.
 4. Check that sparse evidence still leaves unsupported categories and potentially the overall score unknown.
 5. Reopen a historical report: its saved scores should not change. The extension remains version 0.6.1 because this update changes server scoring and the web report.
+
+### Cleaned HTML context alongside structured evidence — supplier prompt v6
+
+The server now selects bounded text from identity-checked, sanitized product/shop/factory HTML already uploaded by the extension. Structured fields remain the primary model input. Supplemental context prioritizes policies, terms and labeled claims, retains section IDs/source URLs/HTML hashes, and is capped at24 sections/12KB (shrunk further when required by the model input budget). Extra text does not increase the12-field extraction completeness or review sample count. No page scripts execute and no additional source pages/assets are fetched.
+
+1. Create a fresh product→shop→factory capture with extension0.6.1; HTML must actually be captured/uploaded to provide supplemental context.
+2. Open **Nguồn và bằng chứng → Ngữ cảnh trang đã thu thập**. Inspect readable excerpts, headings and exact product/shop/factory source links; additional excerpts are paged five at a time.
+3. When pricing or after-sales uses context, inspect its model-evidence card for the exact quote and linked original section. A metadata-only or fabricated quote must never produce a score; ambiguous return-rate/generic-service signals remain restricted.
+4. Confirm the report discloses bounded/possibly truncated context. Content outside captured public sections, hidden behind unavailable pages, or beyond budgets remains unavailable; absence from context is not proof a policy does not exist.
+5. Reopen from history. Context and cited evidence remain tied to the snapshot; old reports are not retroactively enriched. A fresh capture is required to use promptv6/pipelinev0.5.

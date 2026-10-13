@@ -6,6 +6,7 @@ from urllib.parse import urlsplit
 from .dom import tree, active
 from .extension_merge import reject_sensitive_page_state, _merge_review_cards
 from .contracts import evidence_coverage, evidence_status
+from .page_context import collect_context, select_context
 
 MAX_HTML_BYTES = 2_000_000
 MAX_HTML_BUNDLE_BYTES = 8_000_000
@@ -15,6 +16,7 @@ def enrich_browser_html(result, sources, *, shop_url=None, factory_url=None, acc
     result = copy.deepcopy(result)
     data = result["supplier_data"]
     records = []
+    context_sections = []
     for source in sources:
         page, url, html = source.page, source.source_url, source.html
         encoded = html.encode("utf-8")
@@ -109,6 +111,7 @@ def enrich_browser_html(result, sources, *, shop_url=None, factory_url=None, acc
                     value = text(title.next, 1600)
                     if value: company["factory_description_html_display_text"] = value
             data["company_information"] = company or None
+        context_sections.extend(collect_context(parsed, page, url, sha256(encoded).hexdigest()))
         # Keep normalized evidence inside the existing LLM input budget.
         budget_limited = len(json.dumps(data, ensure_ascii=False).encode("utf-8")) > 48_000
         if budget_limited: data = before
@@ -121,6 +124,8 @@ def enrich_browser_html(result, sources, *, shop_url=None, factory_url=None, acc
                         "status": "NOT_CAPTURED", "provenance": "SANITIZED_RENDERED_BROWSER_HTML"})
     data.update(evidence_coverage(data))
     data["html_capture_status"] = records
+    if context_sections:
+        data["page_context"] = select_context(context_sections)
     result["supplier_data"] = data
     result["reviews"] = data.get("reviews") or []
     result["extraction_status"] = evidence_status(data)

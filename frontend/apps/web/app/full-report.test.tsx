@@ -327,3 +327,21 @@ test("each text section presents at most five items with remaining items accessi
   assert.match(html, /Giới hạn: tiếp/);
   assert.match(html, /<details><summary class="report-source-head"/);
 });
+
+
+test("captured page context renders readable source excerpts with safe links and five-item paging", () => {
+  const report = reportFixture();
+  report.evidence.push({evidence_id: "supplier:page_context", source_kind: "SUPPLIER_DATA",
+    source_field: "page_context", payload: {value: {truncated: true, sections: Array.from({length: 8}, (_, i) => ({
+      section_id: "shop:" + i, heading: "Returns policy",
+      text: "Context paragraph " + i,
+      source_url: i === 0 ? "javascript:alert(1)" : "https://hztxsy.1688.com/",
+    }))}}});
+  const html = renderToStaticMarkup(<FullReport report={report} />);
+  assert.match(html, /Ngữ cảnh trang đã thu thập/);
+  assert.match(html, /Ngữ cảnh được giới hạn dung lượng/);
+  assert.match(html, /Context paragraph 4/);
+  assert.doesNotMatch(html, /Context paragraph 5/);
+  assert.match(html, /href="https:\/\/hztxsy\.1688\.com\//);
+  assert.doesNotMatch(html, /href="javascript:/);
+});

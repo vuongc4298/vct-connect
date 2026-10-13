@@ -15,9 +15,9 @@ from .scoring import RiskDimension
 
 
 SCHEMA_VERSION = "supplier-interpretation.v1"
-PROMPT_VERSION = "supplier-interpretation.prompt.v5"
-PIPELINE_VERSION = "analysis-intelligence.v0.4"
-_ALLOWED_EVIDENCE_FIELDS = frozenset(EVIDENCE_FIELDS)
+PROMPT_VERSION = "supplier-interpretation.prompt.v6"
+PIPELINE_VERSION = "analysis-intelligence.v0.5"
+_ALLOWED_EVIDENCE_FIELDS = frozenset((*EVIDENCE_FIELDS, "page_context"))
 
 
 class EvidenceSignal(BaseModel):

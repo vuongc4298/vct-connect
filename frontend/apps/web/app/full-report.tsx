@@ -1,7 +1,7 @@
 import React, { useEffect } from "react";
 import { MetricRing, ReportPages, RiskBar } from "./report-visuals";
 import type { ReportEvidence, ReportFinding, ReportV1 } from "@vct/contracts";
-import { safeSourceUrl } from "./source-url";
+import { safeContextSourceUrl, safeSourceUrl } from "./source-url";
 import { reportFreshness } from "./report-freshness";
 import { capturedReviewSummary, dimensionEvidence, REMOVED_RISK_DIMENSIONS } from "./dimension-evidence";
 import {
@@ -40,6 +40,26 @@ function FindingCard({ finding, availableEvidenceIds }: { finding: ReportFinding
   </article>;
 }
 
+function ContextSections({ value }: { value: unknown }) {
+  if (!value || typeof value !== "object") return null;
+  const packet = value as Record<string, unknown>;
+  if (!Array.isArray(packet.sections)) return null;
+  const sections = packet.sections.filter((item): item is Record<string, unknown> =>
+    !!item && typeof item === "object" && typeof item.text === "string" && typeof item.section_id === "string");
+  return <div className="page-context-sources">
+    {packet.truncated === true && <p>Ngữ cảnh được giới hạn dung lượng; không bao gồm toàn bộ trang.</p>}
+    <ReportPages items={sections} label="Đoạn ngữ cảnh">{items => items.map(section => {
+      const url = safeContextSourceUrl(typeof section.source_url === "string" ? section.source_url : undefined);
+      return <article key={String(section.section_id)}>
+        <strong>{typeof section.heading === "string" ? section.heading : "Đoạn nguồn"}</strong>
+        <p>{String(section.text)}</p>
+        <code>{String(section.section_id)}</code>
+        {url && <a href={url} target="_blank" rel="noreferrer">Mở trang nguồn ↗</a>}
+      </article>;
+    })}</ReportPages>
+  </div>;
+}
+
 function EvidenceCard({ evidence, extractedAt, uploaded }: { evidence: ReportEvidence; extractedAt: string; uploaded: boolean }) {
   const text = reportPayloadText(evidence.payload);
   const content = reportSourceContent(evidence.payload);
@@ -54,7 +74,9 @@ function EvidenceCard({ evidence, extractedAt, uploaded }: { evidence: ReportEvi
     </summary>
     <code className="source-reference">{evidence.evidence_id}</code>
     {evidence.source_field && <p><strong>Trường nguồn:</strong> {evidence.source_field}</p>}
-    {hasSourceContent && <div><strong>Nội dung nguồn:</strong><pre style={{ whiteSpace: "pre-wrap", overflowWrap: "anywhere" }}>{content ?? "Chưa xác định"}</pre></div>}
+    {evidence.source_field === "page_context" && <ContextSections value={evidence.payload.value} />}
+    {Array.isArray(evidence.payload.context_sources) && <ContextSections value={{ sections: evidence.payload.context_sources }} />}
+    {hasSourceContent && evidence.source_field !== "page_context" && <div><strong>Nội dung nguồn:</strong><pre style={{ whiteSpace: "pre-wrap", overflowWrap: "anywhere" }}>{content ?? "Chưa xác định"}</pre></div>}
     {text && <p><strong>Diễn giải / ghi chú:</strong> {text}</p>}
     {evidence.source_kind === "MODEL_INTERPRETATION" && evidence.payload.evidence_quotes !== null &&
       typeof evidence.payload.evidence_quotes === "object" && <div><strong>Trích dẫn nguồn:</strong>
