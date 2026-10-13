@@ -241,8 +241,9 @@ def review_score_inputs(
         )
         for dimension, signals in by_dimension.items()
     ]
-    dimensions = [item.model_copy(update={'confidence': min(item.confidence, 0.6),
-                  'signals': [signal.model_copy(update={'reliability': min(signal.reliability, 0.6)})
+    after_sales_cap = 0.4 if accessible_reviews is not None and len(accessible_reviews) < 2 else 0.6
+    dimensions = [item.model_copy(update={'confidence': min(item.confidence, after_sales_cap),
+                  'signals': [signal.model_copy(update={'reliability': min(signal.reliability, after_sales_cap)})
                               for signal in item.signals]}) if item.dimension == 'AFTER_SALES' else item
                   for item in dimensions]
     return dimensions, findings, evidence, review_reliability
