@@ -34,11 +34,12 @@ def collect_context(parsed, page, url, html_sha256):
         if not candidates: candidates = [root]
         for node in candidates[:500]:
             text = ' '.join(node.text(separator=' ').split())
-            if len(text) < 16 or text in seen: continue
+            minimum = 6 if re.search(r'[\u3400-\u9fff]', text) else 16
+            if len(text) < minimum or text in seen: continue
             seen.add(text)
             for start in range(0, min(len(text), 6000), 700):
                 fragment = text[start:start + 900]
-                if len(fragment) < 16: continue
+                if len(fragment) < minimum: continue
                 digest = sha256((url + fragment).encode()).hexdigest()[:16]
                 sections.append({'section_id': page.lower() + ':' + digest, 'page': page,
                                  'source_url': url, 'heading': label, 'text': fragment,
@@ -63,8 +64,10 @@ def select_context(sections, max_bytes=MAX_CONTEXT_BYTES):
 
 
 def matching_context_sections(context, quote):
-    if not isinstance(context, dict) or not isinstance(quote, str) or len(quote.strip()) < 16:
+    if not isinstance(context, dict) or not isinstance(quote, str):
         return []
+    minimum = 6 if re.search(r'[\u3400-\u9fff]', quote) else 16
+    if len(quote.strip()) < minimum: return []
     # Metadata, URL or field-name matches cannot support a risk assessment.
     return [section for section in context.get('sections', []) if isinstance(section, dict)
             and isinstance(section.get('text'), str) and quote in section['text']]

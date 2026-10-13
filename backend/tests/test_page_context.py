@@ -93,3 +93,15 @@ def test_context_survives_assessment_and_report_source_projection():
     assert source.payload['value']['sections'][0]['text'] == POLICY
     assert any('supplier:page_context' in x.evidence_ids for x in report.positive_signals)
     assert any('Ngữ cảnh trang' in x for x in report.limitations_vi)
+
+
+def test_short_chinese_policy_remains_usable_but_metadata_does_not():
+    policy = '7天无理由退货'
+    value = selected(); value['html_sources'] = html_sources(value)
+    value['html_sources'][1]['html'] = value['html_sources'][1]['html'].replace(
+        'Company introduction: wholesaler.', '<p>' + policy + '</p>')
+    data = normalize(value)['supplier_data']
+    assert matching_context_sections(data['page_context'], policy)
+    run = interpret_supplier_data(data, provider=provider_with(
+        assessment('AFTER_SALES', 'LOW', 'page_context', policy)), model='fixture')
+    assert supplier_score_inputs(run)[0][0].confidence == 0.6
