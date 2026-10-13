@@ -179,10 +179,10 @@ def supplier_identity_evidence(supplier_data: Mapping[str, object]) -> list[Iden
             statement="Có hồ sơ nhà máy trên nền tảng; chưa xác minh độc lập hoạt động sản xuất.",
             value=profile,
         ))
-        for label in ("企业面积", "员工总数"):
+        for label, reference in (("企业面积", "company_area"), ("员工总数", "staffing")):
             if claims.get(label):
                 evidence.append(IdentityEvidence(
-                    evidence_id=f"company_information.factory_profile_claims.{label}",
+                    evidence_id=f"company_information.factory_profile_claims.{reference}",
                     source_field=("company_information.factory_profile_claims" if structured_claims
                                   else "company_information.factory_profile_claims_display_text" if label in labeled_claims
                                   else "company_information.factory_description_display_text"),

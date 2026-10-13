@@ -272,6 +272,7 @@ def test_captured_factory_profile_is_considered_without_inventing_manufacturing_
     }}
     result = assess_supplier_identity(supplier)
     assert len(result.supporting_evidence) == 3
+    assert all(item.evidence_id.isascii() for item in result.supporting_evidence)
     assert result.confidence > 0
     assert result.classification == "UNCERTAIN"
     assert "self_claim_only" in result.uncertainty_reasons
