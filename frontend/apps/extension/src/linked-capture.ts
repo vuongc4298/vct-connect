@@ -28,7 +28,8 @@ export function shopUrl(value: string): string | null {
   try {
     const u = new URL(value);
     return u.protocol === "https:" && !u.port && !u.username && !u.password &&
-      /^shop[a-z0-9]{6,30}\.1688\.com$/.test(u.hostname) && ["", "/"].includes(u.pathname)
+      /^[a-z0-9](?:[a-z0-9-]{0,61}[a-z0-9])?\.1688\.com$/.test(u.hostname) &&
+      !["www", "m", "detail", "sale", "login", "passport", "auth", "accounts", "cart", "trade", "air", "work", "systemjs", "mindx", "member", "open", "api", "h5", "cbu", "service", "help", "search", "s", "buy", "offer"].includes(u.hostname.split(".")[0]) && ["", "/"].includes(u.pathname)
       ? `${u.origin}/` : null;
   } catch { return null; }
 }
@@ -37,12 +38,12 @@ export function factoryUrl(value: string): string | null {
   try {
     const u = new URL(value);
     if (u.protocol !== "https:" || u.port || u.username || u.password) return null;
-    let member = /^\/factory\/(b2b-[a-z0-9]{6,60})\.html$/.exec(u.pathname)?.[1];
+    let member = /^\/factory\/([a-z0-9][a-z0-9_-]{0,62}[a-z0-9])\.html$/.exec(u.pathname)?.[1];
     if (u.hostname === "sale.1688.com" && u.pathname === "/factory/card.html") {
       const ids = u.searchParams.getAll("memberId"), fac = u.searchParams.getAll("facMemId");
       member = ids.length === 1 && (!fac.length || (fac.length === 1 && fac[0] === ids[0])) ? ids[0] : undefined;
     } else if (u.hostname !== "www.1688.com") return null;
-    return member && /^b2b-[a-z0-9]{6,60}$/.test(member) ? `https://www.1688.com/factory/${member}.html` : null;
+    return member && /^[a-z0-9][a-z0-9_-]{0,62}[a-z0-9]$/.test(member) ? `https://www.1688.com/factory/${member}.html` : null;
   } catch { return null; }
 }
 
@@ -67,22 +68,25 @@ export function captureLinkedDom(mode: "PRODUCT_LINK" | "SHOP" | "FACTORY" | "OP
   }
   function shop(value: string): string | null {
     try { const u = new URL(value); return u.protocol === "https:" && !u.port && !u.username && !u.password &&
-      /^shop[a-z0-9]{6,30}\.1688\.com$/.test(u.hostname) && ["", "/"].includes(u.pathname) ? `${u.origin}/` : null; } catch { return null; }
+      /^[a-z0-9](?:[a-z0-9-]{0,61}[a-z0-9])?\.1688\.com$/.test(u.hostname) &&
+      !["www", "m", "detail", "sale", "login", "passport", "auth", "accounts", "cart", "trade", "air", "work", "systemjs", "mindx", "member", "open", "api", "h5", "cbu", "service", "help", "search", "s", "buy", "offer"].includes(u.hostname.split(".")[0]) && ["", "/"].includes(u.pathname) ? `${u.origin}/` : null; } catch { return null; }
   }
   function factory(value: string): string | null {
     try {
       const u = new URL(value); if (u.protocol !== "https:" || u.port || u.username || u.password) return null;
-      let id = /^\/factory\/(b2b-[a-z0-9]{6,60})\.html$/.exec(u.pathname)?.[1];
+      let id = /^\/factory\/([a-z0-9][a-z0-9_-]{0,62}[a-z0-9])\.html$/.exec(u.pathname)?.[1];
       if (u.hostname === "sale.1688.com" && u.pathname === "/factory/card.html") {
         const ids = u.searchParams.getAll("memberId"), fac = u.searchParams.getAll("facMemId");
         id = ids.length === 1 && (!fac.length || (fac.length === 1 && fac[0] === ids[0])) ? ids[0] : undefined;
       } else if (u.hostname !== "www.1688.com") return null;
-      return id && /^b2b-[a-z0-9]{6,60}$/.test(id) ? `https://www.1688.com/factory/${id}.html` : null;
+      return id && /^[a-z0-9][a-z0-9_-]{0,62}[a-z0-9]$/.test(id) ? `https://www.1688.com/factory/${id}.html` : null;
     } catch { return null; }
   }
   if (mode === "PRODUCT_LINK") {
     if (expectedProduct && location.origin + location.pathname !== expectedProduct) throw new Error("Product changed during capture");
-    const links = Array.from(document.querySelectorAll<HTMLAnchorElement>("#shopNavigation a.shop-company-name[href]"))
+    // Header markup varies: the company class can be on a wrapper rather than
+    // the anchor. Stay inside the supplier navigation and require one identity.
+    const links = Array.from(document.querySelectorAll<HTMLAnchorElement>("#shopNavigation a[href]"))
       .filter(visible).map(a => shop(a.href)).filter(Boolean);
     return new Set(links).size === 1 ? links[0] : null;
   }

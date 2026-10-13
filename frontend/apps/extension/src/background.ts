@@ -65,6 +65,12 @@ async function saveSession(session: GuidedSession) {
   await chrome.storage.local.set({ [SESSION_KEY]: session, [JOB_KEY]: session.job });
 }
 
+async function cue(tabId: number, mode: Parameters<typeof showCompanyGuidance>[0], company: string) {
+  const stored = await chrome.storage.local.get("uiLanguage");
+  await chrome.scripting.executeScript({ target: { tabId }, func: showCompanyGuidance,
+    args: [mode, company, stored.uiLanguage === "en" ? "en" : "vi"] });
+}
+
 async function captureHtml(tabId: number, page: HtmlSource["page"], source: string, session: GuidedSession) {
   try {
     const [result] = await chrome.scripting.executeScript({ target: { tabId }, func: capturePublicHtml, args: [page, source] });
@@ -139,9 +145,16 @@ async function guided(type: string, tabId: number, ownerId: string, sourceUrl?: 
       const [injected] = await chrome.scripting.executeScript({ target: { tabId }, func: captureSelectedDom });
       const product = injected?.result as LegacyCapture | undefined;
       if (!product || !("offer_id" in product) || product.source_url !== sourceUrl) throw new Error("Product evidence is not ready.");
-      const link = await selected<string>(tabId, "PRODUCT_LINK", sourceUrl);
+      let link = await selected<string>(tabId, "PRODUCT_LINK", sourceUrl);
+      // Supplier navigation can hydrate after the product becomes readable.
+      // Do not silently submit product-only evidence when discovery fails.
+      for (let attempt = 0; !link && attempt < 8; attempt++) {
+        await new Promise(resolve => setTimeout(resolve, 250));
+        link = await selected<string>(tabId, "PRODUCT_LINK", sourceUrl);
+      }
       if (supportedOffer((await chrome.tabs.get(tabId)).url || "")?.sourceUrl !== sourceUrl) throw new Error("The active product changed.");
       const company = link ? shopUrl(link) : null;
+      if (!company) throw new Error("The supplier shop link is not ready or is ambiguous. Scroll to the supplier name on the product, wait for it to load, then retry Analyze this page. No analysis was submitted.");
       const startedAt = Date.now();
       const job: CollectionJob = { id: crypto.randomUUID(), ownerId, sourceUrl: sourceUrl!, startedAt,
         expiresAt: startedAt + 30 * 60_000, stage: "STARTING", ...(company ? { companyUrl: company } : {}) };
@@ -155,8 +168,8 @@ async function guided(type: string, tabId: number, ownerId: string, sourceUrl?: 
       await saveSession(session);
       await chrome.storage.local.set({ lastCapture: { analysisId: job.id, ownerId, sourceUrl } });
       if (company) {
-        try { await chrome.scripting.executeScript({ target: { tabId }, func: showCompanyGuidance, args: ["SHOP", company] }); } catch { /* Popup retains the link. */ }
-      } else await finishSession(session);
+        try { await cue(tabId, "SHOP", company); } catch { /* Popup retains the link. */ }
+      }
       return { id: job.id };
     }
     if (!session || !session.reserved) throw new Error("Capture a product first, or retry its pending reservation.");
@@ -192,7 +205,7 @@ async function guided(type: string, tabId: number, ownerId: string, sourceUrl?: 
       session.job = { ...session.job, stage: "WAITING_FACTORY", factoryUrl: shop.factory_url,
         error: snapshot.downloaded ? undefined : "Shop HTML is stored for upload, but the browser download did not start. You can retry Save shop HTML." };
       await saveSession(session);
-      try { await chrome.scripting.executeScript({ target: { tabId }, func: showCompanyGuidance, args: ["FACTORY", company] }); } catch { /* Popup retains next-step guidance. */ }
+      try { await cue(tabId, "FACTORY", company); } catch { /* Popup retains next-step guidance. */ }
       return { id: session.job.id };
     }
     throw new Error("Company capture is already finished. Start a fresh product analysis for new evidence.");
@@ -241,8 +254,10 @@ async function guideTab(tabId: number, ownerId?: string) {
   const tab = await chrome.tabs.get(tabId);
   const company = session.bundle.shop_url;
   if (!company) return;
-  if (shopUrl(tab.url || "") !== company && !factoryUrl(tab.url || "")) return;
+  const product = supportedOffer(tab.url || "")?.sourceUrl === job.sourceUrl;
+  if (!product && shopUrl(tab.url || "") !== company && !factoryUrl(tab.url || "")) return;
   await authenticate(job.ownerId);
+  if (product) { await cue(tabId, "SHOP", company); return; }
   let mode: "SHOP_CAPTURE" | "FACTORY_CAPTURE" | "FACTORY";
   if (shopUrl(tab.url || "") === company) mode = job.stage === "WAITING_FACTORY" ? "FACTORY" : "SHOP_CAPTURE";
   else {
@@ -252,7 +267,7 @@ async function guideTab(tabId: number, ownerId?: string) {
     if (!factory || factory.shop_url !== company || factory.source_url !== profile || factory.canonical_url !== profile) return;
     mode = "FACTORY_CAPTURE";
   }
-  await chrome.scripting.executeScript({ target: { tabId }, func: showCompanyGuidance, args: [mode, company] });
+  await cue(tabId, mode, company);
 }
 chrome.tabs.onUpdated.addListener((tabId, change) => {
   if (change.status === "complete") void guideTab(tabId).catch(() => {});

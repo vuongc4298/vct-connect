@@ -8,10 +8,11 @@
   },
   "dependencies": {
     "@clerk/chrome-extension": "2.0.0",
-    "react": "^19.0.0",
-    "react-dom": "^19.0.0",
+    "@clerk/localizations": "3.7.0",
     "@vct/api-client": "*",
-    "@vct/contracts": "*"
+    "@vct/contracts": "*",
+    "react": "^19.0.0",
+    "react-dom": "^19.0.0"
   },
   "devDependencies": {
     "@types/chrome": "^0.0.287",

@@ -24,7 +24,7 @@ export function WatchlistView({
     <section className="dashboard-intro">
       <div>
         <span className="pill pill-good">DANH SÁCH THEO DÕI</span>
-        <h1>Watchlist nhà cung cấp</h1>
+        <h1>Nhà cung cấp đang theo dõi</h1>
         <p>Các nhà cung cấp bạn đã lưu từ báo cáo. Mỗi nhà cung cấp chỉ xuất hiện một lần trong tài khoản.</p>
       </div>
     </section>

@@ -35,7 +35,7 @@ for (const view of ["history", "watchlist"]) {
       fileNode.value = "saved.html";
       await act(async () => mounted.root.findByProps({ id: "saved-page" }).props.onChange({ target: { files: [new File(["saved"], "saved.html")] } }));
       assert.match(text(mounted), /Nhập trang đã lưu/);
-      const label = view === "history" ? "Lịch sử," : "Watchlist,";
+      const label = view === "history" ? "Lịch sử," : "Theo dõi,";
       await act(async () => mounted.root.findAllByType("button").find(button => button.props["aria-label"]?.startsWith(label)).props.onClick());
       const open = view === "history"
         ? mounted.root.findByProps({ className: "button button-ghost history-open-button" })
@@ -77,7 +77,7 @@ for (const view of ["history", "watchlist"]) {
     try {
       await act(async () => { mounted = create(React.createElement(Page)); });
       assert.equal(polls, 1);
-      const label = view === "history" ? "Lịch sử," : "Watchlist,";
+      const label = view === "history" ? "Lịch sử," : "Theo dõi,";
       await act(async () => mounted.root.findAllByType("button").find(button => button.props["aria-label"]?.startsWith(label)).props.onClick());
       const open = view === "history"
         ? mounted.root.findByProps({ className: "button button-ghost history-open-button" })
@@ -131,6 +131,8 @@ test("mounted Landing completes synthetic tracer without requesting a preview", 
   let mounted;
   try {
     await act(async () => { mounted = create(React.createElement(Page)); });
+    assert.equal(mounted.root.findByProps({ id: "guest-source-url" }).props.value, "");
+    await act(async () => mounted.root.findByProps({ id: "guest-source-url" }).props.onChange({ target: { value: "https://detail.1688.com/offer/123456789012.html" } }));
     await act(async () => mounted.root.findByType("form").props.onSubmit({ preventDefault() {} }));
     assert.match(text(mounted), /Đã hoàn tất tracer tổng hợp/);
     assert.doesNotMatch(text(mounted), /Preview not found|Báo cáo đã sẵn sàng/);
