@@ -131,7 +131,7 @@ def build_assessment(
     identity = assess_supplier_identity(supplier_data)
 
     dimensions, review_findings, review_evidence, review_reliability = (
-        review_score_inputs(review_analysis, media_run)
+        review_score_inputs(review_analysis, media_run, accessible_reviews=reviews)
     )
     identity_findings, identity_evidence, identity_dimensions = identity_records(identity)
     dimensions.extend(identity_dimensions)

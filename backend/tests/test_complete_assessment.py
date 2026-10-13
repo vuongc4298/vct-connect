@@ -143,7 +143,7 @@ def test_complete_assessment_composes_review_identity_and_versioned_score():
     )
     assert provider.chat_calls == 2
     assert provider.embedding_calls == 1
-    assert bundle.risk.scoring_version == "v0.2.0"
+    assert bundle.risk.scoring_version == "v0.2.1"
     # Only quality and manipulation have scored evidence (weights .3125 + .1875).
     assert bundle.risk.data_coverage == 0.5
     assert bundle.risk.label == "HIGH"
@@ -185,7 +185,7 @@ def test_missing_embedding_model_degrades_to_deterministic_review_without_second
     )
     assert provider.chat_calls == 1
     assert provider.embedding_calls == 0
-    assert bundle.risk.scoring_version == "v0.2.0"
+    assert bundle.risk.scoring_version == "v0.2.1"
     assert hasattr(bundle.review_analysis, "suspicious_patterns")
 
 
@@ -218,7 +218,7 @@ def test_recurring_complaint_topics_are_persistable_findings_but_not_new_risk_si
     )
     assert quality.risk is None
     assert "PRODUCT_QUALITY" in bundle.risk.missing_dimensions
-    assert bundle.risk.scoring_version == "v0.2.0"
+    assert bundle.risk.scoring_version == "v0.2.1"
 
 
 def test_deferred_topic_linkage_does_not_replace_existing_pattern_evidence_payload():

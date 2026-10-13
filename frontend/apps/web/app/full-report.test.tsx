@@ -257,6 +257,16 @@ test("insufficient information is visibly distinct from low risk", () => {
   assert.doesNotMatch(html, /RỦI RO THẤP/);
 });
 
+test("preliminary sample policy discloses confidence caps without modifying archived reports", () => {
+  const report = reportFixture();
+  report.risk.scoring_version = "v0.2.1";
+  const html = renderToStaticMarkup(<FullReport report={report} />);
+  assert.match(html, /Mẫu 10 đánh giá đủ cho kiểm tra ban đầu/);
+  assert.match(html, /tối đa 60%/);
+  assert.match(html, /riêng lẻ tối đa 40%/);
+  assert.match(html, /mẫu được chọn có thể thiên lệch/);
+});
+
 test("unsafe report source URL is never rendered as an outbound link", () => {
   const report = reportFixture();
   report.source_url = "https://127.0.0.1/private";
