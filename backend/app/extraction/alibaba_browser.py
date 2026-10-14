@@ -152,8 +152,14 @@ def normalize_alibaba_bundle(bundle, *, at=None):
             if name and name not in supplier_text or any(pair["value"] not in supplier_text for pair in fields.get("supplier_metrics", [])):
                 raise ValueError("Product HTML supplier facts conflict")
             html_price = text("#vct-alibaba-price", 1200)
-            if html_price and price and html_price != price:
+            if price and html_price != price:
                 raise ValueError("Product HTML price conflicts")
+            summary = text("#vct-alibaba-review-summary", 180) or ""
+            rating = re.match(r"([0-5](?:\.[0-9]+)?)\b", summary)
+            count = re.search(r"Based on ([0-9,]+) reviews", summary, re.I)
+            if ("rating" in fields and (not rating or float(rating[1]) != fields["rating"])) or (
+                "review_count" in fields and (not count or int(count[1].replace(",", "")) != fields["review_count"])):
+                raise ValueError("Product HTML review totals conflict")
             protection = text("#vct-alibaba-policy", 1800)
             if protection:
                 data["products"][0]["services_display_text"] = protection

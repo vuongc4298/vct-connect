@@ -69,7 +69,7 @@ def test_alibaba_guided_sources_reserve_once_replay_finish_and_reach_owned_repor
             assert conn.execute('SELECT count(*) AS n FROM reports WHERE analysis_id=%s', (analysis_id,)).fetchone()['n'] == 1
         report = store.get_report_for_user(analysis_id, owner)['payload']
         assert any(e['evidence_id']=='supplier:html_sources' for e in report['evidence'])
-        assert any(e['evidence_id']=='supplier:company_information' for e in report['evidence'])
+        assert any(e['source_field']=='company_information.production_line_count' and e['payload']['value']==4 for e in report['evidence'])
         assert provider.chat_calls == 1
     finally: cleanup(store, analysis_id)
 

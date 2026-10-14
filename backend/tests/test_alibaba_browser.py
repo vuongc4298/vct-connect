@@ -74,7 +74,7 @@ def test_alibaba_begin_and_product_only_finish_do_not_require_hidden_company_inf
 
 
 @pytest.mark.parametrize('change', ['shop', 'profile', 'backlink', 'name', 'canonical', 'field', 'selected-value',
-                                    'html-value', 'html-title', 'html-price', 'review', 'attribute', 'unsafe-link',
+                                    'html-value', 'html-title', 'html-price', 'rating', 'review-total', 'review', 'attribute', 'unsafe-link',
                                     'script', 'private-attribute', 'secret', 'missing-product', 'missing-profile', 'outcome', 'platform'])
 def test_unsafe_or_mismatched_alibaba_evidence_is_rejected(change):
     value = selected()
@@ -88,6 +88,8 @@ def test_unsafe_or_mismatched_alibaba_evidence_is_rejected(change):
     if change == 'html-value': value['html_sources'][2]['html'] = value['html_sources'][2]['html'].replace('1,000-3,000 square meters', '8,000 square meters')
     if change == 'html-title': value['html_sources'][0]['html'] = value['html_sources'][0]['html'].replace('2026 New GEN5', 'Wrong product')
     if change == 'html-price': value['html_sources'][0]['html'] = value['html_sources'][0]['html'].replace('₫744,638', '₫100')
+    if change == 'rating': value['product']['fields']['rating'] = 2.0
+    if change == 'review-total': value['product']['fields']['review_count'] = 198
     if change == 'review': value['product']['fields']['reviews'][0]['text'] = 'A review that is absent from the captured source'
     if change == 'attribute': value['product']['fields']['product_attributes'][0]['value'] = 'Invented specification'
     if change == 'unsafe-link': value['html_sources'][2]['html'] += '<a href="https://evil.test/">company</a>'

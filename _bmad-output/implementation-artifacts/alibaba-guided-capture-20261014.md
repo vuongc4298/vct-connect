@@ -18,6 +18,8 @@ The bundle discriminator defaults to 1688. Its serialization deliberately omits 
 
 ## Validation and release
 
-Extension 0.7.0 includes Vietnamese Company overview labels and guidance. Local TypeScript, 173 frontend checks, production build and 33 new Alibaba backend cases pass. Existing 1688 browser/bundle tests pass. The local full backend run stalled in Windows and was interrupted; PostgreSQL transaction/worker acceptance is reserved for CI because Docker is unavailable locally. Native signed-in Alibaba/Chrome acceptance remains the five-step operator flow in END_USER_TEST.md.
+Extension 0.7.0 includes Vietnamese Company overview labels and guidance. Local TypeScript, 173 frontend checks, production build and 35 new Alibaba backend cases pass. Existing 1688 browser/bundle tests pass. The local full backend run stalled in Windows and was interrupted; PostgreSQL transaction/worker acceptance is reserved for CI because Docker is unavailable locally. Native signed-in Alibaba/Chrome acceptance remains the five-step operator flow in END_USER_TEST.md.
+
+First CI run verified begin/finish replay, one quota admission and one persisted owned report. It failed only on the new test's expected generic company evidence ID; the actual report uses specific identity-source IDs. The assertion was corrected to require the sourced production-line value, and product rating/count were additionally checked against captured HTML before the final CI run.
 
 Release status will be appended after CI and Azure verification.
