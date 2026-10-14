@@ -14,6 +14,28 @@ const getToken = async () => "token";
 const analysis = { id, status: "COMPLETED", source_url: source, result: { source_url: source, extraction_status: "PARTIAL" }, supplier_data: { supplier_name: "First owner supplier", completeness: 0.5 } };
 const report = { analysis_id: id, risk: { label: "HIGH", confidence: 0.7, coverage: 0.5 } };
 
+test("Alibaba Company overview is recognized, localized and bound to the pending supplier", async () => {
+  environment();
+  const sourceUrl = "https://www.alibaba.com/product-detail/Yiheng-Paddle_1601711788226.html";
+  const companyUrl = "https://yihengsportinggoods.en.alibaba.com/", factoryUrl = companyUrl + "company_profile.html";
+  chrome.storage.local.get = async () => ({ collectionJob: { id, ownerId: record.ownerId, sourceUrl, startedAt: Date.now(), expiresAt: Date.now()+1800000, stage: "WAITING_FACTORY", companyUrl, factoryUrl } });
+  chrome.tabs.query = async () => [{id:3,url:"https://yihengsportinggoods.m.en.alibaba.com/company_profile.html"}];
+  chrome.runtime = {sendMessage:async()=>({ok:true})};
+  let mounted;
+  try {
+    await act(async()=>{mounted=create(React.createElement(App));});
+    assert.match(text(mounted),/Hồ sơ công ty/);
+    assert.match(text(mounted),/Company overview \/ Company profile/);
+    const action = mounted.root.findAllByType("button").find(b=>b.children.join("")==="Lưu HTML hồ sơ công ty và phân tích");
+    assert.equal(action.props.disabled,false);
+    assert.doesNotMatch(text(mounted),/Lưu HTML nhà máy/);
+    await act(async()=>mounted.unmount());mounted=null;
+    chrome.tabs.query = async()=>[{id:3,url:"https://other.m.en.alibaba.com/company_profile.html"}];
+    await act(async()=>{mounted=create(React.createElement(App));});
+    assert.equal(mounted.root.findAllByType("button").find(b=>b.children.join("")==="Lưu HTML hồ sơ công ty và phân tích").props.disabled,true);
+  } finally {if(mounted)await act(async()=>mounted.unmount());}
+});
+
 test("Vietnamese default recognizes the named factory; language preference survives reopening", async () => {
   environment();
   let stored = { collectionJob: { id, ownerId: record.ownerId, sourceUrl: source, startedAt: Date.now(),

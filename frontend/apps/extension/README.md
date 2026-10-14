@@ -1,6 +1,6 @@
 # VCT Connect browser capture
 
-This unpacked Chrome extension captures visible supplier evidence for a signed-in VCT Connect buyer. Version 0.6.2 guides 1688 product → shop → factory capture. Use **Phân tích trang này**, **Lưu HTML cửa hàng**, then **Lưu HTML nhà máy & phân tích**. You may close a dismissible CAPTCHA with X when public company content remains visible; empty challenge pages cannot be captured. Cleaned HTML downloads at each capture and all captured sources upload together when the collection finishes. Taobao uses the existing active-tab capture path.
+This unpacked Chrome extension captures visible supplier evidence for a signed-in VCT Connect buyer. Version 0.7.0 guides 1688 product → shop → factory and Alibaba product → supplier storefront → Company overview capture. Use **Phân tích trang này**, **Lưu HTML cửa hàng**, then **Lưu HTML nhà máy và phân tích** (1688) or **Lưu HTML hồ sơ công ty và phân tích** (Alibaba). You may close a dismissible CAPTCHA with X when public company content remains visible; empty challenge pages cannot be captured. Cleaned HTML downloads at each capture and all captured sources upload together when the collection finishes. Taobao uses the existing active-tab capture path.
 
 The supplied VCT brand icon appears in the toolbar and extension list. Reload the unpacked extension in chrome://extensions after upgrading. The local build targets http://127.0.0.1:3000; build-live targets the deployed HTTPS origin.
 
@@ -31,7 +31,15 @@ The 1688 selection retains its existing supplier, title, and price fields. Taoba
 
 Saved HTML can also be imported through the signed-in web page using the matching supported source URL. Uploads are limited to 2,000,000 original bytes; 1688 requires UTF-8, while Taobao supports UTF-8 and GBK-family declarations. Conflicting or unsupported encodings are rejected. Uploads retain the original-byte hash, import time, and unknown original capture time, with `ACCOUNT_PUBLIC` / `USER_UPLOAD` provenance.
 
-Successful/partial imports queue the same assessment/reporting path without recrawling the source page. Alibaba saved HTML and browser capture remain unsupported. See [the buyer acceptance guide](../../../END_USER_TEST.md) for concrete report/history/Watchlist and extension checks. Automated popup contracts do not replace a real Chrome/Clerk session-sync test.
+Successful/partial imports queue the same assessment/reporting path without recrawling the source page. Alibaba standalone saved-HTML uploads remain unsupported; use the guided extension to upload its sanitized product/store/company bundle. See [the buyer acceptance guide](../../../END_USER_TEST.md) for concrete report/history/Watchlist and extension checks. Automated popup contracts do not replace a real Chrome/Clerk session-sync test.
+
+## Alibaba guided capture — 0.7.0
+
+On a desktop `www.alibaba.com/product-detail/..._<id>.html` product, load the visible product reviews and click **Phân tích trang này**. Follow the supplier cue or the storefront link in the popup. Mobile `<supplier>.m.en.alibaba.com` and desktop `<supplier>.en.alibaba.com` storefront/profile addresses resolve to the same supplier identity. Save the storefront, then follow the highlighted **Company overview / Company profile** link and choose **Lưu HTML hồ sơ công ty và phân tích**. If the product links directly to its profile, the profile can be captured for the same product without a storefront capture; the storefront remains explicitly unavailable.
+
+The three downloads are `product.html`, `shop.html` and `company.html` under one `Downloads/VCT Connect/<analysis ID>` folder. The same 30-minute deadline, owner checks, retry behavior, single quota reservation and optional completion with available evidence apply. Additional Alibaba host access is requested only from the product button's user gesture; page visits show guidance without collecting evidence.
+
+Only rendered public product/company regions are retained. Scripts, `module-data`, source globals, contact/account widgets, review buyer names and media are excluded. Source URLs lose tracking parameters; profile identity and displayed company name must match the product supplier. Product review count/rating stay separate from supplier review totals. Establishment year remains a displayed year rather than assumed completed operating years. Factory-size ranges stay ranges, and a mixed manufacturer/trader declaration remains uncertain unless sufficient evidence supports a classification. Alibaba's order protections are platform advertisements with unverified eligibility and fulfillment.
 
 If Windows reserves API port 8000, start Uvicorn with `--port 8080` instead. In the web app's PowerShell terminal, set `$env:API_INTERNAL_ORIGIN='http://127.0.0.1:8080'` before `npm run dev --prefix frontend`. The extension still uses web port 3000. Check reserved ports with `netsh interface ipv4 show excludedportrange protocol=tcp`.
 

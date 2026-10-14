@@ -43,6 +43,37 @@ def initial(value):
     return result
 
 
+def test_alibaba_guided_sources_reserve_once_replay_finish_and_reach_owned_report(client_store):
+    from backend.tests.test_alibaba_browser import selected as alibaba_selected
+    client, store, settings = client_store
+    value = alibaba_selected(); value['job_id'] = str(uuid4())
+    analysis_id = UUID(value['job_id'])
+    try:
+        for _ in range(2):
+            assert client.post('/api/v1/analyses/collection/begin', json=initial(value)).status_code == 202
+        assert store.get(analysis_id)['status'] == 'PROCESSING'
+        wrong = json.loads(json.dumps(value))
+        wrong['factory']['shop_url'] = 'https://different.en.alibaba.com/'
+        assert client.post('/api/v1/analyses/collection/finish', json=wrong).status_code == 422
+        for _ in range(2):
+            assert client.post('/api/v1/analyses/collection/finish', json=value).status_code == 202
+        data = store.get(analysis_id)['supplier_data']
+        assert data['platform'] == 'ALIBABA'
+        assert data['company_information']['production_line_count'] == 4
+        assert data['price_information']['minimum_order_quantity'] == 1
+        provider = WorkerProvider()
+        assert process_local_once(store, settings, assess=lambda data: build_assessment(data, provider=provider, model='fixture'))
+        with store.connect() as conn:
+            owner = conn.execute('SELECT user_id FROM analyses WHERE id=%s', (analysis_id,)).fetchone()['user_id']
+            assert conn.execute("SELECT used FROM admission_counters WHERE scope='CUSTOMER' AND subject=%s", (str(owner),)).fetchone()['used'] == 1
+            assert conn.execute('SELECT count(*) AS n FROM reports WHERE analysis_id=%s', (analysis_id,)).fetchone()['n'] == 1
+        report = store.get_report_for_user(analysis_id, owner)['payload']
+        assert any(e['evidence_id']=='supplier:html_sources' for e in report['evidence'])
+        assert any(e['evidence_id']=='supplier:company_information' for e in report['evidence'])
+        assert provider.chat_calls == 1
+    finally: cleanup(store, analysis_id)
+
+
 def test_combined_html_upload_enriches_one_owned_report(client_store):
     client, store, settings = client_store
     value = selected(); value["html_sources"] = html_sources(value)

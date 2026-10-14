@@ -1,3 +1,5 @@
+import { alibabaPage } from "./alibaba-capture";
+
 export type LegacyCapture = {
   source_url: string;
   canonical_url?: string;
@@ -29,7 +31,9 @@ export type TaobaoCapture = {
 };
 export type SelectedCapture = LegacyCapture | TaobaoCapture;
 
-export function supportedOffer(url: string): { sourceUrl: string; offerId: string; kind?: "item" | "shop" } | null {
+export function supportedOffer(url: string): { sourceUrl: string; offerId: string; kind?: "item" | "shop" | "alibaba" } | null {
+  const alibaba = alibabaPage(url);
+  if (alibaba?.kind === "product") return { sourceUrl: alibaba.source, offerId: alibaba.id, kind: "alibaba" };
   try {
     const parsed = new URL(url);
     const match = /^\/offer\/([0-9]{6,20})\.html$/.exec(parsed.pathname);

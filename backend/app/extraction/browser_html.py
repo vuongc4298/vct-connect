@@ -13,6 +13,33 @@ MAX_HTML_BYTES = 2_000_000
 MAX_HTML_BUNDLE_BYTES = 8_000_000
 
 
+def validated_snapshot(html, url, *, platform="1688", allowed_urls=None):
+    """Validate inert rendered HTML independently of the extension."""
+    encoded = html.encode("utf-8")
+    if len(encoded) > MAX_HTML_BYTES:
+        raise ValueError("HTML source exceeds 2 MB")
+    parsed = tree(html)
+    if parsed.css("script,style,iframe,form,input,textarea,select,button,object,embed,svg,img,video,audio,source,canvas,template,noscript"):
+        raise ValueError("HTML snapshot contains forbidden source state")
+    nodes = parsed.css("*")
+    if len(nodes) > 30_000:
+        raise ValueError("HTML snapshot has too many elements")
+    for node in nodes:
+        if any(key not in {"id", "class", "href", "rel", "charset"} for key in node.attributes):
+            raise ValueError("HTML snapshot contains unsupported attributes")
+        href = node.attributes.get("href")
+        if href:
+            p = urlsplit(href)
+            safe = href in (allowed_urls or set()) if platform == "ALIBABA" else (p.hostname == "1688.com" or (p.hostname or "").endswith(".1688.com"))
+            if p.scheme != "https" or p.username or p.password or p.port or p.fragment or not safe:
+                raise ValueError("HTML snapshot contains an unsafe link")
+    canonicals = parsed.css('link[rel="canonical"]')
+    if len(canonicals) != 1 or canonicals[0].attributes.get("href") != url:
+        raise ValueError("HTML canonical identity conflicts")
+    reject_sensitive_page_state(parsed.text())
+    return parsed, encoded
+
+
 def enrich_browser_html(result, sources, *, shop_url=None, factory_url=None, accessible_pages=None, shop_company_name=None):
     result = copy.deepcopy(result)
     data = result["supplier_data"]
@@ -20,30 +47,10 @@ def enrich_browser_html(result, sources, *, shop_url=None, factory_url=None, acc
     context_sections = []
     for source in sources:
         page, url, html = source.page, source.source_url, source.html
-        encoded = html.encode("utf-8")
-        if len(encoded) > MAX_HTML_BYTES:
-            raise ValueError("HTML source exceeds 2 MB")
         expected = {"PRODUCT": result["source_url"], "SHOP": shop_url, "FACTORY": factory_url}[page]
         if not expected or url != expected:
             raise ValueError("HTML source is not linked to this collection")
-        parsed = tree(html)
-        # HTML is data only. The browser and backend independently reject private state.
-        if parsed.css("script,style,iframe,form,input,textarea,select,button,object,embed,svg,img,video,audio,source,canvas,template,noscript"):
-            raise ValueError("HTML snapshot contains forbidden source state")
-        nodes = parsed.css("*")
-        if len(nodes) > 30_000: raise ValueError("HTML snapshot has too many elements")
-        for node in nodes:
-            if any(key not in {"id", "class", "href", "rel", "charset"} for key in node.attributes):
-                raise ValueError("HTML snapshot contains unsupported attributes")
-            href = node.attributes.get("href")
-            if href:
-                p = urlsplit(href)
-                if p.scheme != "https" or p.username or p.password or p.port or not (p.hostname == "1688.com" or (p.hostname or "").endswith(".1688.com")):
-                    raise ValueError("HTML snapshot contains an unsafe link")
-        canonicals = parsed.css('link[rel="canonical"]')
-        if len(canonicals) != 1 or canonicals[0].attributes.get("href") != url:
-            raise ValueError("HTML canonical identity conflicts")
-        reject_sensitive_page_state(parsed.text())
+        parsed, encoded = validated_snapshot(html, url)
 
         def text(node, limit=800):
             return " ".join(node.text(separator=" ").split())[:limit] if node and active(node) else None

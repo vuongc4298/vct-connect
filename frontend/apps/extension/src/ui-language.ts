@@ -1,6 +1,13 @@
 export type UiLanguage = "vi" | "en";
 
 const vi: Record<string, string> = {
+  "Company overview": "Hồ sơ công ty",
+  "Capture product, storefront and company overview for one supplier report.": "Thu thập sản phẩm, cửa hàng và hồ sơ công ty để tạo báo cáo nhà cung cấp.",
+  "Open Company overview": "Mở hồ sơ công ty",
+  "Save company HTML & analyze": "Lưu HTML hồ sơ công ty và phân tích",
+  "Shop saved · company overview next": "Đã lưu cửa hàng · tiếp theo là hồ sơ công ty",
+  "Capture the product, save the supplier storefront, then save Company overview. Finish within 30 minutes.": "Thu thập sản phẩm, lưu HTML cửa hàng nhà cung cấp, rồi lưu hồ sơ công ty. Hoàn tất trong 30 phút.",
+  "Open Company overview / Company profile from the shop. Save company HTML when its details are visible to complete the report.": "Mở Company overview / Company profile từ cửa hàng. Khi thông tin hiển thị, lưu HTML hồ sơ công ty để hoàn tất báo cáo.",
   "Source evidence": "Thu thập bằng chứng",
   "Analyze this page": "Phân tích trang này",
   "Save shop HTML": "Lưu HTML cửa hàng",
