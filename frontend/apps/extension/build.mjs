@@ -30,19 +30,22 @@ const syncHost = publishableKey.startsWith("pk_test_") ? webOrigin : `https://${
 await mkdir(output, { recursive: true });
 const manifest = {
   manifest_version: 3,
-  name: "VCT Connect Source Evidence",
-  version: "0.6.1",
-  description: "Capture selected visible 1688 and Taobao evidence on request.",
+  name: "VCT Connect",
+  version: "0.6.2",
+  description: "Thu thập bằng chứng nhà cung cấp từ 1688 và Taobao.",
+  icons: { 16: "icon.png", 32: "icon.png", 48: "icon.png", 128: "icon.png" },
   key: publicKey,
   permissions: ["activeTab", "scripting", "cookies", "storage", "downloads"],
   host_permissions: [`${webOrigin}/*`, `https://${clerkHost}/*`],
   optional_host_permissions: ["https://*.1688.com/*"],
   background: { service_worker: "background.js", type: "module" },
-  action: { default_popup: "popup.html", default_title: "Capture source evidence" },
+  action: { default_popup: "popup.html", default_title: "VCT Connect · Thu thập bằng chứng",
+    default_icon: { 16: "icon.png", 32: "icon.png", 48: "icon.png" } },
 };
 await writeFile(resolve(output, "manifest.json"), JSON.stringify(manifest, null, 2));
 await Promise.all(["popup.html", "popup.css"].map(async name =>
   writeFile(resolve(output, name), await readFile(resolve(directory, name)))));
+await writeFile(resolve(output, "icon.png"), await readFile(resolve(directory, "assets/icon.png")));
 await build({
   absWorkingDir: directory,
   entryPoints: ["src/popup.tsx"],

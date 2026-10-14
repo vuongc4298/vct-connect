@@ -285,3 +285,12 @@ The server now selects bounded text from identity-checked, sanitized product/sho
 3. When pricing or after-sales uses context, inspect its model-evidence card for the exact quote and linked original section. A metadata-only or fabricated quote must never produce a score; ambiguous return-rate/generic-service signals remain restricted.
 4. Confirm the report discloses bounded/possibly truncated context. Content outside captured public sections, hidden behind unavailable pages, or beyond budgets remains unavailable; absence from context is not proof a policy does not exist.
 5. Reopen from history. Context and cited evidence remain tied to the snapshot; old reports are not retroactively enriched. A fresh capture is required to use promptv6/pipelinev0.5.
+
+
+## Context and factory checks — extension 0.6.2
+
+1. Reload the live unpacked extension in chrome://extensions and confirm the VCT logo appears. Sign in on the live VCT site in the same browser profile.
+2. Open a supported product, load its review drawer, and select Phân tích trang này. Follow the supplier cue, save shop HTML, open the factory profile, then save factory HTML and analyze.
+3. Verify Downloads/VCT Connect/<analysis ID> contains product.html, shop.html and factory.html. The result should retain the same source identity throughout.
+4. In the new report, inspect product quality, pricing and after-sales source quotes. Published refund/compensation protections should be described as advertised policies with limited confidence, rather than verified future service. Generic platform price definitions must not become observed hidden-charge evidence.
+5. Open Thông tin đã được xem xét in the factory card. Company area and employee ranges must preserve their original meaning. Weak or absent manufacturing evidence should display uncertainty without default probability bars. Older saved reports retain their original assessment; start a new collection to test the new calculation.

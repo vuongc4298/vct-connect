@@ -25,7 +25,7 @@ DIMENSION_FIELDS = {
     "SUPPLIER_IDENTITY": {"company_information", "certifications", "activity_history"},
     "DELIVERY": {"delivery_information", "transaction_signals", "reviews"},
     "REVIEW_MANIPULATION": {"reviews"},
-    "AFTER_SALES": {"reviews", "transaction_signals", "company_information", "page_context"},
+    "AFTER_SALES": {"reviews", "transaction_signals", "company_information", "products", "page_context"},
     "PRICING": {"price_information", "page_context"},
     "COMMUNICATION": {"reviews", "transaction_signals"},
 }
@@ -358,9 +358,21 @@ def supplier_score_inputs(run: InterpretationRun) -> tuple[list[DimensionInput],
             if re.search(r'回头率|store return rate|return customer rate|dropshipping buyer.s return rate', quote, re.I):
                 continue
             if item.dimension == 'AFTER_SALES' and not re.search(
-                r'售后|退款|退货|换货|赔付|refund|return|exchange|warranty|after.sales|dispute|hoàn tiền|đổi trả|hậu mãi', quote, re.I):
+                r'售后|退款|退货|换货|赔付|refund|return|exchange|warranty|after.sales|dispute|compensation|hoàn tiền|đổi trả|hậu mãi', quote, re.I):
                 continue
             if item.dimension == 'PRICING' and not re.search(r'¥|￥|价格|起批|USD|CNY|RMB|price|MOQ|minimum|payment', quote, re.I):
+                continue
+        if item.dimension == 'AFTER_SALES' and 'products' in fields and not re.search(
+            r'售后|退款|退货|换货|赔付|refund|return|exchange|warranty|after.sales|dispute|compensation|hoàn tiền|đổi trả|hậu mãi',
+            item.evidence_quotes['products'], re.I):
+            continue
+        if item.dimension == 'AFTER_SALES' and item.severity in {'MEDIUM', 'HIGH'} and not fields.intersection({'reviews', 'transaction_signals'}):
+            quotes = ' '.join(item.evidence_quotes.values())
+            protection = re.search(r'guaranteed compensation|free return shipping|full refund|赔付保障|无理由退货', quotes, re.I)
+            restriction = re.search(r'not refundable|non.refundable|no refunds|refus|denied|all sales final|buyer pays|buyer.s expense|不退|拒绝|不支持退|不能退', quotes, re.I)
+            if protection and not restriction:
+                # An unverified positive promise is a limitation, not an
+                # observed material concern. Do not silently turn it into LOW.
                 continue
         metrics = source.get("transaction_signals")
         if "transaction_signals" in fields and isinstance(metrics, Mapping):

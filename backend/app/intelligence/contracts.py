@@ -15,8 +15,8 @@ from .scoring import RiskDimension
 
 
 SCHEMA_VERSION = "supplier-interpretation.v1"
-PROMPT_VERSION = "supplier-interpretation.prompt.v6"
-PIPELINE_VERSION = "analysis-intelligence.v0.5"
+PROMPT_VERSION = "supplier-interpretation.prompt.v7"
+PIPELINE_VERSION = "analysis-intelligence.v0.6"
 _ALLOWED_EVIDENCE_FIELDS = frozenset((*EVIDENCE_FIELDS, "page_context"))
 
 
@@ -24,9 +24,12 @@ class EvidenceSignal(BaseModel):
     model_config = ConfigDict(extra="forbid")
 
     statement_vi: str = Field(min_length=1, max_length=800)
-    evidence_fields: list[str] = Field(default_factory=list, max_length=len(EVIDENCE_FIELDS))
+    evidence_fields: list[str] = Field(default_factory=list, max_length=len(EVIDENCE_FIELDS),
+        json_schema_extra={"items": {"type": "string", "enum": sorted(_ALLOWED_EVIDENCE_FIELDS)}})
     confidence: float = Field(ge=0.0, le=1.0)
-    evidence_quotes: dict[str, str] = Field(default_factory=dict, max_length=12)
+    evidence_quotes: dict[str, str] = Field(default_factory=dict, max_length=12,
+        json_schema_extra={"propertyNames": {"enum": sorted(_ALLOWED_EVIDENCE_FIELDS)},
+                           "additionalProperties": {"type": "string", "minLength": 1, "maxLength": 400}})
 
     @field_validator("evidence_quotes", mode="before")
     @classmethod
@@ -70,7 +73,9 @@ class SupplierDimensionAssessment(EvidenceSignal):
     dimension: RiskDimension
     severity: Literal["LOW", "MEDIUM", "HIGH", "UNKNOWN"]
     evidence_quotes: dict[str, str] = Field(default_factory=dict, max_length=12,
-        description="Exact source quotes keyed by evidence field. Quotes are required to score; omitted quotes leave the category unknown.")
+        description="Exact source quotes keyed by evidence field. Quotes are required to score; omitted quotes leave the category unknown.",
+        json_schema_extra={"propertyNames": {"enum": sorted(_ALLOWED_EVIDENCE_FIELDS)},
+                           "additionalProperties": {"type": "string", "minLength": 1, "maxLength": 400}})
 
     @model_validator(mode="after")
     def supported_category_has_quotes(self):

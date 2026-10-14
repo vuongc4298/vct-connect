@@ -102,6 +102,9 @@ export function FullReport({ report, extractionMethod }: { report: ReportV1; ext
   const label = reportRiskLabel(report.risk.label);
   const source = safeSourceUrl(report.source_url);
   const factory = report.factory_trader;
+  const factoryScored = typeof factory.confidence === "number" && factory.confidence >= 0.4;
+  const factoryEvidence = Array.isArray(factory.supporting_evidence) ? factory.supporting_evidence.filter(
+    (item): item is Record<string, unknown> => !!item && typeof item === "object" && typeof item.statement === "string") : [];
   const review = report.review_summary;
   const overall = report.risk.label === "INSUFFICIENT_INFORMATION" ? null : report.risk.overall_risk;
   const sourceFreshness = reportFreshness(report.extracted_at);
@@ -225,10 +228,17 @@ export function FullReport({ report, extractionMethod }: { report: ReportV1; ext
           <div><span className="card-label">NHÀ MÁY / THƯƠNG MẠI</span><h3>Nhận định loại hình</h3></div>
           <span>{typeof factory.classification === "string" ? FACTORY_CLASSIFICATION_LABELS[factory.classification] ?? "Chưa xác định" : "Chưa xác định"}</span>
         </div>
-        <div className="identity-bars">
+        {factoryScored ? <div className="identity-bars">
           <div><span><b>Khả năng nhà máy</b><small>{optionalReportPercent(factory.factory_likelihood)}</small></span><i><b style={{ width: reportBarWidth(factory.factory_likelihood) }} /></i></div>
           <div><span><b>Khả năng thương mại</b><small>{optionalReportPercent(factory.trader_likelihood)}</small></span><i className="dark"><b style={{ width: reportBarWidth(factory.trader_likelihood) }} /></i></div>
-        </div>
+        </div> : <p className="identity-note">{factoryEvidence.length ? "Đã xem xét thông tin hồ sơ; chưa đủ cơ sở để chấm khả năng nhà máy hoặc thương mại." : "Chưa có bằng chứng phân biệt nhà máy và thương mại. Chưa thể ước tính khả năng từ dữ liệu hiện có."}</p>}
+        {factoryEvidence.length > 0 && <details><summary>Thông tin đã được xem xét · {factoryEvidence.length} mục</summary>
+          <ReportPages items={factoryEvidence} label="Bằng chứng loại hình">{items => items.map((item, index) => <p key={String(item.evidence_id ?? index)}>
+            {String(item.statement)} {typeof item.value === "string" && safeContextSourceUrl(item.value)
+              ? <a href={safeContextSourceUrl(item.value)!} target="_blank" rel="noreferrer">Mở hồ sơ ↗</a>
+              : item.value !== undefined && item.value !== null ? <strong>{String(item.value)}</strong> : null}
+          </p>)}</ReportPages>
+        </details>}
         <p className="identity-note">Độ tin cậy nhận định: {optionalReportPercent(factory.confidence)}. Đây là tổng hợp bằng chứng, không phải xác minh pháp lý độc lập.</p>
       </article>
 

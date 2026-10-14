@@ -115,7 +115,7 @@ export function captureLinkedDom(mode: "PRODUCT_LINK" | "SHOP" | "FACTORY" | "OP
   const links = Array.from(document.querySelectorAll<HTMLAnchorElement>("#pc_card_baseinfo a[href]"))
     .filter(visible).map(a => shop(a.href)).filter(Boolean);
   if (new Set(links).size !== 1) return null;
-  const permitted = ["成立时间", "年交易额", "员工总数", "定制起订量", "贴牌起订量", "接外贸订单", "加工方式", "增值税发票"];
+  const permitted = ["成立时间", "年交易额", "员工总数", "定制起订量", "贴牌起订量", "接外贸订单", "加工方式", "增值税发票", "企业面积", "工厂面积", "厂房面积", "生产线数量", "设备总数", "经营模式"];
   const claims: { name: string; value: string }[] = [];
   for (const label of document.querySelectorAll<HTMLElement>("#pc_card_exhibition .ability_info .ability_key")) {
     const name = text(label, 80), next = label.nextElementSibling as HTMLElement | null;

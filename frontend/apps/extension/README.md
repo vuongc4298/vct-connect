@@ -1,6 +1,8 @@
 # VCT Connect browser capture
 
-This is a local, unpacked Chrome extension for a buyer viewing a supported 1688 offer or Taobao item/shop. Clicking **Analyze this page** selects visible evidence and sends it to the signed-in VCT Connect account. Version 0.4.1 uses guided 1688 product → company capture: the user opens the linked shop and completes login/CAPTCHA before clicking Analyze again. Optional 1688 access is requested; the user gesture also grants activeTab capture on the company page. Taobao uses the existing `activeTab` capture path.
+This unpacked Chrome extension captures visible supplier evidence for a signed-in VCT Connect buyer. Version 0.6.2 guides 1688 product → shop → factory capture. Use **Phân tích trang này**, **Lưu HTML cửa hàng**, then **Lưu HTML nhà máy & phân tích**. You may close a dismissible CAPTCHA with X when public company content remains visible; empty challenge pages cannot be captured. Cleaned HTML downloads at each capture and all captured sources upload together when the collection finishes. Taobao uses the existing active-tab capture path.
+
+The supplied VCT brand icon appears in the toolbar and extension list. Reload the unpacked extension in chrome://extensions after upgrading. The local build targets http://127.0.0.1:3000; build-live targets the deployed HTTPS origin.
 
 ## Development setup
 

@@ -7,6 +7,7 @@ from .dom import tree, active
 from .extension_merge import reject_sensitive_page_state, _merge_review_cards
 from .contracts import evidence_coverage, evidence_status
 from .page_context import collect_context, select_context
+from .factory_claims import FACTORY_FIELDS, normalize_factory_claims, stored_factory_claims
 
 MAX_HTML_BYTES = 2_000_000
 MAX_HTML_BUNDLE_BYTES = 8_000_000
@@ -106,6 +107,16 @@ def enrich_browser_html(result, sources, *, shop_url=None, factory_url=None, acc
             if shop_url not in links:
                 raise ValueError("HTML factory lacks matching shop backlink")
             company = data.get("company_information") or {}
+            claims = stored_factory_claims(company)
+            for label in parsed.css("#pc_card_exhibition .ability_info .ability_key"):
+                name, sibling = text(label, 80), label.next
+                value = text(sibling, 240) if sibling and "ability_value" in sibling.attributes.get("class", "").split() else None
+                if name in FACTORY_FIELDS and value:
+                    if name in claims and claims[name] != value:
+                        raise ValueError("HTML factory claims conflict with selected evidence")
+                    claims[name] = value
+            if claims:
+                company.update(normalize_factory_claims(claims))
             for title in parsed.css("#pc_card_exhibition div"):
                 if text(title) == "工厂展厅":
                     value = text(title.next, 1600)
@@ -125,7 +136,12 @@ def enrich_browser_html(result, sources, *, shop_url=None, factory_url=None, acc
     data.update(evidence_coverage(data))
     data["html_capture_status"] = records
     if context_sections:
-        data["page_context"] = select_context(context_sections)
+        # Supplemental text yields to observed structured facts at the same
+        # normalization boundary used by the linked collection contract.
+        remaining = max(0, 48_000 - len(json.dumps(data, ensure_ascii=False).encode("utf-8")) - 32)
+        context = select_context(context_sections, max_bytes=min(12_000, remaining))
+        if context['sections']:
+            data["page_context"] = context
     result["supplier_data"] = data
     result["reviews"] = data.get("reviews") or []
     result["extraction_status"] = evidence_status(data)
