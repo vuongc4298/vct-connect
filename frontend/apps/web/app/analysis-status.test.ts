@@ -23,28 +23,28 @@ test("server public browser evidence preserves partial and terminal presentation
   }
 });
 
-test("Alibaba terminal outcomes name the source and disclose unsupported recovery", () => {
+test("Alibaba terminal outcomes name the source and offer the supported extension recovery", () => {
   const source_url = "https://dgxuandele.en.alibaba.com/company_profile.html";
   for (const extraction_status of ["AUTH_REQUIRED", "BLOCKED", "TIMEOUT", "UNSUPPORTED_PAGE", "PARSE_FAILED"] as const) {
     const view = analysisPresentation({ status: "COMPLETED", attempt_count: 1, failure_code: null,
       source_url, extraction_method: "PUBLIC_HTTP", result: { source_url, extraction_status } });
     assert.equal(view.shouldPoll, false); assert.equal(view.final, true);
-    assert.match(view.headline, /Alibaba/); assert.match(view.nextAction ?? "", /hiện chưa được hỗ trợ/);
-    assert.doesNotMatch(view.nextAction ?? "", /1688|Taobao|dùng tiện ích VCT Connect/);
+    assert.match(view.headline, /Alibaba/); assert.match(view.nextAction ?? "", /tiện ích VCT Connect.*Company overview/);
+    assert.doesNotMatch(view.nextAction ?? "", /1688|Taobao|chưa được hỗ trợ|nhập trang HTML/);
   }
   assert.equal(extractionRecovery("PARTIAL", undefined, source_url), null);
 });
 
-test("Taobao terminal guidance names the source and offers capture and saved HTML recovery", () => {
+test("Taobao terminal guidance names the source and offers extension capture recovery", () => {
   const url = "https://item.taobao.com/item.htm?id=1076425861755";
   const view = analysisPresentation({ status: "COMPLETED", attempt_count: 1, failure_code: null,
     source_url: url, extraction_method: "PUBLIC_HTTP",
     result: { source_url: url, extraction_status: "BLOCKED", reason: "ACCESS_CHALLENGE" } });
   assert.equal(view.shouldPoll, false);
   assert.match(view.headline, /Taobao/);
-  assert.match(view.nextAction ?? "", /tiện ích VCT Connect.*HTML/);
+  assert.match(view.nextAction ?? "", /tiện ích VCT Connect/);
   for (const status of ["TIMEOUT", "PARSE_FAILED", "AUTH_REQUIRED", "UNSUPPORTED_PAGE"] as const) {
-    assert.match(extractionRecovery(status, "HTTP_ERROR", url)!, /tiện ích VCT Connect.*HTML/);
+    assert.match(extractionRecovery(status, "HTTP_ERROR", url)!, /tiện ích VCT Connect/);
   }
 });
 

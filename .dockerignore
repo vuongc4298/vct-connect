@@ -17,3 +17,6 @@ tmp
 *.pdf
 *.png
 *.log
+frontend/apps/extension/build-live
+frontend/apps/web/private
+!frontend/apps/extension/assets/icon.png

@@ -25,6 +25,7 @@ jobs:
       VAULT_NAME: ${{ vars.AZURE_KEY_VAULT_NAME }}
       NEXT_PUBLIC_CLERK_PUBLISHABLE_KEY: ${{ vars.NEXT_PUBLIC_CLERK_PUBLISHABLE_KEY }}
       CLERK_ISSUER: ${{ vars.CLERK_ISSUER }}
+      VCT_EXTENSION_WEB_ORIGIN: ${{ vars.VCT_EXTENSION_WEB_ORIGIN }}
     steps:
       - uses: actions/checkout@v4
         with:
@@ -59,7 +60,7 @@ jobs:
           IMAGE_TAG="$SOURCE_SHA-$GITHUB_RUN_ID-$GITHUB_RUN_ATTEMPT"
           az acr login --name "$REGISTRY_NAME"
           docker build --file backend/Dockerfile --tag "$REGISTRY_NAME.azurecr.io/vct-backend:$IMAGE_TAG" .
-          docker build --file frontend/apps/web/Dockerfile --build-arg NEXT_PUBLIC_CLERK_PUBLISHABLE_KEY --tag "$REGISTRY_NAME.azurecr.io/vct-web:$IMAGE_TAG" .
+          docker build --file frontend/apps/web/Dockerfile --build-arg NEXT_PUBLIC_CLERK_PUBLISHABLE_KEY --build-arg VCT_EXTENSION_WEB_ORIGIN --tag "$REGISTRY_NAME.azurecr.io/vct-web:$IMAGE_TAG" .
           docker push "$REGISTRY_NAME.azurecr.io/vct-backend:$IMAGE_TAG"
           docker push "$REGISTRY_NAME.azurecr.io/vct-web:$IMAGE_TAG"
           BACKEND_DIGEST=$(docker buildx imagetools inspect "$REGISTRY_NAME.azurecr.io/vct-backend:$IMAGE_TAG" --format '{{json .Manifest}}' | jq -er '.digest')

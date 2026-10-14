@@ -39,7 +39,7 @@ async function boundedUpload(request: Request, maximum = MAX_HTML_BYTES): Promis
 }
 
 export async function proxyBackend(
-  request: Request, path: string, guestKey?: string,
+  request: Request, path: string, guestKey?: string, timeoutMs?: number,
 ): Promise<Response> {
   const headers = new Headers();
   const authorization = request.headers.get("authorization");
@@ -67,6 +67,7 @@ export async function proxyBackend(
       body: request.method === "GET" || request.method === "HEAD" ? undefined
         : upload || capture || collection ? new Blob([uploadBody!]) : await request.text(),
       cache: "no-store",
+      signal: timeoutMs ? AbortSignal.timeout(timeoutMs) : undefined,
     });
     const responseHeaders = new Headers();
     const upstreamContentType = upstream.headers.get("content-type");

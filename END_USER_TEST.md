@@ -1,6 +1,18 @@
 # VCT Connect end-user acceptance test
 
-Updated: October 11, 2026 (Asia/Bangkok). Run against the updated local checkout first. An automated or synthetic-provider pass is not live-model, Chrome-extension or Azure acceptance.
+Updated: October 14, 2026 (Asia/Bangkok). The web workspace now starts with the signed-in extension download and guide. The older checks below are retained as technical/history references; the URL and saved-HTML submission forms have been removed from the web home page.
+
+## Current end-user flow: install, capture, read
+
+1. Open [VCT Connect](https://vct-connect-dev-web.blackdesert-0144dda1.southeastasia.azurecontainerapps.io/) in desktop Chrome or Brave and sign in. Expect **Tiện ích & hướng dẫn** as the default workspace; a signed-out visitor must see no extraction form or download button.
+2. Select **Tải tiện ích**. Extract `vct-connect-extension.zip`, open `chrome://extensions` or `brave://extensions`, enable Developer mode, choose Load unpacked, and select the folder containing `manifest.json`. Pin VCT Connect. Keep the installation folder in a permanent location. To update, replace its contents with the new files and click Reload on the extensions page.
+3. Use the same browser profile and VCT account. On 1688, capture product → shop → factory. On Alibaba, capture product → supplier → Company overview. On Taobao, capture the supported product/shop page. Follow the guide's platform buttons and the extension's cues. You may close a CAPTCHA overlay with X when content is already visible; hidden content remains unavailable. Finish a collection within 30 minutes.
+4. Open the report from the extension. Check the read-only source link, progress, evidence references, risk dimensions and factory assessment. Existing report links must still open directly, and **Lịch sử** must reopen a saved report without creating another analysis.
+5. Save a supplier to **Theo dõi**, reopen it, then select **Tiện ích & hướng dẫn** or **Phân tích mới**. Expect the guide, with the old analysis query cleared. On a phone-width screen, navigation and guide steps should remain usable.
+
+Expected download failures: a signed-out or expired session cannot download the archive. A temporary service/network problem shows a Vietnamese retry message; it must not download an error document as a ZIP. Downloading and reading the guide do not consume an analysis quota slot.
+
+The downloadable ZIP targets the live app. For local extension/API development, keep using the local build instructions below.
 
 ## Start the application
 

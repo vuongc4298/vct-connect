@@ -8,52 +8,55 @@ globalThis.IS_REACT_ACT_ENVIRONMENT = true;
 const { default: Page } = await component("apps/web/app/page.tsx");
 const id = "00000000-0000-0000-0000-000000000123";
 const source = "https://detail.1688.com/offer/996518024136.html";
-const typed = "https://item.taobao.com/item.htm?id=1076425861755";
 const getToken = async () => "owner-token";
 const base = { id, source_url: source, attempt_count: 1, failure_code: null, extraction_method: "PUBLIC_HTTP", result: null };
 const history = { ...base, status: "PROCESSING", created_at: "2026-10-10T00:00:00Z", supplier_name: "Saved supplier", platform: "1688", report_available: false, risk_label: null, confidence: null, coverage: null };
 
+test("signed-in workspace opens the guide without an extraction form or background submissions", async () => {
+  const original = globalThis.fetch;
+  globalThis.window = windowState().state;
+  globalThis.__mountedAuth = { isLoaded: true, isSignedIn: true, userId: "owner", getToken };
+  const requests = [];
+  globalThis.fetch = async url => { requests.push(String(url)); throw new Error("Unexpected request"); };
+  let mounted;
+  try {
+    await act(async () => { mounted = create(React.createElement(Page)); });
+    assert.match(text(mounted), /Thu thập ngay trên trang nhà cung cấp/);
+    assert.equal(mounted.root.findAllByType("form").length, 0);
+    assert.equal(mounted.root.findAllByType("input").length, 0);
+    assert.deepEqual(requests, []);
+  } finally { if (mounted) await act(async () => mounted.unmount()); globalThis.fetch = original; }
+});
+
 for (const view of ["history", "watchlist"]) {
-  test(`mounted Page reopens ${view} with matching ID/source and clears file while later polls preserve edits`, async () => {
+  test(`mounted Page reopens ${view} and polls its matching report with a read-only source`, async () => {
     const original = globalThis.fetch;
     const clock = windowState();
     globalThis.window = clock.state;
     globalThis.__mountedAuth = { isLoaded: true, isSignedIn: true, userId: "owner", getToken };
-    const requests = [];
     let polls = 0;
-    globalThis.fetch = async (url, init) => {
-      requests.push(String(url));
+    globalThis.fetch = async url => {
       if (String(url) === "/api/v1/analyses") return Response.json([history]);
-      if (String(url) === "/api/v1/watchlist") return Response.json([{ ...history, id: "saved-entry", analysis_id: id, name: "Saved supplier", overall_risk: null, analysis_status: "PROCESSING" }]);
-      if (String(url) === `/api/v1/analyses/${id}`) return Response.json({ ...base, status: ++polls === 1 ? "PROCESSING" : "ASSESSING" });
-      throw new Error(`Unexpected request ${url}`);
+      if (String(url) === "/api/v1/watchlist") return Response.json([{ ...history, id: "entry", analysis_id: id, name: "Saved supplier", analysis_status: "PROCESSING" }]);
+      assert.equal(String(url), `/api/v1/analyses/${id}`);
+      return Response.json({ ...base, status: ++polls === 1 ? "PROCESSING" : "ASSESSING" });
     };
-    let fileNode;
     let mounted;
     try {
-      await act(async () => { mounted = create(React.createElement(Page), { createNodeMock: element => element.props.id === "saved-page" ? (fileNode = { value: "" }) : null }); });
-      fileNode.value = "saved.html";
-      await act(async () => mounted.root.findByProps({ id: "saved-page" }).props.onChange({ target: { files: [new File(["saved"], "saved.html")] } }));
-      assert.match(text(mounted), /Nhập trang đã lưu/);
+      await act(async () => { mounted = create(React.createElement(Page)); });
       const label = view === "history" ? "Lịch sử," : "Theo dõi,";
       await act(async () => mounted.root.findAllByType("button").find(button => button.props["aria-label"]?.startsWith(label)).props.onClick());
-      const open = view === "history"
-        ? mounted.root.findByProps({ className: "button button-ghost history-open-button" })
-        : mounted.root.findAllByType("button").find(button => button.children.some(child => typeof child === "string" && child.includes("Mở phân tích")));
+      const open = view === "history" ? mounted.root.findByProps({ className: "button button-ghost history-open-button" }) : mounted.root.findAllByType("button").find(button => button.children.some(child => typeof child === "string" && child.includes("Mở phân tích")));
       await act(async () => open.props.onClick());
-      assert.equal(mounted.root.findByProps({ id: "source-url" }).props.value, source);
-      assert.equal(fileNode.value, "");
-      assert.doesNotMatch(text(mounted), /Nhập trang đã lưu/);
       assert.equal(new URL(clock.state.location.href).searchParams.get("analysis"), id);
-      assert.ok(requests.includes(`/api/v1/analyses/${id}`));
-      await act(async () => mounted.root.findByProps({ id: "source-url" }).props.onChange({ target: { value: typed } }));
+      assert.equal(mounted.root.findAllByType("input").length, 0);
+      assert.ok(mounted.root.findAllByType("a").some(link => link.props.href === source));
       await act(async () => clock.tick(1500));
       assert.equal(polls, 2);
-      assert.equal(mounted.root.findByProps({ id: "source-url" }).props.value, typed);
-    } finally {
-      if (mounted) await act(async () => mounted.unmount());
-      globalThis.fetch = original;
-    }
+      await act(async () => mounted.root.findByProps({ "aria-label": "Tiện ích & hướng dẫn" }).props.onClick());
+      assert.equal(new URL(clock.state.location.href).searchParams.has("analysis"), false);
+      assert.match(text(mounted), /Thu thập ngay trên trang nhà cung cấp/);
+    } finally { if (mounted) await act(async () => mounted.unmount()); globalThis.fetch = original; }
   });
 }
 
@@ -85,7 +88,7 @@ for (const view of ["history", "watchlist"]) {
       await act(async () => open.props.onClick());
       assert.equal(polls, 2);
       assert.match(text(mounted), /Chưa có báo cáo đánh giá đầy đủ/);
-      assert.equal(mounted.root.findByProps({ id: "source-url" }).props.value, source);
+      assert.ok(mounted.root.findAllByType("a").some(link => link.props.href === source));
     } finally {
       if (mounted) await act(async () => mounted.unmount());
       globalThis.fetch = original;
@@ -107,8 +110,9 @@ test("mounted Page completed extraction-only result does not mark assessment/rep
   try {
     await act(async () => { mounted = create(React.createElement(Page)); });
     assert.match(text(mounted), /Chưa có báo cáo đánh giá đầy đủ/);
+    const progress = mounted.root.findByProps({ "aria-label": "Tiến độ phân tích" });
     for (const title of ["Đánh giá", "Báo cáo"]) {
-      const step = mounted.root.findAllByType("strong").find(node => node.children[0] === title).parent;
+      const step = progress.findAllByType("strong").find(node => node.children[0] === title).parent;
       assert.equal(step.props.className, "");
       assert.notEqual(step.findByType("span").children[0], "✓");
     }
@@ -118,62 +122,44 @@ test("mounted Page completed extraction-only result does not mark assessment/rep
   }
 });
 
-test("mounted Landing completes synthetic tracer without requesting a preview", async () => {
+test("signed-out landing has no URL form, download or analysis requests", async () => {
   const original = globalThis.fetch;
   globalThis.window = windowState().state;
   globalThis.__mountedAuth = { isLoaded: true, isSignedIn: false, userId: null, getToken };
   const requests = [];
-  globalThis.fetch = async (url, init) => {
-    requests.push(String(url));
-    if (init?.method === "POST") return Response.json({ id, status: "QUEUED" }, { status: 202 });
-    return Response.json({ ...base, status: "COMPLETED", extraction_method: "FIXTURE", result: { fixture: true, source_url: source } });
-  };
+  globalThis.fetch = async url => { requests.push(String(url)); throw new Error("Unexpected request"); };
   let mounted;
   try {
     await act(async () => { mounted = create(React.createElement(Page)); });
-    assert.equal(mounted.root.findByProps({ id: "guest-source-url" }).props.value, "");
-    await act(async () => mounted.root.findByProps({ id: "guest-source-url" }).props.onChange({ target: { value: "https://detail.1688.com/offer/123456789012.html" } }));
-    await act(async () => mounted.root.findByType("form").props.onSubmit({ preventDefault() {} }));
-    assert.match(text(mounted), /Đã hoàn tất tracer tổng hợp/);
-    assert.doesNotMatch(text(mounted), /Preview not found|Báo cáo đã sẵn sàng/);
-    assert.equal(requests.some(url => url.endsWith("/preview")), false);
-  } finally {
-    if (mounted) await act(async () => mounted.unmount());
-    globalThis.fetch = original;
-  }
+    assert.match(text(mounted), /Đăng nhập/);
+    assert.equal(mounted.root.findAllByType("form").length, 0);
+    assert.equal(mounted.root.findAllByType("input").length, 0);
+    assert.doesNotMatch(text(mounted), /↓ Tải tiện ích|Guangzhou Future Tech|BÁO CÁO MINH HOẠ/);
+    assert.deepEqual(requests, []);
+  } finally { if (mounted) await act(async () => mounted.unmount()); globalThis.fetch = original; }
 });
 
-test("mounted Landing submits chosen live URL, labels initial extraction and displays returned preview", async () => {
+test("switching workspace accounts cancels the old download and enables the new account", async () => {
   const original = globalThis.fetch;
   globalThis.window = windowState().state;
-  globalThis.__mountedAuth = { isLoaded: true, isSignedIn: false, userId: null, getToken };
-  const status = deferred();
-  const requests = [];
-  globalThis.fetch = async (url, init) => {
-    requests.push(String(url));
-    if (init?.method === "POST") {
-      assert.equal(JSON.parse(init.body).source_url, typed);
-      return Response.json({ id, status: "QUEUED" }, { status: 202 });
-    }
-    if (String(url).endsWith("/preview")) return Response.json({ schema_version: "guest-preview.v1", analysis_id: id, supplier_name: "Test supplier preview", platform: "TAOBAO", extracted_at: "2026-10-10T00:00:00Z", confidence: 0.5, coverage: 0.5, information_state: "LIMITED_PREVIEW", missing_source_fields: [], missing_risk_dimensions: [], uncertainties_vi: [], limitations_vi: [], registration_required: true });
-    return status.promise;
-  };
+  const oldToken = deferred(), requests = [];
+  globalThis.__mountedAuth = { isLoaded: true, isSignedIn: true, userId: "old-owner", getToken: () => oldToken.promise };
+  globalThis.fetch = async (url, init) => { requests.push(init.headers.Authorization); return Response.json({ detail: "Sign in" }, { status: 401 }); };
+  const button = mounted => mounted.root.findAllByType("button").find(item => item.children.some(value => typeof value === "string" && /Tải tiện ích|Đang tải/.test(value)));
   let mounted;
   try {
     await act(async () => { mounted = create(React.createElement(Page)); });
-    await act(async () => mounted.root.findByProps({ id: "guest-source-url" }).props.onChange({ target: { value: typed } }));
-    await act(async () => mounted.root.findByType("form").props.onSubmit({ preventDefault() {} }));
-    assert.match(text(mounted), /"Trích xuất"/);
-    assert.doesNotMatch(text(mounted), /Kết quả tracer/);
-    await act(async () => status.resolve(Response.json({ ...base, source_url: typed, status: "COMPLETED", result: { source_url: typed, extraction_status: "PARTIAL" } })));
-    assert.ok(requests.includes(`/api/v1/guest-analyses/${id}/preview`));
-    assert.match(text(mounted), /Test supplier preview/);
-    assert.match(text(mounted), /gửi lại URL hoặc bằng chứng/);
-    assert.match(text(mounted), /không được chuyển vào tài khoản/);
-  } finally {
-    if (mounted) await act(async () => mounted.unmount());
-    globalThis.fetch = original;
-  }
+    await act(async () => button(mounted).props.onClick());
+    assert.equal(button(mounted).props.disabled, true);
+    globalThis.__mountedAuth = { isLoaded: true, isSignedIn: true, userId: "new-owner", getToken: async () => "new-token" };
+    await act(async () => mounted.update(React.createElement(Page)));
+    assert.equal(button(mounted).props.disabled, false);
+    await act(async () => oldToken.resolve("old-token"));
+    assert.deepEqual(requests, []);
+    await act(async () => button(mounted).props.onClick());
+    assert.deepEqual(requests, ["Bearer new-token"]);
+    assert.equal(button(mounted).props.disabled, false);
+  } finally { if (mounted) await act(async () => mounted.unmount()); globalThis.fetch = original; }
 });
 
 const { ReportPages } = await component("apps/web/app/report-visuals.tsx");
