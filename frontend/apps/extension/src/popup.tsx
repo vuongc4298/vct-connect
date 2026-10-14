@@ -147,9 +147,11 @@ export function App({ initialLanguage = "vi", onLanguageChange }: { initialLangu
 
   const guidedWaiting = Boolean(collectionJob && ["WAITING_COMPANY", "WAITING_FACTORY", "FINISHING"].includes(collectionJob.stage)
     && (collectionJob.expiresAt || 0) > Date.now());
-  const linkedPage = page.status === "supported" && ["1688-company", "1688-factory"].includes(page.kind);
+  const alibaba = Boolean(page.status === "supported" && page.kind.startsWith("alibaba") || collectionJob?.sourceUrl.includes("www.alibaba.com/"));
+  const profilePage = page.status === "supported" && ["1688-factory", "alibaba-profile"].includes(page.kind);
+  const linkedPage = page.status === "supported" && ["1688-company", "1688-factory", "alibaba-company", "alibaba-profile"].includes(page.kind);
   const canCapturePage = !linkedPage || Boolean(guidedWaiting && collectionJob && page.status === "supported" &&
-    (["WAITING_COMPANY", "WAITING_FACTORY", "FINISHING"].includes(collectionJob.stage) && (page.sourceUrl === collectionJob.companyUrl || (page.kind === "1688-factory" && (!collectionJob.factoryUrl || page.sourceUrl === collectionJob.factoryUrl)))));
+    (["WAITING_COMPANY", "WAITING_FACTORY", "FINISHING"].includes(collectionJob.stage) && (page.sourceUrl === collectionJob.companyUrl || (profilePage && (!collectionJob.factoryUrl || page.sourceUrl === collectionJob.factoryUrl)))));
 
   useEffect(() => {
     if (!guidedWaiting || !canCapturePage || !userId) return;
@@ -195,8 +197,8 @@ export function App({ initialLanguage = "vi", onLanguageChange }: { initialLangu
       }
       // Request optional source access in the button's user gesture. Declining
       // it keeps the product-only collection path available.
-      if (page.status === "supported" && page.kind === "1688") {
-        await chrome.permissions.request({ origins: ["https://*.1688.com/*"] }).catch(() => false);
+      if (page.status === "supported" && ["1688", "alibaba"].includes(page.kind)) {
+        await chrome.permissions.request({ origins: [page.kind === "alibaba" ? "https://*.alibaba.com/*" : "https://*.1688.com/*"] }).catch(() => false);
         const [tab] = await chrome.tabs.query({ active: true, currentWindow: true });
         if (!current()) return;
         if (!tab?.id || supportedOffer(tab.url || "")?.sourceUrl !== page.sourceUrl) throw new Error("The active product changed; try again");
@@ -269,9 +271,9 @@ export function App({ initialLanguage = "vi", onLanguageChange }: { initialLangu
 
   return <main lang={language} translate="no">
     <header className="popup-header"><div><span className="eyebrow">{t("Source evidence")}</span><h1>VCT Connect</h1></div><div className="language-switch" role="group" aria-label="Language / Ngôn ngữ"><button aria-pressed={language === "vi"} onClick={() => chooseLanguage("vi")}>VI</button><button aria-pressed={language === "en"} onClick={() => chooseLanguage("en")}>EN</button></div></header>
-    <p className="intro">{t("Capture product, shop and factory evidence for one supplier report.")}</p>
+    <p className="intro">{t(alibaba ? "Capture product, storefront and company overview for one supplier report." : "Capture product, shop and factory evidence for one supplier report.")}</p>
     {page.status === "supported"
-      ? <p className="page-state">✓ {t("Supported page")} · {t(page.kind === "1688-company" || page.kind === "taobao-shop" ? "Shop" : page.kind === "1688-factory" ? "Factory" : "Product")}</p>
+      ? <p className="page-state">✓ {t("Supported page")} · {t(["1688-company", "alibaba-company", "taobao-shop"].includes(page.kind) ? "Shop" : profilePage ? alibaba ? "Company overview" : "Factory" : "Product")}</p>
       : page.status === "unsupported"
         ? <p className="page-state">{t("Open a supported product, shop or linked factory page.")}</p>
         : <p className="page-state">{t("Checking the active page…")}</p>}
@@ -285,16 +287,16 @@ export function App({ initialLanguage = "vi", onLanguageChange }: { initialLangu
       <UserButton />
       {gate === "checking-page" && <p>{t("Checking the active page…")}</p>}
       {gate === "unsupported-page" && <p>{t("This page cannot be captured. Open a supported source.")}</p>}
-      {gate === "ready" && <p><button className="primary-action" disabled={busy || Boolean(collecting) || !canCapturePage} onClick={() => void capture()}>{t(busy || collecting ? "Working…" : collectionJob?.stage === "FINISHING" ? "Retry saved upload" : linkedPage && page.status === "supported" ? page.kind === "1688-factory" ? "Save factory HTML & analyze" : "Save shop HTML" : "Analyze this page")}</button></p>}
-      {gate === "ready" && page.status === "supported" && page.kind === "1688" && !guidedWaiting && <p className="capture-note">{t("Capture the product first. Then follow the supplier cue to save shop and factory HTML. Finish within 30 minutes.")}</p>}
+      {gate === "ready" && <p><button className="primary-action" disabled={busy || Boolean(collecting) || !canCapturePage} onClick={() => void capture()}>{t(busy || collecting ? "Working…" : collectionJob?.stage === "FINISHING" ? "Retry saved upload" : linkedPage && page.status === "supported" ? profilePage ? alibaba ? "Save company HTML & analyze" : "Save factory HTML & analyze" : "Save shop HTML" : "Analyze this page")}</button></p>}
+      {gate === "ready" && page.status === "supported" && ["1688", "alibaba"].includes(page.kind) && !guidedWaiting && <p className="capture-note">{t(alibaba ? "Capture the product, save the supplier storefront, then save Company overview. Finish within 30 minutes." : "Capture the product first. Then follow the supplier cue to save shop and factory HTML. Finish within 30 minutes.")}</p>}
     </>}
     {isSignedIn && linkedPage && !canCapturePage && <p>{t("Start from a product and follow its linked supplier page.")}</p>}
     {isSignedIn && guidedWaiting && collectionJob && <div className="status" aria-live="polite">
-      <ol className="capture-steps" aria-label={t("Source evidence")}>{["Product", "Shop", "Factory"].map((step, i) => <li key={step} className={i === (collectionJob.stage === "WAITING_COMPANY" ? 1 : 2) ? "current" : ""}><span>{i + 1}</span>{t(step)}</li>)}</ol>
-      <strong>{t(collectionJob.stage === "FINISHING" ? "Capture saved · retry upload" : collectionJob.stage === "WAITING_FACTORY" ? "Shop saved · factory next" : "Product captured · shop next")}</strong>
-      <p>{t(collectionJob.stage === "FINISHING" ? "Retry the stored upload. Your evidence and analysis ID are retained." : collectionJob.stage === "WAITING_FACTORY" ? "Open Factory profile / 工厂档案 from the shop. When factory details are visible, save factory HTML to complete the report." : "Open the supplier shop using the link below or the highlighted name. If an overlay covers visible company content, close it with X, then save shop HTML.")}</p>
+      <ol className="capture-steps" aria-label={t("Source evidence")}>{["Product", "Shop", alibaba ? "Company overview" : "Factory"].map((step, i) => <li key={step} className={i === (collectionJob.stage === "WAITING_COMPANY" ? 1 : 2) ? "current" : ""}><span>{i + 1}</span>{t(step)}</li>)}</ol>
+      <strong>{t(collectionJob.stage === "FINISHING" ? "Capture saved · retry upload" : collectionJob.stage === "WAITING_FACTORY" ? alibaba ? "Shop saved · company overview next" : "Shop saved · factory next" : "Product captured · shop next")}</strong>
+      <p>{t(collectionJob.stage === "FINISHING" ? "Retry the stored upload. Your evidence and analysis ID are retained." : collectionJob.stage === "WAITING_FACTORY" ? alibaba ? "Open Company overview / Company profile from the shop. Save company HTML when its details are visible to complete the report." : "Open Factory profile / 工厂档案 from the shop. When factory details are visible, save factory HTML to complete the report." : "Open the supplier shop using the link below or the highlighted name. If an overlay covers visible company content, close it with X, then save shop HTML.")}</p>
       {collectionJob.error && <p role="status">{errorText(collectionJob.error, language)}</p>}
-      {collectionJob.factoryUrl && <p><a href={collectionJob.factoryUrl} target="_blank" rel="noreferrer">{t("Open linked factory profile")} ↗</a></p>}
+      {collectionJob.factoryUrl && <p><a href={collectionJob.factoryUrl} target="_blank" rel="noreferrer">{t(alibaba ? "Open Company overview" : "Open linked factory profile")} ↗</a></p>}
       {collectionJob.companyUrl && <p><a href={collectionJob.companyUrl} target="_blank" rel="noreferrer">{t("Open linked company page")} ↗</a></p>}
       <p><button className="secondary-action" disabled={busy} onClick={() => void finishGuided()}>{t(collectionJob.stage === "FINISHING" ? "Retry saved upload" : collectionJob.stage === "WAITING_FACTORY" ? "Finish with captured product & shop" : "Finish with product evidence only")}</button></p>
       <small>{t("One analysis. HTML is downloaded at each capture and uploaded together when you finish. Only visible content is collected.")}</small>

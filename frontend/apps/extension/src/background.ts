@@ -1,4 +1,5 @@
 import { createClerkClient } from "@clerk/chrome-extension/background";
+import { alibabaPage, captureAlibabaDom, captureAlibabaHtml } from "./alibaba-capture";
 import { assertPermittedEvidence, captureSelectedDom, supportedOffer, type LegacyCapture } from "./capture";
 import { showCompanyGuidance } from "./company-guidance";
 import { capturePublicHtml, MAX_HTML_BUNDLE_BYTES, type HtmlSource } from "./html-capture";
@@ -56,8 +57,10 @@ type GuidedSession = { job: CollectionJob; bundle: SupplierBundle; reserved: boo
 const SESSION_KEY = "guidedCollection";
 
 async function selected<T>(tabId: number, mode: Parameters<typeof captureLinkedDom>[0], expected?: string): Promise<T | null> {
-  const [result] = await chrome.scripting.executeScript({ target: { tabId }, func: captureLinkedDom,
-    args: expected === undefined ? [mode] : [mode, expected] });
+  const alibaba = alibabaPage((await chrome.tabs.get(tabId)).url || "");
+  const [result] = alibaba && mode !== "OPEN_FACTORY"
+    ? await chrome.scripting.executeScript({ target: { tabId }, func: captureAlibabaDom, args: expected === undefined ? [mode] : [mode, expected] })
+    : await chrome.scripting.executeScript({ target: { tabId }, func: captureLinkedDom, args: expected === undefined ? [mode] : [mode, expected] });
   return result?.result as T | null;
 }
 
@@ -73,7 +76,7 @@ async function cue(tabId: number, mode: Parameters<typeof showCompanyGuidance>[0
 
 async function captureHtml(tabId: number, page: HtmlSource["page"], source: string, session: GuidedSession) {
   try {
-    const [result] = await chrome.scripting.executeScript({ target: { tabId }, func: capturePublicHtml, args: [page, source] });
+    const [result] = await chrome.scripting.executeScript({ target: { tabId }, func: source.includes(".alibaba.com/") ? captureAlibabaHtml : capturePublicHtml, args: [page, source] });
     const html = result?.result as HtmlSource | null;
     if (!html || html.page !== page || html.source_url !== source) return { captured: false, downloaded: false };
     assertPermittedEvidence(html);
@@ -86,7 +89,7 @@ async function captureHtml(tabId: number, page: HtmlSource["page"], source: stri
     let downloaded = false;
     try {
       await chrome.downloads.download({ url: "data:text/html;charset=utf-8," + encodeURIComponent(html.html),
-        filename: `VCT Connect/${session.job.id}/${page.toLowerCase()}.html`, saveAs: false, conflictAction: "uniquify" });
+        filename: `VCT Connect/${session.job.id}/${page === "FACTORY" && session.bundle.platform === "ALIBABA" ? "company" : page.toLowerCase()}.html`, saveAs: false, conflictAction: "uniquify" });
       downloaded = true;
     } catch { /* Upload does not depend on a disk download. */ }
     return { captured: true, downloaded };
@@ -142,7 +145,10 @@ async function guided(type: string, tabId: number, ownerId: string, sourceUrl?: 
         throw new Error("A product is waiting for company evidence. Open its company page or finish the saved evidence first.");
       }
       if (supportedOffer(tab.url || "")?.sourceUrl !== sourceUrl) throw new Error("The active product changed.");
-      const [injected] = await chrome.scripting.executeScript({ target: { tabId }, func: captureSelectedDom });
+      const alibaba = supportedOffer(sourceUrl || "")?.kind === "alibaba";
+      const [injected] = alibaba
+        ? await chrome.scripting.executeScript({ target: { tabId }, func: captureAlibabaDom, args: ["PRODUCT", sourceUrl!] })
+        : await chrome.scripting.executeScript({ target: { tabId }, func: captureSelectedDom });
       const product = injected?.result as LegacyCapture | undefined;
       if (!product || !("offer_id" in product) || product.source_url !== sourceUrl) throw new Error("Product evidence is not ready.");
       let link = await selected<string>(tabId, "PRODUCT_LINK", sourceUrl);
@@ -158,10 +164,11 @@ async function guided(type: string, tabId: number, ownerId: string, sourceUrl?: 
       const startedAt = Date.now();
       const job: CollectionJob = { id: crypto.randomUUID(), ownerId, sourceUrl: sourceUrl!, startedAt,
         expiresAt: startedAt + 30 * 60_000, stage: "STARTING", ...(company ? { companyUrl: company } : {}) };
-      session = { job, reserved: false, bundle: { job_id: job.id, product, guided: true,
+      session = { job, reserved: false, bundle: { job_id: job.id, ...(alibaba ? { platform: "ALIBABA" as const } : {}), product, guided: true,
         ...(company ? { shop_url: company } : {}), outcomes: [], html_capture_requested: true } };
       assertPermittedEvidence(session.bundle);
-      await captureHtml(tabId, "PRODUCT", sourceUrl!, session);
+      const productHtml = await captureHtml(tabId, "PRODUCT", sourceUrl!, session);
+      if (alibaba && !productHtml.captured) throw Object.assign(new Error("No usable product HTML was captured. Wait for product and supplier information, then retry."), { reservationRejected: true });
       await saveSession(session); // Durable identical begin payload before sending.
       await post("begin", session.bundle, ownerId); session.reserved = true;
       session.job = { ...job, stage: "WAITING_COMPANY" };
@@ -195,7 +202,7 @@ async function guided(type: string, tabId: number, ownerId: string, sourceUrl?: 
     if (["WAITING_COMPANY", "WAITING_FACTORY"].includes(session.job.stage)) {
       if (shopUrl(tab.url || "") !== company) throw new Error("Open this product's linked shop, close the CAPTCHA with X if possible, and choose Save shop HTML.");
       const shop = await selected<ShopSelection>(tabId, "SHOP");
-      if (!shop || shop.source_url !== company || (shop.credit_url !== undefined && shop.credit_url !== company + "page/creditdetail.html") || (!shop.credit_url && !shop.company_name) ||
+      if (!shop || shop.source_url !== company || (shop.credit_url !== undefined && (session.bundle.platform === "ALIBABA" || shop.credit_url !== company + "page/creditdetail.html")) || (!shop.credit_url && !shop.company_name) ||
           shopUrl((await chrome.tabs.get(tabId)).url || "") !== company) {
         throw new Error("No supported supplier header or company introduction was detected. Scroll to the company section and retry Save shop HTML; a CAPTCHA solution is not required for visible content.");
       }
@@ -233,7 +240,7 @@ chrome.runtime.onMessage.addListener((message, sender, respond) => {
   if (sender.id !== chrome.runtime.id || !sender.url?.endsWith("/popup.html") ||
       !["START_COLLECTION", "CONTINUE_GUIDED", "FINISH_GUIDED", "SHOW_GUIDANCE"].includes(message?.type)) return;
   if (!Number.isInteger(message.tabId) || typeof message.ownerId !== "string" || !message.ownerId.startsWith("user_") ||
-      (message.type === "START_COLLECTION" && !/^https:\/\/detail\.1688\.com\/offer\/[0-9]{6,20}\.html$/.test(message.sourceUrl || ""))) {
+      (message.type === "START_COLLECTION" && !(supportedOffer(message.sourceUrl || "")?.sourceUrl === message.sourceUrl && [undefined, "alibaba"].includes(supportedOffer(message.sourceUrl || "")?.kind)))) {
     respond({ error: "Invalid collection request" }); return;
   }
   if (message.type === "SHOW_GUIDANCE") {

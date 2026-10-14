@@ -1,11 +1,12 @@
-import type { LegacyCapture } from "./capture";
+import { supportedOffer, type LegacyCapture } from "./capture";
+import { alibabaPage } from "./alibaba-capture";
 import type { HtmlSource } from "./html-capture";
 
 export type ShopSelection = { source_url: string; credit_url?: string; company_name?: string; factory_url?: string };
 export type FactorySelection = { source_url: string; canonical_url: string; shop_url: string;
-  claims: { name: string; value: string }[]; description?: string };
+  claims: { name: string; value: string }[]; description?: string; company_name?: string };
 export type CollectionOutcome = { page: "SHOP" | "FACTORY"; status: "OK" | "NO_PERMISSION" | "LINK_UNAVAILABLE" | "UNAVAILABLE" | "TIMEOUT" };
-export type SupplierBundle = { job_id: string; product: LegacyCapture; shop_url?: string;
+export type SupplierBundle = { job_id: string; platform?: "1688" | "ALIBABA"; product: LegacyCapture; shop_url?: string;
   shop?: ShopSelection; factory?: FactorySelection; outcomes: CollectionOutcome[]; html_sources?: HtmlSource[]; html_capture_requested?: boolean; guided?: boolean };
 export type CollectionJob = { id: string; ownerId: string; sourceUrl: string; startedAt: number;
   stage: "STARTING" | "SHOP" | "FACTORY" | "ASSESSING" | "ERROR" | "WAITING_COMPANY" | "WAITING_FACTORY" | "FINISHING"; companyUrl?: string; factoryUrl?: string; expiresAt?: number; error?: string; reservationUncertain?: boolean };
@@ -14,7 +15,7 @@ export function restoreCollectionJob(value: unknown, owner: string): CollectionJ
   if (!value || typeof value !== "object") return null;
   const j = value as CollectionJob;
   return j.ownerId === owner && typeof j.id === "string" && /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/.test(j.id) &&
-    typeof j.sourceUrl === "string" && /^https:\/\/detail\.1688\.com\/offer\/[0-9]{6,20}\.html$/.test(j.sourceUrl) &&
+    typeof j.sourceUrl === "string" && supportedOffer(j.sourceUrl)?.sourceUrl === j.sourceUrl && [undefined, "alibaba"].includes(supportedOffer(j.sourceUrl)?.kind) &&
     typeof j.startedAt === "number" && Number.isFinite(j.startedAt) && j.startedAt >= 0 &&
     ["STARTING", "SHOP", "FACTORY", "ASSESSING", "ERROR", "WAITING_COMPANY", "WAITING_FACTORY", "FINISHING"].includes(j.stage) &&
     (j.companyUrl === undefined || (typeof j.companyUrl === "string" && shopUrl(j.companyUrl) === j.companyUrl)) &&
@@ -25,6 +26,8 @@ export function restoreCollectionJob(value: unknown, owner: string): CollectionJ
 }
 
 export function shopUrl(value: string): string | null {
+  const alibaba = alibabaPage(value);
+  if (alibaba?.kind === "shop") return alibaba.source;
   try {
     const u = new URL(value);
     return u.protocol === "https:" && !u.port && !u.username && !u.password &&
@@ -35,6 +38,8 @@ export function shopUrl(value: string): string | null {
 }
 
 export function factoryUrl(value: string): string | null {
+  const alibaba = alibabaPage(value);
+  if (alibaba?.kind === "profile") return alibaba.source;
   try {
     const u = new URL(value);
     if (u.protocol !== "https:" || u.port || u.username || u.password) return null;

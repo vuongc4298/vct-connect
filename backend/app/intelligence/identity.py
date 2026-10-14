@@ -154,6 +154,25 @@ def supplier_identity_evidence(supplier_data: Mapping[str, object]) -> list[Iden
     company = supplier_data.get("company_information")
     company = dict(company) if isinstance(company, Mapping) else {}
     evidence: list[IdentityEvidence] = []
+    if supplier_data.get("platform") == "ALIBABA" and company.get("company_profile_claims"):
+        from ..extraction.alibaba_browser import alibaba_company_url
+        try:
+            company_profile = alibaba_company_url(company.get("company_profile_source_url"), profile=True)
+        except (ValueError, TypeError, AttributeError):
+            company_profile = None
+        if company_profile:
+            evidence.append(IdentityEvidence(
+                evidence_id="company_information.company_profile_source_url", source_field="company_information.company_profile_source_url",
+                direction="NEUTRAL", strength=0, reliability=0.5, source_kind="PLATFORM_PROFILE",
+                statement="Đã xem xét hồ sơ công ty Alibaba; hồ sơ riêng không xác minh hoạt động sản xuất.", value=company_profile,
+            ))
+            if company.get("factory_area_display_text"):
+                evidence.append(IdentityEvidence(
+                    evidence_id="company_information.factory_area_display_text", source_field="company_information.factory_area_display_text",
+                    direction="FACTORY", strength=0.6, reliability=0.55, source_kind="SELF_CLAIM",
+                    statement="Hồ sơ công bố diện tích nhà máy theo khoảng; giữ nguyên phạm vi và cần xác minh thực tế.",
+                    value=str(company["factory_area_display_text"]),
+                ))
 
     claims = stored_factory_claims(company)
     labeled_claims = set(claims)

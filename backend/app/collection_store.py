@@ -58,9 +58,14 @@ class CollectionStoreMixin:
             if payload["source_url"] != row["source_url"]:
                 raise CollectionConflict("Product changed during collection")
             from .extraction.supplier_bundle import shop_identity
+            from .extraction.alibaba_browser import alibaba_company_url
             initial_shop = row["initial_payload"]["raw_payload"]["linked_collection"].get("shop_url")
             final_shop = payload["raw_payload"]["linked_collection"].get("shop_url")
-            if (shop_identity(initial_shop) if initial_shop else None) != (shop_identity(final_shop) if final_shop else None):
+            initial_platform = row["initial_payload"]["supplier_data"]["platform"]
+            if payload["supplier_data"]["platform"] != initial_platform:
+                raise CollectionConflict("Supplier platform changed during collection")
+            identity = alibaba_company_url if initial_platform == "ALIBABA" else shop_identity
+            if (identity(initial_shop) if initial_shop else None) != (identity(final_shop) if final_shop else None):
                 raise CollectionConflict("Supplier shop changed during collection")
             if row["expired"]:
                 payload, digest = self._collection_fallback(row), "TIMEOUT"

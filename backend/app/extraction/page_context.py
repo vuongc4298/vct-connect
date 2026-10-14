@@ -48,7 +48,9 @@ PRIORITY = re.compile(r'售后|退款|退货|换货|赔付|保障|认证|证书|
 
 
 def collect_context(parsed, page, url, html_sha256):
-    if page == 'PRODUCT':
+    if '.alibaba.com/' in url:
+        roots = parsed.css('#vct-alibaba-policy, #vct-alibaba-price, #vct-alibaba-introduction, #vct-alibaba-company-claims, #vct-alibaba-shop-claims')
+    elif page == 'PRODUCT':
         roots = [node for selector in ['#mainPrice', '#mainServices', '#shippingServices', '#description',
                  '#productAttributes', '#productWarning', '#officialInspection', '#productPackInfo']
                  for node in parsed.css(selector)]

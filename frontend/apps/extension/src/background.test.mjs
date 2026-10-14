@@ -9,7 +9,10 @@ const source = 'https://detail.1688.com/offer/1027322610455.html';
 const shop = 'https://shopabcdef123.1688.com/';
 const factory = 'https://www.1688.com/factory/b2b-abcdef123.html';
 
-function setup({ permission = true, navigation = false } = {}) {
+function setup({ permission = true, navigation = false, platform = "1688" } = {}) {
+  const source = platform === "ALIBABA" ? 'https://www.alibaba.com/product-detail/Yiheng-Paddle_1601711788226.html' : 'https://detail.1688.com/offer/1027322610455.html';
+  const shop = platform === "ALIBABA" ? 'https://yihengsportinggoods.en.alibaba.com/' : 'https://shopabcdef123.1688.com/';
+  const factory = platform === "ALIBABA" ? shop + 'company_profile.html' : 'https://www.1688.com/factory/b2b-abcdef123.html';
   const stored = {}, tabs = new Map([[1, { id: 1, url: source, status: 'complete' }]]);
   const created = [], removed = [], requests = [], downloads = [], cues = [], listeners = new Set();
   let updated;
@@ -32,17 +35,18 @@ function setup({ permission = true, navigation = false } = {}) {
       // Chrome rejects undefined args instead of coercing them to JSON null.
       if (args) assert.ok(args.every(value => value !== undefined), 'Injection arguments must be serializable');
       const mode = args?.[0];
-      if (func.name === 'capturePublicHtml') return [{ result: { page: args[0], source_url: args[1], html: '<div>public fixture</div>' } }];
+      if (['capturePublicHtml','captureAlibabaHtml'].includes(func.name)) return [{ result: { page: args[0], source_url: args[1], html: '<div>public fixture</div>' } }];
       if (func.name === 'showCompanyGuidance') { cues.push({tabId:target.tabId,args}); return [{ result: true }]; }
       if (func.name === 'captureSelectedDom') return [{ result: { source_url: source, offer_id: '1027322610455', fields: { product_title: 'Shirt' } } }];
+      if (func.name === 'captureAlibabaDom' && mode === 'PRODUCT') return [{ result: { source_url: source, offer_id: '1601711788226', fields: { product_title: 'Paddle' } } }];
       if (mode === 'PRODUCT_LINK') { assert.equal(args[1], source); return [{ result: shop }]; }
-      if (mode === 'SHOP') return [{ result: { source_url: shop, credit_url: shop + 'page/creditdetail.html', ...(!navigation ? { factory_url: factory } : {}) } }];
+      if (mode === 'SHOP') return [{ result: { source_url: shop, ...(platform === 'ALIBABA' ? { company_name: 'Yiheng' } : {credit_url: shop + 'page/creditdetail.html'}), ...(!navigation ? { factory_url: factory } : {}) } }];
       if (mode === 'OPEN_FACTORY') {
         const tab = { id: nextId++, openerTabId: target.tabId, url: factory, status: 'complete' };
         tabs.set(tab.id, tab); created.push(tab); for (const fn of listeners) fn(tab);
         return [{ result: 'CLICKED' }];
       }
-      if (mode === 'FACTORY') return [{ result: { source_url: factory, canonical_url: factory, shop_url: shop, claims: [{ name: '成立时间', value: '2025.07.14' }] } }];
+      if (mode === 'FACTORY') return [{ result: { source_url: factory, canonical_url: factory, shop_url: shop, ...(platform === 'ALIBABA' ? { company_name: 'Yiheng' } : {}), claims: [{ name: platform === 'ALIBABA' ? 'Year established' : '成立时间', value: platform === 'ALIBABA' ? '2026' : '2025.07.14' }] } }];
       throw new Error('Unexpected injection');
     } },
   };
@@ -59,7 +63,7 @@ function setup({ permission = true, navigation = false } = {}) {
   loaded._compile(transformSync(readFileSync(file, 'utf8'), { loader: 'ts', format: 'cjs', define: {
     VCT_WEB_ORIGIN: JSON.stringify('https://vct.example'), VCT_CLERK_PUBLISHABLE_KEY: JSON.stringify('test'), VCT_CLERK_SYNC_HOST: JSON.stringify('vct.example'),
   } }).code, file);
-  return { stored, requests, created, removed, downloads, cues, listeners, tabs,
+  return { source, shop, factory, stored, requests, created, removed, downloads, cues, listeners, tabs,
     update: tabId => updated(tabId, { status: "complete" }),
     owner: value => { currentOwner = value; },
     send: (type = 'START_COLLECTION', tabId = 1, sender = { id: 'test-extension', url: 'chrome-extension://test-extension/popup.html' }, ownerId = 'user_one') => new Promise(resolve => {
@@ -68,6 +72,28 @@ function setup({ permission = true, navigation = false } = {}) {
     }) };
 
 }
+
+test('Alibaba waits for storefront and company HTML, reuses one reservation and downloads three sources', async () => {
+  const original = globalThis.fetch;
+  try {
+    const h = setup({platform:'ALIBABA'});
+    const first = await h.send(); assert.ok(first.id);
+    assert.equal(h.stored.collectionJob.stage,'WAITING_COMPANY');
+    assert.equal(h.created.length,0);
+    h.tabs.set(2,{id:2,url:h.shop.replace('.en.', '.m.en.'),status:'complete'});
+    assert.equal((await h.send('CONTINUE_GUIDED',2)).id,first.id);
+    assert.equal(h.stored.collectionJob.stage,'WAITING_FACTORY');
+    assert.equal(h.created.length,0);
+    h.tabs.set(3,{id:3,url:h.factory.replace('.en.', '.m.en.'),status:'complete'});
+    assert.equal((await h.send('CONTINUE_GUIDED',3)).id,first.id);
+    assert.equal(h.stored.collectionJob.stage,'ASSESSING');
+    assert.equal(h.requests.length,2);
+    assert.ok(h.requests.every(r=>r.bundle.job_id===first.id && r.bundle.platform==='ALIBABA'));
+    assert.deepEqual(h.requests[1].bundle.html_sources.map(s=>s.page),['PRODUCT','SHOP','FACTORY']);
+    assert.deepEqual(h.downloads.map(d=>d.filename.split('/').pop()),['product.html','shop.html','company.html']);
+    assert.equal(h.created.length,1);
+  } finally {globalThis.fetch=original;}
+});
 
 test('late supplier navigation still pauses for shop HTML instead of opening a report', async () => {
   const original = globalThis.fetch;

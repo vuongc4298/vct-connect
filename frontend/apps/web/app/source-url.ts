@@ -13,6 +13,7 @@ export function safeContextSourceUrl(value: string | undefined): string | null {
   const existing = safeSourceUrl(value);
   if (existing) return existing;
   if (!value) return null;
+  if (/^https:\/\/[a-z0-9](?:[a-z0-9-]{0,61}[a-z0-9])?\.en\.alibaba\.com\/$/.test(value)) return value;
   const shop = /^https:\/\/([a-z0-9][a-z0-9_-]{0,61}[a-z0-9])\.1688\.com\/$/.exec(value);
   if (shop && !new Set(["www", "detail", "sale", "login", "passport", "m", "factory"]).has(shop[1])) return value;
   if (/^https:\/\/www\.1688\.com\/factory\/[a-z0-9][a-z0-9_-]{0,62}[a-z0-9]\.html$/.test(value)) return value;

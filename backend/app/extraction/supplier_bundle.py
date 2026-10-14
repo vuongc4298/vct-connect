@@ -2,8 +2,9 @@
 from datetime import datetime, timezone
 import json
 from uuid import UUID
+from typing import Literal
 
-from pydantic import BaseModel, ConfigDict, Field, model_validator
+from pydantic import BaseModel, ConfigDict, Field, model_validator, model_serializer
 from .contracts import evidence_coverage, evidence_status
 from .extension1688 import DomCapture, NamedValue, normalize_capture
 from .extension_merge import reject_sensitive_page_state
@@ -31,6 +32,7 @@ class FactorySelection(BaseModel):
     shop_url: str = Field(max_length=2048)
     claims: list[NamedValue] = Field(max_length=32)
     description: str | None = Field(default=None, max_length=1000)
+    company_name: str | None = Field(default=None, min_length=1, max_length=240)
 
 
 class CollectionOutcome(BaseModel):
@@ -42,6 +44,7 @@ class CollectionOutcome(BaseModel):
 class SupplierBundle(BaseModel):
     model_config = ConfigDict(extra="forbid")
     job_id: UUID
+    platform: Literal["1688", "ALIBABA"] = "1688"
     product: DomCapture
     shop_url: str | None = Field(default=None, max_length=2048)
     shop: ShopSelection | None = None
@@ -50,6 +53,16 @@ class SupplierBundle(BaseModel):
     html_sources: list["HtmlSource"] = Field(default_factory=list, max_length=3)
     html_capture_requested: bool = Field(default=False, strict=True)
     guided: bool = Field(default=False, strict=True)
+
+    @model_serializer(mode="wrap")
+    def retain_legacy_serialization(self, handler):
+        # Keep existing 1688 begin/finish replay digests stable during rollout.
+        data = handler(self)
+        if self.platform == "1688":
+            data.pop("platform", None)
+            if isinstance(data.get("factory"), dict) and data["factory"].get("company_name") is None:
+                data["factory"].pop("company_name", None)
+        return data
 
     @model_validator(mode="after")
     def unique_outcomes(self):
@@ -77,6 +90,9 @@ def normalize_bundle(bundle: SupplierBundle, *, at=None):
     validate_json_evidence(bundle.model_dump(mode="json"))
     reject_sensitive_page_state(bundle.model_dump(mode="json"))
     at = at or datetime.now(timezone.utc)
+    if bundle.platform == "ALIBABA":
+        from .alibaba_browser import normalize_alibaba_bundle
+        return normalize_alibaba_bundle(bundle, at=at)
     result = normalize_capture(bundle.product)
     if result["extraction_status"] not in {"SUCCESS", "PARTIAL"}:
         raise ValueError("Collect a usable product before starting analysis")

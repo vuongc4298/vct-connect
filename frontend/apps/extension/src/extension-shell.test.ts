@@ -3,6 +3,27 @@ import test from "node:test";
 
 import { canSubmitEnhancedEvidence, classifyExtensionPage, extensionGate } from "./extension-shell";
 import { errorText, uiText } from "./ui-language";
+import { restoreCollectionJob } from "./linked-capture";
+
+test("Alibaba product, mobile storefront and Company overview share canonical identities", () => {
+  const source = "https://www.alibaba.com/product-detail/2026-New-GEN5-Yiheng-Customized-Thermoforming_1601711788226.html";
+  const shop = "https://yihengsportinggoods.en.alibaba.com/";
+  const product = classifyExtensionPage(source + "?priceId=tracking");
+  assert.equal(product.status === "supported" && product.kind, "alibaba");
+  assert.equal(product.status === "supported" && product.sourceUrl, source);
+  const mobile = classifyExtensionPage("https://yihengsportinggoods.m.en.alibaba.com/?productId=1601711788226");
+  assert.equal(mobile.status === "supported" && mobile.kind, "alibaba-company");
+  assert.equal(mobile.status === "supported" && mobile.sourceUrl, shop);
+  const profile = classifyExtensionPage("https://yihengsportinggoods.m.en.alibaba.com/company_profile.html?spm=tracking");
+  assert.equal(profile.status === "supported" && profile.kind, "alibaba-profile");
+  assert.equal(profile.status === "supported" && profile.sourceUrl, shop + "company_profile.html");
+  for (const value of ["http://yihengsportinggoods.en.alibaba.com/", "https://user@yihengsportinggoods.en.alibaba.com/", "https://yihengsportinggoods.en.alibaba.com:443/", "https://yihengsportinggoods.m.en.alibaba.com.evil.test/", "https://yihengsportinggoods.m.en.alibaba.com/contactinfo.html", "https://yihengsportinggoods.m.en.alibaba.com/company_profile.html#private"])
+    assert.equal(classifyExtensionPage(value).status, "unsupported");
+  const job = { id: "00000000-0000-0000-0000-000000000123", ownerId: "user_one", sourceUrl: source, startedAt: Date.now(), stage: "WAITING_FACTORY", companyUrl: shop, factoryUrl: shop + "company_profile.html" };
+  assert.ok(restoreCollectionJob(job, "user_one"));
+  assert.equal(restoreCollectionJob(job, "user_other"), null);
+  assert.equal(uiText("Save company HTML & analyze", "vi"), "Lưu HTML hồ sơ công ty và phân tích");
+});
 
 test("extension shell detects supported 1688 and Taobao pages", () => {
   const offer = classifyExtensionPage("https://detail.1688.com/offer/123456789012.html?spm=tracking");
