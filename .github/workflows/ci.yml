@@ -51,9 +51,12 @@ jobs:
       - name: Build deployable images
         env:
           NEXT_PUBLIC_CLERK_PUBLISHABLE_KEY: ${{ vars.NEXT_PUBLIC_CLERK_PUBLISHABLE_KEY }}
+          VCT_EXTENSION_WEB_ORIGIN: ${{ vars.VCT_EXTENSION_WEB_ORIGIN }}
         run: |
           docker build --file backend/Dockerfile --tag vct-backend:ci .
-          docker build --file frontend/apps/web/Dockerfile --build-arg NEXT_PUBLIC_CLERK_PUBLISHABLE_KEY --tag vct-web:ci .
+          docker build --file frontend/apps/web/Dockerfile --build-arg NEXT_PUBLIC_CLERK_PUBLISHABLE_KEY --build-arg VCT_EXTENSION_WEB_ORIGIN --tag vct-web:ci .
+      - name: Verify protected extension download in the actual web image
+        run: python scripts/verify_web_extension_download.py --image vct-web:ci
       - name: Verify actual sandboxed Chromium with no network
         run: >-
           docker run --rm --init --network none --cpus 0.5 --memory 1g --shm-size 256m

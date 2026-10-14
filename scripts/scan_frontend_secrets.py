@@ -2,10 +2,12 @@ from pathlib import Path
 import argparse
 import os
 import re
+import zipfile
 
 
 ROOT = Path(__file__).resolve().parents[1]
 BUILD = ROOT / "frontend" / "apps" / "web" / ".next"
+EXTENSION = ROOT / "frontend" / "apps" / "web" / "private"
 SENSITIVE_KEYS = {
     "AZURE_SERVICE_BUS_CONNECTION_STRING",
     "CLERK_JWT_KEY",
@@ -49,12 +51,16 @@ def scan(paths: list[Path], secrets: dict[str, bytes]) -> list[tuple[str, Path]]
         for path in files:
             if not path.is_file():
                 continue
-            data = path.read_bytes()
-            for name, value in secrets.items():
-                if len(value) >= 8 and value in data:
-                    hits.append((name, path))
-            if any(pattern.search(data) for pattern in FORBIDDEN_PATTERNS):
-                hits.append(("credential pattern", path))
+            payloads = [(path, path.read_bytes())]
+            if path.suffix == ".zip":
+                with zipfile.ZipFile(path) as archive:
+                    payloads.extend((path / item.filename, archive.read(item)) for item in archive.infolist())
+            for location, data in payloads:
+                for name, value in secrets.items():
+                    if len(value) >= 8 and value in data:
+                        hits.append((name, location))
+                if any(pattern.search(data) for pattern in FORBIDDEN_PATTERNS):
+                    hits.append(("credential pattern", location))
     return hits
 
 
@@ -69,7 +75,7 @@ def main() -> int:
     if missing_logs:
         print("Requested build log is missing.")
         return 2
-    hits = scan([BUILD, *args.build_log], configured_secrets())
+    hits = scan([BUILD, EXTENSION, *args.build_log], configured_secrets())
     if hits:
         for name, path in hits:
             print(f"{name} found in {path.relative_to(ROOT) if path.is_relative_to(ROOT) else path.name}")

@@ -11,3 +11,4 @@ frontend/apps/web/.next/
 frontend/apps/extension/build/
 *.tsbuildinfo
 frontend/apps/extension/build-live/
+frontend/apps/web/private/

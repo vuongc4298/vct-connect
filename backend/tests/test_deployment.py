@@ -123,6 +123,16 @@ def test_secret_scanner_normalizes_quoted_env_values(tmp_path: Path, monkeypatch
     assert scan_frontend_secrets.configured_secrets()["CLERK_SECRET_KEY"] == b"quoted-secret-value"
 
 
+def test_secret_scanner_checks_compressed_extension_contents(tmp_path: Path):
+    from zipfile import ZIP_DEFLATED, ZipFile
+
+    archive_path = tmp_path / "extension.zip"
+    with ZipFile(archive_path, "w", compression=ZIP_DEFLATED) as archive:
+        archive.writestr("popup.js", "const token='server-secret-value';")
+    assert b"server-secret-value" not in archive_path.read_bytes()
+    assert scan([archive_path], {"CLERK_SECRET_KEY": b"server-secret-value"})
+
+
 def test_smoke_requires_token_and_exact_fixture(monkeypatch):
     with pytest.raises(AssertionError, match="CLERK_SMOKE_TOKEN"):
         smoke_dev.run("https://web.test", "https://api.test", None, 10)
