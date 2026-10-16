@@ -27,6 +27,38 @@ from backend.app.storage import AdmissionDenied, LeaseLost, ResultConflict, Stor
 from backend.worker.main import dispatch_outbox_once, process_azure_once, process_local_once
 
 
+def seed_pre_pause_taobao_queue(store, source_url, headers, subject):
+    """Represent work accepted before the HTTP admission pause, using real persistence."""
+    if "x-vct-guest-key" in headers:
+        return store.submit_guest(
+            source_url, headers["x-vct-guest-key"], azure=False,
+            browser_limit=3, global_limit=100, window_seconds=86400,
+        )
+    owner = store.resolve_user(subject)
+    return store.submit_customer(
+        source_url, owner["id"], azure=False, customer_limit=20, window_seconds=86400,
+    )
+
+
+def assert_taobao_rejected_without_admission_writes(store, client, endpoint, headers, source_url):
+    def persisted_counts():
+        with store.connect() as conn:
+            return conn.execute(
+                """SELECT
+                   (SELECT count(*) FROM analyses) AS analyses,
+                   (SELECT count(*) FROM local_queue) AS local_queue,
+                   (SELECT count(*) FROM analysis_outbox) AS outbox,
+                   (SELECT count(*) FROM admission_counters) AS quota_rows,
+                   (SELECT coalesce(sum(used), 0) FROM admission_counters) AS quota_used"""
+            ).fetchone()
+
+    before = persisted_counts()
+    response = client.post(endpoint, json={"source_url": source_url}, headers=headers)
+    assert response.status_code == 422
+    assert "Taobao extraction is temporarily unavailable" in response.text
+    assert persisted_counts() == before
+
+
 @pytest.mark.parametrize("guest", [False, True])
 @pytest.mark.parametrize("platform", ["1688", "TAOBAO", "ALIBABA"])
 def test_public_browser_queue_owner_atomic_provenance_and_replay(store, monkeypatch, guest, platform):
@@ -37,9 +69,13 @@ def test_public_browser_queue_owner_atomic_provenance_and_replay(store, monkeypa
     api = TestClient(create_app(store=store, settings=settings, verifier=HeaderSubjectVerifier()))
     headers = {"x-vct-guest-key": uuid4().hex * 2} if guest else {"Authorization": "Bearer subject:" + subject}
     endpoint = "/api/v1/guest-analyses" if guest else "/api/v1/analyses"
-    submitted = api.post(endpoint, json={"source_url": url}, headers=headers)
-    assert submitted.status_code == 202
-    analysis_id = UUID(submitted.json()["id"])
+    if platform == "TAOBAO":
+        assert_taobao_rejected_without_admission_writes(store, api, endpoint, headers, url)
+        analysis_id = seed_pre_pause_taobao_queue(store, url, headers, subject)
+    else:
+        submitted = api.post(endpoint, json={"source_url": url}, headers=headers)
+        assert submitted.status_code == 202
+        analysis_id = UUID(submitted.json()["id"])
     adapter, parser = ADAPTERS[platform]
     def extract(source, **kwargs):
         assert kwargs["browser_fallback"] is True
@@ -166,7 +202,7 @@ def test_alibaba_supplier_platform_isolation_and_spoof_rollback(store):
 
 @pytest.mark.parametrize("guest", [False, True])
 @pytest.mark.parametrize("shop", [False, True])
-def test_taobao_queue_persistence_owner_modes_and_immutable_replay(store, monkeypatch, guest, shop):
+def test_legacy_taobao_queue_persistence_owner_modes_and_immutable_replay(store, monkeypatch, guest, shop):
     url = "https://shop159450000.world.taobao.com/category.htm" if shop else "https://item.taobao.com/item.htm?id=1076425861755"
     filename = "taobao_shop_159450000.html" if shop else "taobao_item_1076425861755.html"
     html = (Path(__file__).parent / "fixtures" / filename).read_text(encoding="utf-8")
@@ -176,9 +212,9 @@ def test_taobao_queue_persistence_owner_modes_and_immutable_replay(store, monkey
     client = TestClient(create_app(store=store, settings=settings, verifier=HeaderSubjectVerifier()))
     headers = {"x-vct-guest-key": guest_key} if guest else {"Authorization": f"Bearer subject:{subject}"}
     endpoint = "/api/v1/guest-analyses" if guest else "/api/v1/analyses"
-    submitted = client.post(endpoint, headers=headers, json={"source_url": url + ("?spm=track" if shop else "&spm=track")})
-    assert submitted.status_code == 202
-    analysis_id = UUID(submitted.json()["id"])
+    tracked_url = url + ("?spm=track" if shop else "&spm=track")
+    assert_taobao_rejected_without_admission_writes(store, client, endpoint, headers, tracked_url)
+    analysis_id = seed_pre_pause_taobao_queue(store, url, headers, subject)
     try:
         assert client.get(f"{endpoint}/{analysis_id}", headers={"x-vct-guest-key": "b" * 64} if guest else {"Authorization": "Bearer subject:other"}).status_code == 404
         monkeypatch.setattr("backend.worker.main.extract_taobao", lambda source_url, **kwargs: parse_taobao_page(html, source_url, **kwargs))
