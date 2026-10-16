@@ -1,6 +1,9 @@
 export type UiLanguage = "vi" | "en";
 
 const vi: Record<string, string> = {
+  "This saved collection is from 1688 or Alibaba. Return to its source page to capture more, or finish uploading the saved evidence below.": "Lượt thu thập đã lưu thuộc 1688 hoặc Alibaba. Hãy quay lại trang nguồn để bổ sung, hoặc hoàn tất gửi bằng chứng đã lưu bên dưới.",
+  "Open a supported 1688 or Alibaba product first": "Hãy mở sản phẩm được hỗ trợ trên 1688 hoặc Alibaba trước",
+  "Taobao capture is temporarily paused because CAPTCHA prevents login. Use 1688 or Alibaba. Your saved reports are still available.": "Tạm dừng thu thập Taobao do CAPTCHA chặn đăng nhập. Vui lòng dùng 1688 hoặc Alibaba. Bạn vẫn có thể xem các báo cáo đã lưu.",
   "Company overview": "Hồ sơ công ty",
   "Capture product, storefront and company overview for one supplier report.": "Thu thập sản phẩm, cửa hàng và hồ sơ công ty để tạo báo cáo nhà cung cấp.",
   "Open Company overview": "Mở hồ sơ công ty",

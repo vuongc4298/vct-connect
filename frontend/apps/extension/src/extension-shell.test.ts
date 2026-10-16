@@ -1,7 +1,7 @@
 import assert from "node:assert/strict";
 import test from "node:test";
 
-import { canSubmitEnhancedEvidence, classifyExtensionPage, extensionGate } from "./extension-shell";
+import { canSubmitEnhancedEvidence, classifyExtensionPage, extensionGate, TAOBAO_PAUSED_NOTICE } from "./extension-shell";
 import { errorText, uiText } from "./ui-language";
 import { restoreCollectionJob } from "./linked-capture";
 
@@ -25,7 +25,7 @@ test("Alibaba product, mobile storefront and Company overview share canonical id
   assert.equal(uiText("Save company HTML & analyze", "vi"), "Lưu HTML hồ sơ công ty và phân tích");
 });
 
-test("extension shell detects supported 1688 and Taobao pages", () => {
+test("extension shell keeps active platforms while pausing Taobao", () => {
   const offer = classifyExtensionPage("https://detail.1688.com/offer/123456789012.html?spm=tracking");
   const item = classifyExtensionPage("https://item.taobao.com/item.htm?id=123456789");
   const shop = classifyExtensionPage("https://shop123456.taobao.com/");
@@ -35,10 +35,16 @@ test("extension shell detects supported 1688 and Taobao pages", () => {
     sourceId: "123456789012",
     kind: "1688",
   });
-  assert.equal(item.status, "supported");
-  assert.equal(item.status === "supported" && item.kind, "taobao-item");
-  assert.equal(shop.status, "supported");
-  assert.equal(shop.status === "supported" && shop.kind, "taobao-shop");
+  assert.deepEqual(item, { status: "paused", platform: "Taobao" });
+  assert.deepEqual(shop, { status: "paused", platform: "Taobao" });
+  for (const url of ["https://login.taobao.com/member/login.jhtml", "https://m.taobao.com/", "https://taobao.com/"]) {
+    const page = classifyExtensionPage(url);
+    assert.equal(extensionGate({ authLoaded: true, signedIn: true, page }), "paused-page");
+    assert.equal(canSubmitEnhancedEvidence("paused-page"), false);
+  }
+  assert.deepEqual(classifyExtensionPage("https://item.taobao.com.evil.example/"), { status: "unsupported" });
+  assert.match(uiText(TAOBAO_PAUSED_NOTICE, "vi"), /Tạm dừng.*CAPTCHA/);
+  assert.match(uiText(TAOBAO_PAUSED_NOTICE, "en"), /temporarily paused/);
   assert.deepEqual(classifyExtensionPage("https://example.org/"), { status: "unsupported" });
   const named = classifyExtensionPage("https://hztxsy.1688.com/?offerId=778418840629");
   assert.equal(named.status === "supported" && named.kind, "1688-company");

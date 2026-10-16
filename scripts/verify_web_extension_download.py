@@ -84,7 +84,8 @@ def main():
             assert archive.testzip() is None
             assert set(archive.namelist()) == {"manifest.json", "popup.html", "popup.css", "icon.png", "popup.js", "background.js"}
             manifest = json.loads(archive.read("manifest.json"))
-            assert manifest["version"] == "0.7.0"
+            assert manifest["version"] == "0.7.1"
+            assert "Taobao" not in manifest["description"]
             assert manifest["icons"]["128"] == "icon.png"
             identity = hashlib.sha256(base64.b64decode(manifest["key"])).hexdigest()[:32]
             extension_id = "".join(chr(ord("a") + int(character, 16)) for character in identity)

@@ -14,6 +14,80 @@ const getToken = async () => "token";
 const analysis = { id, status: "COMPLETED", source_url: source, result: { source_url: source, extraction_status: "PARTIAL" }, supplier_data: { supplier_name: "First owner supplier", completeness: 0.5 } };
 const report = { analysis_id: id, risk: { label: "HIGH", confidence: 0.7, coverage: 0.5 } };
 
+test("Taobao popup explains the pause in both languages and never captures or uploads", async () => {
+  const original = globalThis.fetch;
+  let mounted, calls = 0;
+  try {
+    for (const url of ["https://item.taobao.com/item.htm?id=1076425861755", "https://shop123456.taobao.com/", "https://login.taobao.com/member/login.jhtml"]) {
+      environment();
+      chrome.storage.local.get = async () => ({});
+      chrome.storage.local.set = async () => {};
+      chrome.tabs.query = async () => [{ id: 3, url }];
+      chrome.scripting = { executeScript: async () => { calls++; throw new Error("Must not capture"); } };
+      chrome.runtime = { sendMessage: async () => { calls++; throw new Error("Must not collect"); } };
+      globalThis.fetch = async () => { calls++; throw new Error("Must not upload"); };
+      await act(async () => { mounted = create(React.createElement(App)); });
+      assert.match(text(mounted), /Tạm dừng.*Taobao.*CAPTCHA/);
+      assert.equal(mounted.root.findAllByProps({ className: "primary-action" }).length, 0);
+      await act(async () => mounted.root.findAllByType("button").find(button => button.children[0] === "EN").props.onClick());
+      assert.match(text(mounted), /Taobao capture is temporarily paused/);
+      assert.equal(mounted.root.findAllByProps({ className: "primary-action" }).length, 0);
+      await act(async () => mounted.unmount()); mounted = null;
+    }
+    assert.equal(calls, 0);
+  } finally { if (mounted) await act(async () => mounted.unmount()); globalThis.fetch = original; }
+});
+
+test("a paused tab still allows finishing an existing active-platform collection without capturing Taobao", async () => {
+  const original = globalThis.fetch;
+  let mounted;
+  try {
+    for (const stage of ["WAITING_COMPANY", "WAITING_FACTORY", "FINISHING"]) {
+      environment();
+      chrome.tabs.query = async () => [{ id: 3, url: "https://item.taobao.com/item.htm?id=1076425861755" }];
+      chrome.storage.local.get = async () => ({ collectionJob: { id, ownerId: record.ownerId, sourceUrl: source,
+        startedAt: Date.now(), expiresAt: Date.now() + 1800000, stage, companyUrl: "https://shopabcdef123.1688.com/" } });
+      const calls = [];
+      chrome.runtime = { sendMessage: async message => { calls.push(message); return { error: "Fixture finish stopped" }; } };
+      chrome.scripting = { executeScript: async () => assert.fail("Must not capture paused tab") };
+      globalThis.fetch = async () => assert.fail("No analysis should be created by the popup");
+      await act(async () => { mounted = create(React.createElement(App, { initialLanguage: "en" })); });
+      assert.match(text(mounted), /Taobao capture is temporarily paused/);
+      assert.match(text(mounted), /This saved collection is from 1688 or Alibaba/);
+      assert.equal(mounted.root.findAllByProps({ className: "primary-action" }).length, 0);
+      const label = stage === "FINISHING" ? "Retry saved upload" : stage === "WAITING_FACTORY" ? "Finish with captured product & shop" : "Finish with product evidence only";
+      await act(async () => mounted.root.findAllByType("button").find(button => button.children.join("") === label).props.onClick());
+      assert.deepEqual(calls.map(message => message.type), ["FINISH_GUIDED"]);
+      await act(async () => mounted.unmount()); mounted = null;
+    }
+  } finally { if (mounted) await act(async () => mounted.unmount()); globalThis.fetch = original; }
+});
+
+test("saved Taobao report restores and reopens on its paused tab with owner isolation", async () => {
+  const original = globalThis.fetch;
+  environment();
+  const sourceUrl = "https://item.taobao.com/item.htm?id=1076425861755";
+  chrome.tabs.query = async () => [{ id: 3, url: sourceUrl }];
+  chrome.storage.local.get = async () => ({ lastCapture: { ...record, sourceUrl } });
+  const opened = [], requests = [];
+  chrome.tabs.create = async value => { opened.push(value.url); };
+  globalThis.fetch = async url => { requests.push(String(url)); return Response.json(String(url).endsWith("/report") ? report : { ...analysis, source_url: sourceUrl }); };
+  let mounted;
+  try {
+    await act(async () => { mounted = create(React.createElement(App, { initialLanguage: "en" })); });
+    assert.match(text(mounted), /Taobao capture is temporarily paused/);
+    assert.match(text(mounted), /First owner supplier|High/);
+    assert.equal(mounted.root.findAllByProps({ className: "primary-action" }).length, 0);
+    await act(async () => mounted.root.findAllByType("button").find(button => button.children.join("") === "Reload last result").props.onClick());
+    assert.equal(requests.filter(url => url.endsWith("/report")).length, 2);
+    await act(async () => mounted.root.findAllByType("button").find(button => button.children.join("") === "Open web result").props.onClick());
+    assert.deepEqual(opened, [`https://vct.example/?analysis=${id}`]);
+    globalThis.__mountedAuth = { ...globalThis.__mountedAuth, userId: "another-owner" };
+    await act(async () => mounted.update(React.createElement(App, { initialLanguage: "en" })));
+    assert.doesNotMatch(text(mounted), /First owner supplier|High|Open web result/);
+  } finally { if (mounted) await act(async () => mounted.unmount()); globalThis.fetch = original; }
+});
+
 test("Alibaba Company overview is recognized, localized and bound to the pending supplier", async () => {
   environment();
   const sourceUrl = "https://www.alibaba.com/product-detail/Yiheng-Paddle_1601711788226.html";

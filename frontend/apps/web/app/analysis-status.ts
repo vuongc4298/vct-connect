@@ -1,6 +1,8 @@
 import type { Analysis, ExtractionStatus } from "@vct/contracts";
 import { sourceLabel } from "./source-url";
 
+const TAOBAO_PAUSED_NOTICE = "Tạm dừng trích xuất Taobao do CAPTCHA chặn đăng nhập. Vui lòng dùng 1688 hoặc Alibaba. Các báo cáo và bằng chứng Taobao đã lưu vẫn có thể xem lại.";
+
 export function extractionRecovery(status: ExtractionStatus | null, reason?: string, sourceUrl?: string) {
   if (sourceLabel(sourceUrl) === "Alibaba") {
     if (status === "SUCCESS" || status === "PARTIAL" || status === null) return null;
@@ -11,13 +13,10 @@ export function extractionRecovery(status: ExtractionStatus | null, reason?: str
   }
   if (sourceLabel(sourceUrl) === "Taobao") {
     if (status === "SUCCESS" || status === "PARTIAL" || status === null) return null;
-    if (reason && ["INVALID_URL", "UNSAFE_DESTINATION", "UNSAFE_REDIRECT", "SOURCE_MISMATCH", "REDIRECT_LOOP", "REDIRECT_LIMIT"].includes(reason)) {
-      return "Địa chỉ nguồn hoặc chuyển hướng không thể xác minh an toàn cho sản phẩm / cửa hàng Taobao này. Hãy kiểm tra URL HTTPS và đúng mã sản phẩm / cửa hàng để tạo phân tích mới. Bạn có thể dùng tiện ích VCT Connect trên trang Taobao đang mở.";
+    if (reason && ["UNSAFE_DESTINATION", "UNSAFE_REDIRECT", "SOURCE_MISMATCH", "REDIRECT_LOOP", "REDIRECT_LIMIT", "INVALID_URL"].includes(reason)) {
+      return `Địa chỉ nguồn hoặc chuyển hướng của lần trích xuất đã lưu không thể xác minh an toàn. ${TAOBAO_PAUSED_NOTICE}`;
     }
-    if (status === "AUTH_REQUIRED" || status === "BLOCKED") {
-      return "Taobao yêu cầu đăng nhập hoặc xác minh truy cập. Lần trích xuất này đã kết thúc. Bạn có thể mở trang nguồn để kiểm tra và thử tạo phân tích mới sau. Bạn có thể dùng tiện ích VCT Connect trên trang Taobao đang mở.";
-    }
-    return "Chưa thể lấy bằng chứng có thể xác minh từ Taobao. Hãy kiểm tra URL HTTPS của sản phẩm trên item.taobao.com hoặc cửa hàng shop<ID>.taobao.com / shop<ID>.world.taobao.com và thử tạo phân tích mới sau. Bạn có thể dùng tiện ích VCT Connect trên trang Taobao đang mở.";
+    return TAOBAO_PAUSED_NOTICE;
   }
   if (reason && ["INVALID_URL", "UNSAFE_DESTINATION", "UNSAFE_REDIRECT", "OFFER_MISMATCH", "REDIRECT_LOOP", "REDIRECT_LIMIT"].includes(reason)) {
     return "Địa chỉ nguồn hoặc chuyển hướng không thể xác minh an toàn cho sản phẩm này. Hãy kiểm tra URL HTTPS của trang sản phẩm trên detail.1688.com và tạo phân tích mới.";
@@ -75,7 +74,7 @@ export function analysisPresentation(analysis: StatusInput) {
     headline = `Chưa thể trích xuất trang ${source}`;
     detail = `Trạng thái nguồn: ${extractionStatus ?? "UNKNOWN"}${reason ? ` · ${reason}` : ""}. Không có ảnh chụp bằng chứng cho URL này.`;
     pillLabel = "KHÔNG CÓ DỮ LIỆU";
-    nextAction = recovery ?? "Kiểm tra trang nguồn và tạo một phân tích mới.";
+    nextAction = recovery ?? (source === "Taobao" ? TAOBAO_PAUSED_NOTICE : "Kiểm tra trang nguồn và tạo một phân tích mới.");
   } else if (complete && live) {
     headline = extractionStatus === "PARTIAL"
       ? "Đã hoàn tất với bằng chứng một phần"
@@ -90,7 +89,7 @@ export function analysisPresentation(analysis: StatusInput) {
     headline = "Phân tích chưa thể hoàn tất";
     detail = `Mã lỗi an toàn: ${analysis?.failure_code ?? "PROCESSING_ERROR"}.`;
     pillLabel = "DỪNG XỬ LÝ";
-    nextAction = "Tạo một phân tích mới. Nếu trang nguồn yêu cầu đăng nhập, hãy dùng tiện ích VCT Connect khi đang mở trang.";
+    nextAction = source === "Taobao" ? TAOBAO_PAUSED_NOTICE : "Tạo một phân tích mới. Nếu trang nguồn yêu cầu đăng nhập, hãy dùng tiện ích VCT Connect khi đang mở trang.";
   } else if (retrying) {
     headline = "Hệ thống sẽ thử lại";
     detail = `Lần thử ${analysis?.attempt_count ?? 1} chưa thành công. Trạng thái này chưa phải thất bại cuối cùng.`;

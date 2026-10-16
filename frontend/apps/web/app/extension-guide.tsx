@@ -16,12 +16,6 @@ const captureSteps = {
     ["Lưu Company overview", "Mở Company overview, chọn Lưu HTML hồ sơ công ty và phân tích. Nếu không có hồ sơ, chọn Phân tích với sản phẩm và cửa hàng đã lưu; nếu thiếu cả cửa hàng, chọn Chỉ phân tích dữ liệu sản phẩm."],
     ["Đọc báo cáo", "Mở kết quả từ tiện ích để kiểm tra thông tin doanh nghiệp, năng lực sản xuất và các bằng chứng nguồn."],
   ],
-  "Taobao": [
-    ["Mở trang được hỗ trợ", "Mở trang sản phẩm hoặc cửa hàng Taobao trong cùng trình duyệt đã cài tiện ích."],
-    ["Hiển thị thông tin", "Cuộn đến thông tin và đánh giá cần thu thập. Chỉ những nội dung trang cung cấp mới có thể dùng làm bằng chứng."],
-    ["Thu thập trang", "Mở tiện ích, chọn Phân tích trang này và làm theo trạng thái hiển thị trong tiện ích."],
-    ["Xem kết quả", "Mở báo cáo từ tiện ích hoặc vào Lịch sử trong VCT Connect để xem lại."],
-  ],
 } as const;
 type Platform = keyof typeof captureSteps;
 

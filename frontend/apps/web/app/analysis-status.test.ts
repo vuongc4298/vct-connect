@@ -35,28 +35,25 @@ test("Alibaba terminal outcomes name the source and offer the supported extensio
   assert.equal(extractionRecovery("PARTIAL", undefined, source_url), null);
 });
 
-test("Taobao terminal guidance names the source and offers extension capture recovery", () => {
-  const url = "https://item.taobao.com/item.htm?id=1076425861755";
-  const view = analysisPresentation({ status: "COMPLETED", attempt_count: 1, failure_code: null,
-    source_url: url, extraction_method: "PUBLIC_HTTP",
-    result: { source_url: url, extraction_status: "BLOCKED", reason: "ACCESS_CHALLENGE" } });
-  assert.equal(view.shouldPoll, false);
-  assert.match(view.headline, /Taobao/);
-  assert.match(view.nextAction ?? "", /tiện ích VCT Connect/);
-  for (const status of ["TIMEOUT", "PARSE_FAILED", "AUTH_REQUIRED", "UNSUPPORTED_PAGE"] as const) {
-    assert.match(extractionRecovery(status, "HTTP_ERROR", url)!, /tiện ích VCT Connect/);
+test("legacy Taobao failures explain pause without offering new capture", () => {
+  for (const source_url of ["https://item.taobao.com/item.htm?id=1076425861755", "https://shop159450000.taobao.com/"]) {
+    for (const extraction_status of ["BLOCKED", "AUTH_REQUIRED", "TIMEOUT", "PARSE_FAILED", "UNSUPPORTED_PAGE"] as const) {
+      const view = analysisPresentation({ status: "COMPLETED", attempt_count: 1, failure_code: null,
+        source_url, extraction_method: "PUBLIC_HTTP", result: { source_url, extraction_status } });
+      assert.equal(view.shouldPoll, false);
+      assert.match(view.headline, /Taobao/);
+      assert.match(view.nextAction ?? "", /Tạm dừng trích xuất Taobao.*1688 hoặc Alibaba/);
+      assert.doesNotMatch(view.nextAction ?? "", /tiện ích VCT Connect|nhập trang HTML|tạo phân tích mới/);
+    }
+    for (const status of ["SUCCESS", "PARTIAL", null] as const) assert.equal(extractionRecovery(status, undefined, source_url), null);
+    const failed = analysisPresentation({ status: "FAILED_FINAL", attempt_count: 1, failure_code: "PROCESSING_ERROR", source_url });
+    assert.match(failed.nextAction ?? "", /Tạm dừng trích xuất Taobao/);
+    const legacy = analysisPresentation({ status: "COMPLETED", attempt_count: 1, failure_code: null, extraction_method: "PUBLIC_HTTP", source_url });
+    assert.match(legacy.nextAction ?? "", /Tạm dừng trích xuất Taobao/);
+    assert.doesNotMatch(legacy.nextAction ?? "", /tạo một phân tích mới/);
+    assert.match(extractionRecovery("BLOCKED", "UNSAFE_REDIRECT", source_url)!, /không thể xác minh an toàn.*Tạm dừng/);
   }
 });
-
-for (const reason of ["UNSAFE_DESTINATION", "UNSAFE_REDIRECT", "SOURCE_MISMATCH", "REDIRECT_LOOP", "REDIRECT_LIMIT"]) {
-  test(`Taobao ${reason} selects safety guidance before access guidance`, () => {
-    const recovery = extractionRecovery("BLOCKED", reason, "https://shop159450000.taobao.com/")!;
-    assert.match(recovery, /không thể xác minh an toàn/);
-    assert.match(recovery, /đúng mã sản phẩm \/ cửa hàng/);
-    assert.doesNotMatch(recovery, /Taobao yêu cầu đăng nhập hoặc xác minh truy cập/);
-  });
-}
-
 
 test("retryable state keeps polling and presents the durable attempt", () => {
   const view = analysisPresentation({

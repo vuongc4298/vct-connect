@@ -23,11 +23,17 @@ export async function loadScopedResult(analysisId: string, actions: {
 
 export type LastCapture = { analysisId: string; sourceUrl: string; ownerId: string };
 
+// Result recovery remains available while Taobao is paused for new captures.
+function retainedTaobaoSource(value: string): boolean {
+  return value === value.trim() && (/^https:\/\/item\.taobao\.com\/item\.htm\?id=[1-9][0-9]{0,19}$/.test(value)
+    || /^https:\/\/shop[1-9][0-9]{0,19}\.(?:world\.)?taobao\.com\/(?:index\.htm|category\.htm)?$/.test(value));
+}
+
 export function restoreLastCapture(value: unknown, ownerId: string | null | undefined): LastCapture | null {
   if (!ownerId || !value || typeof value !== "object") return null;
   const record = value as Partial<LastCapture>;
   if (typeof record.analysisId !== "string" || typeof record.sourceUrl !== "string" || record.ownerId !== ownerId
-      || !supportedOffer(record.sourceUrl)) return null;
+      || !(supportedOffer(record.sourceUrl) || retainedTaobaoSource(record.sourceUrl))) return null;
   return { analysisId: record.analysisId, sourceUrl: record.sourceUrl, ownerId };
 }
 

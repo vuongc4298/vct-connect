@@ -31,7 +31,7 @@ export type TaobaoCapture = {
 };
 export type SelectedCapture = LegacyCapture | TaobaoCapture;
 
-export function supportedOffer(url: string): { sourceUrl: string; offerId: string; kind?: "item" | "shop" | "alibaba" } | null {
+export function supportedOffer(url: string): { sourceUrl: string; offerId: string; kind?: "alibaba" } | null {
   const alibaba = alibabaPage(url);
   if (alibaba?.kind === "product") return { sourceUrl: alibaba.source, offerId: alibaba.id, kind: "alibaba" };
   try {
@@ -40,14 +40,6 @@ export function supportedOffer(url: string): { sourceUrl: string; offerId: strin
     if (parsed.protocol !== "https:" || parsed.port || parsed.username || parsed.password || parsed.hash || /[\s\\]/.test(url)
         || /^https:\/\/[^/]*:/.test(url) || url.length > 2048) return null;
     if (parsed.host === "detail.1688.com" && match) return { sourceUrl: `https://detail.1688.com${parsed.pathname}`, offerId: match[1] };
-    const ids = parsed.searchParams.getAll("id");
-    if (parsed.host === "item.taobao.com" && parsed.pathname === "/item.htm" && ids.length === 1 && /^[1-9][0-9]{0,19}$/.test(ids[0])) {
-      return { sourceUrl: `https://item.taobao.com/item.htm?id=${ids[0]}`, offerId: ids[0], kind: "item" };
-    }
-    const shop = /^shop([1-9][0-9]{0,19})\.(?:world\.)?taobao\.com$/.exec(parsed.hostname);
-    if (shop && ["/", "/index.htm", "/category.htm"].includes(parsed.pathname)) return {
-      sourceUrl: `${parsed.origin}${parsed.pathname}`, offerId: shop[1], kind: "shop",
-    };
     return null;
   } catch { return null; }
 }

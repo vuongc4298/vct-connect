@@ -15,7 +15,9 @@ test("guide has five installation steps and switches to the correct supplier cap
     await act(async () => { mounted = create(React.createElement(ExtensionGuide, { getToken: globalThis.__mountedAuth.getToken, onHistory: () => history++ })); });
     assert.equal(mounted.root.findAllByType("ol")[0].findAllByType("li").length, 5);
     for (const list of mounted.root.findAllByType("ol")) assert.ok(list.findAllByType("li").length <= 5);
-    for (const [platform, expected] of [["1688", /工厂档案/], ["Alibaba", /Company overview/], ["Taobao", /trang sản phẩm hoặc cửa hàng Taobao/]]) {
+    assert.deepEqual(mounted.root.findByProps({ "aria-label": "Chọn nền tảng" }).findAllByType("button").map(button => button.children[0]), ["1688", "Alibaba"]);
+    assert.doesNotMatch(text(mounted), /Taobao/);
+    for (const [platform, expected] of [["1688", /工厂档案/], ["Alibaba", /Company overview/]]) {
       await act(async () => mounted.root.findAllByType("button").find(button => button.children[0] === platform).props.onClick());
       assert.match(text(mounted), expected);
       assert.equal(mounted.root.findByProps({ "aria-label": `Các bước thu thập ${platform}` }).findAllByType("li").length, 4);

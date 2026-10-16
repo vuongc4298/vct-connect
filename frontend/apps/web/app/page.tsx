@@ -49,13 +49,13 @@ function Landing() {
       <section className="landing-flow" aria-label="Cách sử dụng VCT Connect">
         <span className="card-label">TỪ TRANG SẢN PHẨM ĐẾN QUYẾT ĐỊNH</span>
         <h2>Hiểu nhà cung cấp trước khi đặt hàng</h2>
-        <div><span>01</span><article><h3>Thu thập bằng tiện ích</h3><p>Sản phẩm, cửa hàng và hồ sơ công ty trên 1688, Alibaba hoặc Taobao.</p></article></div>
+        <div><span>01</span><article><h3>Thu thập bằng tiện ích</h3><p>Sản phẩm, cửa hàng và hồ sơ công ty trên 1688 hoặc Alibaba.</p></article></div>
         <div><span>02</span><article><h3>Đọc bằng chứng</h3><p>Kiểm tra đánh giá, thông tin doanh nghiệp, giá và các điều khoản đã thu thập.</p></article></div>
         <div><span>03</span><article><h3>Xem báo cáo & theo dõi</h3><p>Nhận diện rủi ro, mở lại báo cáo và lưu nhà cung cấp trong tài khoản.</p></article></div>
         <p className="guide-muted">Đăng nhập để tải tiện ích và xem hướng dẫn từng bước.</p>
       </section>
     </main>
-    <footer className="landing-footer"><span>Thu thập bằng chứng · Đánh giá rủi ro · Lưu báo cáo</span><span>1688 · Alibaba · Taobao</span></footer>
+    <footer className="landing-footer"><span>Thu thập bằng chứng · Đánh giá rủi ro · Lưu báo cáo</span><span>1688 · Alibaba</span></footer>
   </div>;
 }
 
