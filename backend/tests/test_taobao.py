@@ -73,9 +73,11 @@ def model_page(model, shop=False):
 
 @pytest.mark.parametrize("url", [ITEM, ITEM + "&spm=track&skuId=123", SHOP, SHOP + "?spm=track",
     "https://shop159450000.taobao.com/", "https://shop159450000.taobao.com/index.htm"])
-def test_audited_forms_are_admitted_and_canonical(url):
-    assert Submission(source_url=url).source_url == normalize_taobao_url(url)
+def test_audited_forms_remain_canonical_but_new_admission_is_paused(url):
+    assert normalize_taobao_url(url) == url.split("&spm=")[0].split("?spm=")[0]
     assert source_platform(url) == "TAOBAO"
+    with pytest.raises(ValueError, match="Taobao extraction is temporarily unavailable"):
+        Submission(source_url=url)
 
 
 @pytest.mark.parametrize("url", [

@@ -31,8 +31,8 @@ await mkdir(output, { recursive: true });
 const manifest = {
   manifest_version: 3,
   name: "VCT Connect",
-  version: "0.7.0",
-  description: "Thu thập bằng chứng nhà cung cấp từ 1688, Alibaba và Taobao.",
+  version: "0.7.1",
+  description: "Thu thập bằng chứng nhà cung cấp từ 1688 và Alibaba.",
   icons: { 16: "icon.png", 32: "icon.png", 48: "icon.png", 128: "icon.png" },
   key: publicKey,
   permissions: ["activeTab", "scripting", "cookies", "storage", "downloads"],

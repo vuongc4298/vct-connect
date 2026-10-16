@@ -47,98 +47,57 @@ def test_alibaba_url_submission_and_unsupported_recovery(signing_keys):
     assert client.get("/api/v1/analyses/" + submitted.json()["id"], headers=auth_header(token(private, "alibaba_other"))).status_code == 404
 
 
-@pytest.mark.parametrize("shop", [False, True])
-def test_taobao_upload_original_bytes_owner_and_encoding(signing_keys, shop):
+@pytest.mark.parametrize("source", [
+    "https://item.taobao.com/item.htm?id=1076425861755",
+    "https://shop159450000.world.taobao.com/category.htm",
+    "https://shop159450000.taobao.com/",
+])
+def test_taobao_new_admissions_are_paused_without_quota_or_queue_writes(signing_keys, source, monkeypatch):
     private, public = signing_keys
     client, store = client_and_store(public)
-    url = "https://shop159450000.world.taobao.com/category.htm" if shop else "https://item.taobao.com/item.htm?id=1076425861755"
-    filename = "taobao_shop_159450000.html" if shop else "taobao_item_1076425861755.html"
-    page = (Path(__file__).parent / "fixtures" / filename).read_text(encoding="utf-8")
-    body = page.replace('charset="utf-8"', 'charset="GBK"').encode("gb18030") if shop else page.encode()
-    endpoint = "/api/v1/analyses/import?source_url=" + url
-    headers = {**auth_header(token(private, "taobao_upload_owner")), "content-type": "text/html"}
-    assert client.post(endpoint, content=body, headers={"content-type": "text/html"}).status_code == 401
-    response = client.post(endpoint, content=body, headers=headers)
-    assert response.status_code == 201
-    analysis_id = response.json()["id"]
-    row = client.get("/api/v1/analyses/" + analysis_id, headers=headers).json()
-    assert row["supplier_data"]["platform"] == "TAOBAO"
-    assert row["supplier_data"]["analysis_mode"] == "ACCOUNT_PUBLIC"
-    assert row["supplier_data"]["extraction_method"] == "USER_UPLOAD"
-    assert row["raw_evidence"]["html_sha256"] == sha256(body).hexdigest()
-    assert row["raw_evidence"]["captured_at"] is None
-    assert row["raw_evidence"]["imported_at"] == row["supplier_data"]["extracted_at"]
-    assert client.get("/api/v1/analyses/" + analysis_id, headers=auth_header(token(private, "taobao_other"))).status_code == 404
-    before = len(store.rows)
-    assert client.post(endpoint, content=body, headers={**headers, "content-type": 'text/html; charset="utf-16"'}).status_code == 415
-    if shop:
-        assert client.post(endpoint, content=body, headers={**headers, "content-type": "text/html; charset=utf-8"}).status_code == 415
-    assert len(store.rows) == before
+    headers = auth_header(token(private, "taobao_paused_owner"))
+    def forbidden(*args, **kwargs):
+        pytest.fail("Paused source reached extraction or admission")
+    for method in ["submit_customer", "submit_guest", "import_customer_page", "capture_customer_page"]:
+        monkeypatch.setattr(store, method, forbidden)
+    monkeypatch.setattr("backend.app.main.parse_taobao_page", forbidden)
+    monkeypatch.setattr("backend.app.main.normalize_taobao_capture", forbidden)
+    requests = [
+        client.post("/api/v1/analyses", json={"source_url": source}, headers=headers),
+        client.post("/api/v1/guest-analyses", json={"source_url": source}),
+        client.post("/api/v1/analyses/import", params={"source_url": source}, content=b"public html", headers={**headers, "content-type": "text/html"}),
+        client.post("/api/v1/analyses/capture", json={"source_url": source, "source_kind": "item", "source_id": "1076425861755", "fields": {}}, headers=headers),
+    ]
+    for response in requests:
+        assert response.status_code == 422
+        assert "Taobao extraction is temporarily unavailable" in response.text
+    assert store.rows == {} and store.outbox == [] and store.account_usage == {}
+    # Admission remains authenticated even for a paused platform.
+    assert client.post("/api/v1/analyses/capture", json={"source_url": source}).status_code == 401
+    assert client.post("/api/v1/analyses/import", params={"source_url": source}, content="html").status_code == 401
 
 
-def test_taobao_upload_admission_errors_and_pollable_wrong_identity(signing_keys):
+def test_saved_taobao_report_history_watchlist_and_owner_checks_survive_pause(signing_keys):
     private, public = signing_keys
     client, store = client_and_store(public)
-    url = "https://item.taobao.com/item.htm?id=1076425861755"
-    endpoint = "/api/v1/analyses/import?source_url=" + url
-    headers = {**auth_header(token(private)), "content-type": "text/html"}
-    assert client.post(endpoint, content=b"\xff", headers=headers).status_code == 415
-    assert client.post(endpoint, content=b"x"*2_000_001, headers=headers).status_code == 413
-    assert client.post(endpoint, content=b"", headers=headers).status_code == 422
-    assert client.post(endpoint, content='<meta charset="ascii">', headers=headers).status_code == 415
-    assert client.post(endpoint.replace("item.taobao.com", "detail.tmall.com"), content="html", headers=headers).status_code == 422
-    assert store.rows == {}
-    html = (Path(__file__).parent / "fixtures" / "taobao_item_1076425861755.html").read_text(encoding="utf-8")
-    response = client.post(endpoint, content=html.replace("1076425861755", "123456789"), headers=headers)
-    assert response.status_code == 201
-    row = store.rows[UUID(response.json()["id"])]
-    assert row["result"]["extraction_status"] == "PARSE_FAILED" and row["supplier_data"] is None
-    store.deny_import = True
-    assert client.post(endpoint, content=html, headers=headers).status_code == 429
-
-
-@pytest.mark.parametrize("shop", [False, True])
-def test_taobao_capture_selected_evidence_owner_and_strict_schema(signing_keys, shop):
-    import json
-    private, public = signing_keys
-    client, store = client_and_store(public)
-    body = {"source_url": "https://shop159450000.world.taobao.com/category.htm" if shop else "https://item.taobao.com/item.htm?id=1076425861755",
-            "source_kind": "shop" if shop else "item", "source_id": "159450000" if shop else "1076425861755",
-            "fields": {"supplier_name": "  Selected shop  "}}
-    if shop:
-        body["fields"]["products"] = [{"source_url": "https://item.taobao.com/item.htm?id=1076425861755", "title": "Selected item"}]
-    else:
-        body["fields"].update(product_title="Selected item", reviews=[{"text": " Review ", "original_length": 8}])
-    endpoint = "/api/v1/analyses/capture"
-    headers = auth_header(token(private, "taobao_capture_owner"))
-    assert client.post(endpoint, json=body).status_code == 401
-    response = client.post(endpoint, json=body, headers=headers)
-    assert response.status_code == 201
-    row = client.get(endpoint.rsplit("/", 1)[0] + "/" + response.json()["id"], headers=headers).json()
-    assert row["supplier_data"]["analysis_mode"] == "EXTENSION_ENHANCED"
-    assert row["supplier_data"]["extraction_method"] == "EXTENSION_DOM"
-    assert row["raw_evidence"]["provenance"] == "USER_PROVIDED_BROWSER_EVIDENCE"
-    assert row["raw_evidence"]["selected_fields"]["supplier_name"] == "  Selected shop  "
-    if not shop:
-        expected = [{"text": "Review", "source_url": body["source_url"]}]
-        assert row["supplier_data"]["reviews"] == expected
-        assert row["reviews"] == expected
-        assert row["raw_evidence"]["selected_fields"]["reviews"] == [{"text": " Review ", "original_length": 8}]
-    assert client.get("/api/v1/analyses/" + response.json()["id"], headers=auth_header(token(private, "taobao_foreign"))).status_code == 404
-    before = len(store.rows)
-    for mutation in [{**body, "cookies": "PRIVATE_SENTINEL"}, {**body, "source_id": "1"},
-                     {**body, "canonical_url": "https://item.taobao.com/item.htm?id=1"},
-                     {**body, "fields": {**body["fields"], "token": "PRIVATE_SENTINEL"}}]:
-        assert client.post(endpoint, json=mutation, headers=headers).status_code == 422
-    forbidden = [{"product_title": "Wrong kind"}, {"reviews": [{"text": "Review", "original_length": 6}]}, {"shop_metrics": ["4.9"]}] if shop else [
-        {"products": [{"source_url": body["source_url"], "title": "Collection not allowed"}]}]
-    for field in forbidden:
-        assert client.post(endpoint, json={**body, "fields": {**body["fields"], **field}}, headers=headers).status_code == 422
-        assert len(store.rows) == before
-    assert client.post(endpoint, content=json.dumps(body) + " "*16_384, headers={**headers, "content-type": "application/json"}).status_code == 413
-    assert len(store.rows) == before
-    store.users["taobao_capture_owner"]["role"] = "INTERNAL_REVIEWER"
-    assert client.post(endpoint, json=body, headers=headers).status_code == 403
+    owner = store.resolve_user("taobao_saved_owner")["id"]
+    source = "https://item.taobao.com/item.htm?id=1076425861755"
+    analysis_id = store.submit_local(source, owner)
+    store.rows[analysis_id].update(status="COMPLETED", result={"source_url": source, "extraction_status": "PARTIAL"},
+                                   supplier_data={"platform": "TAOBAO", "supplier_name": "Saved supplier"})
+    store.reports[analysis_id] = {"analysis_id": str(analysis_id), "supplier": {"platform": "TAOBAO"}, "risk": {"label": "INSUFFICIENT_INFORMATION"}}
+    headers = auth_header(token(private, "taobao_saved_owner"))
+    assert client.get(f"/api/v1/analyses/{analysis_id}", headers=headers).json()["supplier_data"]["platform"] == "TAOBAO"
+    response = client.get(f"/api/v1/analyses/{analysis_id}/report", headers=headers)
+    assert response.status_code == 200 and response.json() == store.reports[analysis_id]
+    assert client.get("/api/v1/analyses", headers=headers).json()[0]["source_url"] == source
+    assert client.post(f"/api/v1/watchlist/{analysis_id}", headers=headers).status_code == 201
+    assert len(client.get("/api/v1/watchlist", headers=headers).json()) == 1
+    foreign = auth_header(token(private, "taobao_saved_foreign"))
+    assert client.get(f"/api/v1/analyses/{analysis_id}", headers=foreign).status_code == 404
+    assert client.get(f"/api/v1/analyses/{analysis_id}/report", headers=foreign).status_code == 404
+    assert client.get("/api/v1/analyses", headers=foreign).json() == []
+    assert client.get("/api/v1/watchlist", headers=foreign).json() == []
 
 
 @pytest.mark.parametrize("fixture_name", ["1688_extension_offer_1027322610455.json", "1688_extension_drawer_1027322610455.json"])
@@ -167,8 +126,8 @@ def test_capture_rejects_jsonb_unsafe_text_and_deep_nesting_before_admission(sig
     private, public = signing_keys
     client, store = client_and_store(public)
     headers = auth_header(token(private))
-    body = {"source_url": "https://item.taobao.com/item.htm?id=1076425861755", "source_kind": "item",
-            "source_id": "1076425861755", "fields": {"supplier_name": "Shop\x00name"}}
+    body = {"source_url": "https://detail.1688.com/offer/996518024136.html",
+            "offer_id": "996518024136", "fields": {"supplier_name": "Shop\x00name"}}
     assert client.post("/api/v1/analyses/capture", json=body, headers=headers).status_code == 422
     body["fields"]["supplier_name"] = "Shop"
     body["fields"]["product_title"] = "Invalid\ud800"
@@ -885,23 +844,25 @@ def test_full_report_endpoint_is_owner_only_and_not_public(signing_keys):
     assert admin.json() == {"detail": "Forbidden"}
 
 
-def test_guest_preview_is_browser_scoped_and_never_exposes_full_report(signing_keys):
+@pytest.mark.parametrize("platform", ["1688", "TAOBAO"])
+def test_guest_preview_is_browser_scoped_and_never_exposes_full_report(signing_keys, platform):
     _, public = signing_keys
     client, store = client_and_store(public)
     key = "a" * 64
-    submitted = client.post(
-        "/api/v1/guest-analyses",
-        headers={"x-vct-guest-key": key},
-        json={"source_url": FIXTURE_URL},
-    )
-    assert submitted.status_code == 202
-    analysis_id = UUID(submitted.json()["id"])
+    if platform == "TAOBAO":
+        # A record from before the pause; do not admit a new Taobao request.
+        analysis_id = store.submit_guest("https://item.taobao.com/item.htm?id=1076425861755", key,
+                                         azure=False, browser_limit=5, global_limit=10, window_seconds=3600)
+    else:
+        submitted = client.post("/api/v1/guest-analyses", headers={"x-vct-guest-key": key}, json={"source_url": FIXTURE_URL})
+        assert submitted.status_code == 202
+        analysis_id = UUID(submitted.json()["id"])
     store.rows[analysis_id]["status"] = "COMPLETED"
     store.reports[analysis_id] = {
         "schema_version": "report.v1",
         "language": "vi",
         "analysis_id": str(analysis_id),
-        "platform": "1688",
+        "platform": platform,
         "supplier_name": "Guest Supplier",
         "extracted_at": "2026-10-07T00:00:00Z",
         "risk": {
@@ -927,6 +888,9 @@ def test_guest_preview_is_browser_scoped_and_never_exposes_full_report(signing_k
     assert preview.status_code == 200
     body = preview.json()
     assert body["schema_version"] == "guest-preview.v1"
+    assert body["platform"] == platform
+    assert client.get(f"/api/v1/guest-analyses/{analysis_id}", headers={"x-vct-guest-key": key}).status_code == 200
+    assert client.get(f"/api/v1/guest-analyses/{analysis_id}", headers={"x-vct-guest-key": "b" * 64}).status_code == 404
     assert body["confidence"] == 0.62
     assert body["coverage"] == 0.48
     assert body["information_state"] == "LIMITED_PREVIEW"

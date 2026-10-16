@@ -35,6 +35,20 @@ from .reporting.preview import build_guest_preview
 from .collection_api import register_collection_routes
 
 
+TAOBAO_PAUSED_DETAIL = (
+    "Taobao extraction is temporarily unavailable because login is blocked by CAPTCHA. "
+    "Please use 1688 or Alibaba. / Tạm dừng trích xuất Taobao do CAPTCHA chặn đăng nhập. "
+    "Vui lòng dùng 1688 hoặc Alibaba."
+)
+
+
+def active_source_platform(source_url: str) -> str:
+    platform = source_platform(source_url)
+    if platform == "TAOBAO":
+        raise ValueError(TAOBAO_PAUSED_DETAIL)
+    return platform
+
+
 class Submission(BaseModel):
     source_url: str
 
@@ -44,7 +58,9 @@ class Submission(BaseModel):
         try:
             return validate_fixture_url(value)
         except ValueError:
-            return normalize_source_url(value)
+            source_url = normalize_source_url(value)
+            active_source_platform(source_url)
+            return source_url
 
 
 
@@ -245,7 +261,10 @@ def create_app(
             source_url = normalize_source_url(source_url)
         except ValueError as exc:
             raise HTTPException(status_code=422, detail="Unsupported source URL") from exc
-        platform = source_platform(source_url)
+        try:
+            platform = active_source_platform(source_url)
+        except ValueError as exc:
+            raise HTTPException(status_code=422, detail=str(exc)) from exc
         if platform == "ALIBABA":
             raise HTTPException(status_code=422, detail="Alibaba saved-page import is not supported")
         taobao = platform == "TAOBAO"
@@ -326,8 +345,8 @@ def create_app(
             selected = json.loads(bytes(content))
             if not isinstance(selected, dict):
                 raise ValueError("Invalid selected evidence")
+            platform = active_source_platform(selected.get("source_url", ""))
             reject_sensitive_page_state(selected)
-            platform = source_platform(selected.get("source_url", ""))
             if platform == "ALIBABA":
                 raise ValueError("Alibaba browser capture is not supported")
             if platform == "TAOBAO":

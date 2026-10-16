@@ -6,7 +6,7 @@ import React, { useEffect, useRef, useState } from "react";
 import { createRoot } from "react-dom/client";
 import { assertPermittedEvidence, captureSelectedDom, supportedOffer } from "./capture";
 import { loadScopedResult, restoreLastCapture, saveOpenAndLoadResult, type LastCapture } from "./capture-result";
-import { canSubmitEnhancedEvidence, classifyExtensionPage, extensionGate, type ExtensionPageState } from "./extension-shell";
+import { canSubmitEnhancedEvidence, classifyExtensionPage, extensionGate, TAOBAO_PAUSED_NOTICE, type ExtensionPageState } from "./extension-shell";
 import { extensionVerdict } from "./extension-verdict";
 import { restoreCollectionJob, type CollectionJob } from "./linked-capture";
 import { errorText, uiText, type UiLanguage } from "./ui-language";
@@ -150,8 +150,8 @@ export function App({ initialLanguage = "vi", onLanguageChange }: { initialLangu
   const alibaba = Boolean(page.status === "supported" && page.kind.startsWith("alibaba") || collectionJob?.sourceUrl.includes("www.alibaba.com/"));
   const profilePage = page.status === "supported" && ["1688-factory", "alibaba-profile"].includes(page.kind);
   const linkedPage = page.status === "supported" && ["1688-company", "1688-factory", "alibaba-company", "alibaba-profile"].includes(page.kind);
-  const canCapturePage = !linkedPage || Boolean(guidedWaiting && collectionJob && page.status === "supported" &&
-    (["WAITING_COMPANY", "WAITING_FACTORY", "FINISHING"].includes(collectionJob.stage) && (page.sourceUrl === collectionJob.companyUrl || (profilePage && (!collectionJob.factoryUrl || page.sourceUrl === collectionJob.factoryUrl)))));
+  const canCapturePage = page.status === "supported" && (!linkedPage || Boolean(guidedWaiting && collectionJob &&
+    (["WAITING_COMPANY", "WAITING_FACTORY", "FINISHING"].includes(collectionJob.stage) && (page.sourceUrl === collectionJob.companyUrl || (profilePage && (!collectionJob.factoryUrl || page.sourceUrl === collectionJob.factoryUrl))))));
 
   useEffect(() => {
     if (!guidedWaiting || !canCapturePage || !userId) return;
@@ -216,7 +216,7 @@ export function App({ initialLanguage = "vi", onLanguageChange }: { initialLangu
       const [tab] = await chrome.tabs.query({ active: true, currentWindow: true });
       if (!current()) return;
       const offer = tab?.url ? supportedOffer(tab.url) : null;
-      if (!tab?.id || !offer) throw new Error("Open a supported 1688 offer or Taobao item/shop first");
+      if (!tab?.id || !offer) throw new Error("Open a supported 1688 or Alibaba product first");
       const token = await getToken({ skipCache: true });
       if (!current()) return;
       if (!token) throw new Error("Sign in before capturing evidence");
@@ -273,7 +273,9 @@ export function App({ initialLanguage = "vi", onLanguageChange }: { initialLangu
     <header className="popup-header"><div><span className="eyebrow">{t("Source evidence")}</span><h1>VCT Connect</h1></div><div className="language-switch" role="group" aria-label="Language / Ngôn ngữ"><button aria-pressed={language === "vi"} onClick={() => chooseLanguage("vi")}>VI</button><button aria-pressed={language === "en"} onClick={() => chooseLanguage("en")}>EN</button></div></header>
     <p className="intro">{t(alibaba ? "Capture product, storefront and company overview for one supplier report." : "Capture product, shop and factory evidence for one supplier report.")}</p>
     {page.status === "supported"
-      ? <p className="page-state">✓ {t("Supported page")} · {t(["1688-company", "alibaba-company", "taobao-shop"].includes(page.kind) ? "Shop" : profilePage ? alibaba ? "Company overview" : "Factory" : "Product")}</p>
+      ? <p className="page-state">✓ {t("Supported page")} · {t(["1688-company", "alibaba-company"].includes(page.kind) ? "Shop" : profilePage ? alibaba ? "Company overview" : "Factory" : "Product")}</p>
+      : page.status === "paused"
+        ? <p className="page-state" role="status">{t(TAOBAO_PAUSED_NOTICE)}</p>
       : page.status === "unsupported"
         ? <p className="page-state">{t("Open a supported product, shop or linked factory page.")}</p>
         : <p className="page-state">{t("Checking the active page…")}</p>}
@@ -292,6 +294,7 @@ export function App({ initialLanguage = "vi", onLanguageChange }: { initialLangu
     </>}
     {isSignedIn && linkedPage && !canCapturePage && <p>{t("Start from a product and follow its linked supplier page.")}</p>}
     {isSignedIn && guidedWaiting && collectionJob && <div className="status" aria-live="polite">
+      {page.status === "paused" && <p>{t("This saved collection is from 1688 or Alibaba. Return to its source page to capture more, or finish uploading the saved evidence below.")}</p>}
       <ol className="capture-steps" aria-label={t("Source evidence")}>{["Product", "Shop", alibaba ? "Company overview" : "Factory"].map((step, i) => <li key={step} className={i === (collectionJob.stage === "WAITING_COMPANY" ? 1 : 2) ? "current" : ""}><span>{i + 1}</span>{t(step)}</li>)}</ol>
       <strong>{t(collectionJob.stage === "FINISHING" ? "Capture saved · retry upload" : collectionJob.stage === "WAITING_FACTORY" ? alibaba ? "Shop saved · company overview next" : "Shop saved · factory next" : "Product captured · shop next")}</strong>
       <p>{t(collectionJob.stage === "FINISHING" ? "Retry the stored upload. Your evidence and analysis ID are retained." : collectionJob.stage === "WAITING_FACTORY" ? alibaba ? "Open Company overview / Company profile from the shop. Save company HTML when its details are visible to complete the report." : "Open Factory profile / 工厂档案 from the shop. When factory details are visible, save factory HTML to complete the report." : "Open the supplier shop using the link below or the highlighted name. If an overlay covers visible company content, close it with X, then save shop HTML.")}</p>

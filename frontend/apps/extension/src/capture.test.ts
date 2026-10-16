@@ -221,13 +221,9 @@ test("capture truncates by code points without splitting a surrogate pair", () =
   }
 });
 
-test("Taobao admission binds desktop item/shop identities and rejects unsafe forms", () => {
-  assert.deepEqual(supportedOffer("https://item.taobao.com/item.htm?id=1076425861755&spm=track"), {
-    sourceUrl: "https://item.taobao.com/item.htm?id=1076425861755", offerId: "1076425861755", kind: "item",
-  });
-  assert.deepEqual(supportedOffer("https://shop159450000.world.taobao.com/category.htm?spm=track"), {
-    sourceUrl: "https://shop159450000.world.taobao.com/category.htm", offerId: "159450000", kind: "shop",
-  });
+test("Taobao new capture admission is paused while retained adapters remain testable", () => {
+  assert.equal(supportedOffer("https://item.taobao.com/item.htm?id=1076425861755&spm=track"), null);
+  assert.equal(supportedOffer("https://shop159450000.world.taobao.com/category.htm?spm=track"), null);
   for (const url of ["https://item.taobao.com/item.htm?id=1&id=2", "https://item.taobao.com:443/item.htm?id=1",
     "https://user@item.taobao.com/item.htm?id=1", "https://item.taobao.com/item.htm?id=0", "https://item.taobao.com/item.htm?id=1#x",
     "https://detail.tmall.com/item.htm?id=1", "https://m.taobao.com/item.htm?id=1", "https://shop159450000.taobao.com/other.htm",

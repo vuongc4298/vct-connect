@@ -79,4 +79,13 @@ test("last result restoration rejects malformed or unsupported sources and keeps
   assert.equal(restoreLastCapture({ ...record, sourceUrl: record.sourceUrl + "&id=1" }, record.ownerId), null);
   const legacy = { ...record, sourceUrl: "https://detail.1688.com/offer/996518024136.html" };
   assert.deepEqual(restoreLastCapture(legacy, record.ownerId), legacy);
+  const shop = { ...record, sourceUrl: "https://shop159450000.world.taobao.com/category.htm" };
+  assert.deepEqual(restoreLastCapture(shop, record.ownerId), shop);
+  for (const suffix of ["\n", "\r", "\u2028", "\u2029"]) {
+    assert.equal(restoreLastCapture({ ...record, sourceUrl: record.sourceUrl + suffix }, record.ownerId), null);
+    assert.equal(restoreLastCapture({ ...shop, sourceUrl: shop.sourceUrl + suffix }, record.ownerId), null);
+  }
+  for (const sourceUrl of [shop.sourceUrl + "?id=1", "https://shop159450000.taobao.com.evil.test/", "https://item.taobao.com:443/item.htm?id=1", "https://user@item.taobao.com/item.htm?id=1"]) {
+    assert.equal(restoreLastCapture({ ...record, sourceUrl }, record.ownerId), null);
+  }
 });

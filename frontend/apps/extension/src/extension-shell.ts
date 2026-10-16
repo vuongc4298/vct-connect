@@ -4,12 +4,19 @@ import { supportedOffer } from "./capture";
 export type ExtensionPageState =
   | { status: "checking" }
   | { status: "unsupported" }
-  | { status: "supported"; sourceUrl: string; sourceId: string; kind: "1688" | "taobao-item" | "taobao-shop" | "1688-company" | "1688-factory" | "alibaba" | "alibaba-company" | "alibaba-profile" };
+  | { status: "paused"; platform: "Taobao" }
+  | { status: "supported"; sourceUrl: string; sourceId: string; kind: "1688" | "1688-company" | "1688-factory" | "alibaba" | "alibaba-company" | "alibaba-profile" };
 
-export type ExtensionGate = "loading-auth" | "signed-out" | "checking-page" | "unsupported-page" | "ready";
+export type ExtensionGate = "loading-auth" | "signed-out" | "checking-page" | "unsupported-page" | "paused-page" | "ready";
+
+export const TAOBAO_PAUSED_NOTICE = "Taobao capture is temporarily paused because CAPTCHA prevents login. Use 1688 or Alibaba. Your saved reports are still available.";
 
 export function classifyExtensionPage(url: string | undefined): ExtensionPageState {
   if (!url) return { status: "unsupported" };
+  try {
+    const hostname = new URL(url).hostname;
+    if (hostname === "taobao.com" || hostname.endsWith(".taobao.com")) return { status: "paused", platform: "Taobao" };
+  } catch { return { status: "unsupported" }; }
   const supported = supportedOffer(url);
   if (!supported) {
     const company = shopUrl(url), factory = factoryUrl(url);
@@ -21,7 +28,7 @@ export function classifyExtensionPage(url: string | undefined): ExtensionPageSta
     status: "supported",
     sourceUrl: supported.sourceUrl,
     sourceId: supported.offerId,
-    kind: supported.kind === "alibaba" ? "alibaba" : supported.kind === "item" ? "taobao-item" : supported.kind === "shop" ? "taobao-shop" : "1688",
+    kind: supported.kind === "alibaba" ? "alibaba" : "1688",
   };
 }
 
@@ -33,6 +40,7 @@ export function extensionGate(input: {
   if (!input.authLoaded) return "loading-auth";
   if (!input.signedIn) return "signed-out";
   if (input.page.status === "checking") return "checking-page";
+  if (input.page.status === "paused") return "paused-page";
   if (input.page.status !== "supported") return "unsupported-page";
   return "ready";
 }
