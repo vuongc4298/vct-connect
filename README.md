@@ -1,6 +1,6 @@
 # VCT Connect
 
-> Current support (October 19, 2026): new analyses support **1688 and Alibaba**. Taobao capture, URL submissions and HTML imports are temporarily paused because CAPTCHA blocks login. Existing Taobao reports remain readable. Download extension **0.7.2** from the signed-in **Tiện ích & hướng dẫn** page, replace the installed folder contents and reload it. Older Taobao instructions below are historical references, not an available capture path.
+> Current support (October 19, 2026): new analyses support **1688 and Alibaba**. Taobao capture, URL submissions and HTML imports are temporarily paused because CAPTCHA blocks login. Existing Taobao reports remain readable. Download extension **0.7.3** from the signed-in **Tiện ích & hướng dẫn** page, replace the installed folder contents and reload it. Older Taobao instructions below are historical references, not an available capture path.
 
 
 VCT Connect is a supplier-analysis application for Chinese sourcing workflows. The current implementation supports authenticated and guest submissions, durable extraction/assessment/reporting, evidence-backed Risk/Confidence/Coverage, a Vietnamese full report for the owning customer, and a reduced guest-safe preview. The repository still includes deterministic fixtures for repeatable development and CI; fixture output is not live supplier evidence.
