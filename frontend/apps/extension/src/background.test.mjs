@@ -9,9 +9,9 @@ const source = 'https://detail.1688.com/offer/1027322610455.html';
 const shop = 'https://shopabcdef123.1688.com/';
 const factory = 'https://www.1688.com/factory/b2b-abcdef123.html';
 
-function setup({ permission = true, navigation = false, platform = "1688" } = {}) {
+function setup({ permission = true, navigation = false, platform = "1688", profile } = {}) {
   const source = platform === "ALIBABA" ? 'https://www.alibaba.com/product-detail/Yiheng-Paddle_1601711788226.html' : 'https://detail.1688.com/offer/1027322610455.html';
-  const shop = platform === "ALIBABA" ? 'https://yihengsportinggoods.en.alibaba.com/' : 'https://shopabcdef123.1688.com/';
+  const shop = platform === "ALIBABA" ? profile?.selected.shop_url || 'https://yihengsportinggoods.en.alibaba.com/' : 'https://shopabcdef123.1688.com/';
   const factory = platform === "ALIBABA" ? shop + 'company_profile.html' : 'https://www.1688.com/factory/b2b-abcdef123.html';
   const stored = {}, tabs = new Map([[1, { id: 1, url: source, status: 'complete' }]]);
   const created = [], removed = [], requests = [], downloads = [], cues = [], listeners = new Set();
@@ -35,18 +35,21 @@ function setup({ permission = true, navigation = false, platform = "1688" } = {}
       // Chrome rejects undefined args instead of coercing them to JSON null.
       if (args) assert.ok(args.every(value => value !== undefined), 'Injection arguments must be serializable');
       const mode = args?.[0];
-      if (['capturePublicHtml','captureAlibabaHtml'].includes(func.name)) return [{ result: { page: args[0], source_url: args[1], html: '<div>public fixture</div>' } }];
+      if (['capturePublicHtml','captureAlibabaHtml'].includes(func.name)) {
+        if (profile && args[0] === 'FACTORY') assert.deepEqual(args[2],profile.selected);
+        return [{ result: profile && args[0] === 'FACTORY' ? profile.snapshot : { page: args[0], source_url: args[1], html: '<div>public fixture</div>' } }];
+      }
       if (func.name === 'showCompanyGuidance') { cues.push({tabId:target.tabId,args}); return [{ result: true }]; }
       if (func.name === 'captureSelectedDom') return [{ result: { source_url: source, offer_id: '1027322610455', fields: { product_title: 'Shirt' } } }];
-      if (func.name === 'captureAlibabaDom' && mode === 'PRODUCT') return [{ result: { source_url: source, offer_id: '1601711788226', fields: { product_title: 'Paddle' } } }];
+      if (func.name === 'captureAlibabaDom' && mode === 'PRODUCT') return [{ result: { source_url: source, offer_id: '1601711788226', fields: { product_title: 'Paddle', ...(profile ? { supplier_name: profile.selected.company_name } : {}) } } }];
       if (mode === 'PRODUCT_LINK') { assert.equal(args[1], source); return [{ result: shop }]; }
-      if (mode === 'SHOP') return [{ result: { source_url: shop, ...(platform === 'ALIBABA' ? { company_name: 'Yiheng' } : {credit_url: shop + 'page/creditdetail.html'}), ...(!navigation ? { factory_url: factory } : {}) } }];
+      if (mode === 'SHOP') return [{ result: { source_url: shop, ...(platform === 'ALIBABA' ? { company_name: profile?.selected.company_name || 'Yiheng' } : {credit_url: shop + 'page/creditdetail.html'}), ...(!navigation ? { factory_url: factory } : {}) } }];
       if (mode === 'OPEN_FACTORY') {
         const tab = { id: nextId++, openerTabId: target.tabId, url: factory, status: 'complete' };
         tabs.set(tab.id, tab); created.push(tab); for (const fn of listeners) fn(tab);
         return [{ result: 'CLICKED' }];
       }
-      if (mode === 'FACTORY') return [{ result: { source_url: factory, canonical_url: factory, shop_url: shop, ...(platform === 'ALIBABA' ? { company_name: 'Yiheng' } : {}), claims: [{ name: platform === 'ALIBABA' ? 'Year established' : '成立时间', value: platform === 'ALIBABA' ? '2026' : '2025.07.14' }] } }];
+      if (mode === 'FACTORY') return [{ result: profile?.selected || { source_url: factory, canonical_url: factory, shop_url: shop, ...(platform === 'ALIBABA' ? { company_name: 'Yiheng' } : {}), claims: [{ name: platform === 'ALIBABA' ? 'Year established' : '成立时间', value: platform === 'ALIBABA' ? '2026' : '2025.07.14' }] } }];
       throw new Error('Unexpected injection');
     } },
   };
@@ -92,6 +95,128 @@ test('Alibaba waits for storefront and company HTML, reuses one reservation and 
     assert.deepEqual(h.requests[1].bundle.html_sources.map(s=>s.page),['PRODUCT','SHOP','FACTORY']);
     assert.deepEqual(h.downloads.map(d=>d.filename.split('/').pop()),['product.html','shop.html','company.html']);
     assert.equal(h.created.length,1);
+  } finally {globalThis.fetch=original;}
+});
+
+test('Alibaba capability profile retries exact saved three-source evidence after a lost finish response', async () => {
+  const original = globalThis.fetch;
+  try {
+    const profile = JSON.parse(readFileSync('../backend/tests/fixtures/alibaba_capability_gzlianxian.json', 'utf8'));
+    const h = setup({ platform: 'ALIBABA', profile });
+    const first = await h.send();
+    assert.equal(h.stored.guidedCollection.job.expiresAt - h.stored.guidedCollection.job.startedAt, 30 * 60_000);
+    h.tabs.set(2, {id:2,url:h.shop,status:'complete'}); await h.send('CONTINUE_GUIDED',2);
+    h.tabs.set(3, {id:3,url:h.factory,status:'complete'});
+    const bodies = [];
+    globalThis.fetch = async (url, options) => {
+      assert.ok(String(url).endsWith('/finish')); bodies.push(options.body);
+      if (bodies.length <= 2) throw new TypeError('finish response lost');
+      return Response.json({id:first.id});
+    };
+    assert.ok((await h.send('CONTINUE_GUIDED',3)).error);
+    assert.equal(h.stored.collectionJob.stage,'FINISHING');
+    assert.equal(h.requests.length,1); // One quota reservation across all retries.
+    chrome.scripting.executeScript = async () => { throw Error('Stored evidence must not be recaptured'); };
+    assert.equal((await h.send('FINISH_GUIDED',3)).id,first.id);
+    assert.equal(h.stored.collectionJob.stage,'ASSESSING');
+    assert.equal(bodies.length,3); assert.ok(bodies.every(body=>body===bodies[0]));
+    const submitted=JSON.parse(bodies[0]);
+    assert.equal(submitted.job_id,first.id); assert.deepEqual(submitted.factory,profile.selected);
+    assert.deepEqual(submitted.html_sources.map(s=>s.page),['PRODUCT','SHOP','FACTORY']);
+    assert.deepEqual(submitted.html_sources[2],profile.snapshot);
+    assert.deepEqual(h.downloads.map(d=>d.filename.split('/').pop()),['product.html','shop.html','company.html']);
+    assert.equal(decodeURIComponent(h.downloads[2].url.split(',').slice(1).join(',')),profile.snapshot.html);
+  } finally {globalThis.fetch=original;}
+});
+
+test('invalid or empty Alibaba company capture keeps the same pending collection retryable', async () => {
+  const original = globalThis.fetch;
+  try {
+    const h=setup({platform:'ALIBABA'}); const first=await h.send();
+    h.tabs.set(2,{id:2,url:h.shop,status:'complete'}); await h.send('CONTINUE_GUIDED',2);
+    h.tabs.set(3,{id:3,url:h.factory,status:'complete'});
+    const execute=chrome.scripting.executeScript;
+    for (const kind of ['empty','name','canonical','foreign']) {
+      chrome.scripting.executeScript=async o=>{
+        const result=await execute(o);
+        if(o.func.name==='captureAlibabaDom' && o.args?.[0]==='FACTORY') {
+          if(kind==='empty') return [{result:null}];
+          result[0].result[kind==='name'?'company_name':kind==='canonical'?'canonical_url':'shop_url']=kind==='name'?'Foreign supplier':'https://foreign.en.alibaba.com/';
+        }
+        return result;
+      };
+      assert.match((await h.send('CONTINUE_GUIDED',3)).error,/not visible or belongs to another supplier/);
+      assert.equal(h.stored.collectionJob.stage,'WAITING_FACTORY');
+      assert.equal(h.requests.length,1); assert.equal(h.downloads.length,2); assert.equal(h.created.length,0);
+    }
+    chrome.scripting.executeScript=async o=>o.func.name==='captureAlibabaHtml' && o.args?.[0]==='FACTORY' ? [{result:null}] : execute(o);
+    assert.match((await h.send('CONTINUE_GUIDED',3)).error,/No usable factory HTML/);
+    assert.equal(h.stored.collectionJob.stage,'WAITING_FACTORY'); assert.equal(h.requests.length,1); assert.equal(h.downloads.length,2);
+    chrome.scripting.executeScript=execute;
+    assert.equal((await h.send('CONTINUE_GUIDED',3)).id,first.id);
+    assert.equal(h.requests.length,2); assert.equal(h.downloads.length,3);
+  } finally {globalThis.fetch=original;}
+});
+
+test('Alibaba direct-to-profile capture checks the product supplier name before any company download', async () => {
+  const original=globalThis.fetch;
+  try {
+    for (const mismatch of [false,true]) {
+      const profile=JSON.parse(readFileSync('../backend/tests/fixtures/alibaba_capability_gzlianxian.json','utf8'));
+      const h=setup({platform:'ALIBABA',profile}); const first=await h.send();
+      assert.equal(h.stored.guidedCollection.bundle.product.fields.supplier_name,profile.selected.company_name);
+      h.tabs.set(2,{id:2,url:h.factory,status:'complete'});
+      const execute=chrome.scripting.executeScript;
+      if(mismatch) {
+        chrome.scripting.executeScript=async o=>{
+          const result=await execute(o);
+          if(o.func.name==='captureAlibabaDom' && o.args?.[0]==='FACTORY') result[0].result={...result[0].result,company_name:'Different product supplier'};
+          return result;
+        };
+        assert.match((await h.send('CONTINUE_GUIDED',2)).error,/not visible or belongs to another supplier/);
+        assert.equal(h.stored.collectionJob.stage,'WAITING_COMPANY');
+        assert.equal(h.requests.length,1); assert.equal(h.downloads.length,1); assert.equal(h.created.length,0);
+        assert.equal(h.stored.guidedCollection.bundle.factory,undefined);
+        chrome.scripting.executeScript=execute;
+      }
+      assert.equal((await h.send('CONTINUE_GUIDED',2)).id,first.id);
+      assert.equal(h.stored.collectionJob.stage,'ASSESSING');
+      assert.equal(h.requests.length,2); assert.equal(h.requests[1].bundle.job_id,first.id);
+      assert.equal(h.requests[1].bundle.shop,undefined);
+      assert.equal(h.requests[1].bundle.factory.company_name,profile.selected.company_name);
+      assert.deepEqual(h.requests[1].bundle.html_sources.map(s=>s.page),['PRODUCT','FACTORY']);
+      assert.deepEqual(h.downloads.map(d=>d.filename.split('/').pop()),['product.html','company.html']);
+    }
+  } finally {globalThis.fetch=original;}
+});
+
+test('Alibaba profile changing after selection stays pending without downloading or finishing stale evidence', async () => {
+  const original=globalThis.fetch;
+  try {
+    for (const withShop of [false,true]) {
+      const profile=JSON.parse(readFileSync('../backend/tests/fixtures/alibaba_capability_gzlianxian.json','utf8'));
+      const h=setup({platform:'ALIBABA',profile}); const first=await h.send();
+      if(withShop) {h.tabs.set(2,{id:2,url:h.shop,status:'complete'}); await h.send('CONTINUE_GUIDED',2);}
+      h.tabs.set(3,{id:3,url:h.factory,status:'complete'});
+      const execute=chrome.scripting.executeScript;
+      chrome.scripting.executeScript=async o=>{
+        if(o.func.name==='captureAlibabaHtml' && o.args?.[0]==='FACTORY') {
+          // The HTML injection receives the prior selection and declines a hydrated mismatch.
+          assert.deepEqual(JSON.parse(JSON.stringify(o.args[2])),profile.selected);
+          return [{result:null}];
+        }
+        return execute(o);
+      };
+      assert.match((await h.send('CONTINUE_GUIDED',3)).error,/No usable factory HTML/);
+      assert.equal(h.stored.collectionJob.stage,withShop?'WAITING_FACTORY':'WAITING_COMPANY');
+      assert.equal(h.requests.length,1); assert.equal(h.downloads.length,withShop?2:1); assert.equal(h.created.length,0);
+      assert.equal(h.stored.guidedCollection.bundle.factory,undefined);
+      assert.ok(h.stored.guidedCollection.bundle.html_sources.every(s=>s.page!=='FACTORY'));
+      chrome.scripting.executeScript=execute;
+      assert.equal((await h.send('CONTINUE_GUIDED',3)).id,first.id);
+      assert.equal(h.stored.collectionJob.stage,'ASSESSING'); assert.equal(h.requests.length,2);
+      assert.deepEqual(h.requests[1].bundle.factory,profile.selected);
+    }
   } finally {globalThis.fetch=original;}
 });
 

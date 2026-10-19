@@ -8,6 +8,7 @@ from backend.app.extraction.supplier_bundle import SupplierBundle, normalize_bun
 from backend.app.intelligence.identity import assess_supplier_identity
 
 FIXTURE = Path(__file__).parent / 'fixtures' / 'alibaba_guided_yiheng.json'
+CAPABILITY_FIXTURE = Path(__file__).parent / 'fixtures' / 'alibaba_capability_gzlianxian.json'
 
 
 def selected():
@@ -16,6 +17,58 @@ def selected():
 
 def normalize(value):
     return normalize_bundle(SupplierBundle.model_validate(value), at=datetime(2026, 10, 14, tzinfo=timezone.utc))
+
+
+def capability_selected():
+    """Real browser profile evidence inside a synthetic matching product/store envelope."""
+    profile = json.loads(CAPABILITY_FIXTURE.read_text(encoding='utf-8'))
+    factory = profile['selected']
+    shop, name = factory['shop_url'], factory['company_name']
+    source = 'https://www.alibaba.com/product-detail/Test-television_1234567890.html'
+    company_html = (f'<link rel="canonical" href="{shop}"><section id="vct-alibaba-company-name">{name}</section>'
+                    f'<a id="vct-alibaba-own-shop" href="{shop}">Supplier storefront</a>')
+    return {
+        'job_id': '00000000-0000-4000-8000-000000000072', 'platform': 'ALIBABA', 'guided': True, 'shop_url': shop,
+        'product': {'source_url': source, 'offer_id': '1234567890',
+                    'fields': {'product_title': 'Test television', 'supplier_name': name}},
+        'shop': {'source_url': shop, 'company_name': name, 'factory_url': factory['source_url']},
+        'factory': factory,
+        'html_sources': [
+            {'page': 'PRODUCT', 'source_url': source, 'html': f'<link rel="canonical" href="{source}"><section id="vct-alibaba-title">Test television</section>'
+                f'<section id="vct-alibaba-supplier">{name}</section><a id="vct-alibaba-shop-link" href="{shop}">Supplier storefront</a>'},
+            {'page': 'SHOP', 'source_url': shop, 'html': company_html}, profile['snapshot']],
+        'outcomes': [{'page': 'SHOP', 'status': 'OK'}, {'page': 'FACTORY', 'status': 'OK'}],
+    }
+
+
+def test_saved_capability_profile_reaches_normalized_factory_assessment_with_units_and_provenance():
+    data = normalize(capability_selected())['supplier_data']
+    company = data['company_information']
+    assert company['business_type'] == 'Custom Manufacturer'
+    assert company['production_line_count'] == 2
+    assert company['production_line_count_display_text'] == '2'
+    assert company['factory_area_display_text'] == '5000 square metres'
+    assert 'factory_area_sqm' not in company
+    assert 'established_year_display_text' not in company and data['years_active'] is None
+    assert company['company_profile_source_url'] == 'https://gzlianxian.en.alibaba.com/company_profile.html'
+    assert [record['status'] for record in data['html_capture_status']] == ['PARSED'] * 3
+    identity = assess_supplier_identity(data)
+    ids = {item.evidence_id for item in identity.supporting_evidence}
+    assert {'company_information.production_line_count', 'company_information.factory_area_display_text',
+            'company_information.company_profile_source_url', 'company_information.business_type.factory'} <= ids
+    assert identity.confidence > 0
+
+
+@pytest.mark.parametrize('change', ['supplier', 'canonical', 'name', 'conflicting-claim', 'html-claim', 'empty-claims'])
+def test_capability_profile_cannot_bypass_identity_or_selected_html_equality(change):
+    value = capability_selected()
+    if change == 'supplier': value['factory']['shop_url'] = 'https://foreign.en.alibaba.com/'
+    if change == 'canonical': value['factory']['canonical_url'] = 'https://foreign.en.alibaba.com/company_profile.html'
+    if change == 'name': value['factory']['company_name'] = 'Different supplier'
+    if change == 'conflicting-claim': value['factory']['claims'].append({'name': 'No. of Production Lines', 'value': '3'})
+    if change == 'html-claim': value['html_sources'][2]['html'] = value['html_sources'][2]['html'].replace('5000 square metres', '9000 square metres')
+    if change == 'empty-claims': value['factory']['claims'] = []
+    with pytest.raises(ValueError): normalize(value)
 
 
 def test_saved_alibaba_product_store_and_overview_preserve_scoped_source_facts():
