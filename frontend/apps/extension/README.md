@@ -1,9 +1,9 @@
 # VCT Connect browser capture
 
-> Current support (October 19, 2026): new analyses support **1688 and Alibaba**. Taobao capture, URL submissions and HTML imports are temporarily paused because CAPTCHA blocks login. Existing Taobao reports remain readable. Download extension **0.7.2** from the signed-in **Tiện ích & hướng dẫn** page, replace the installed folder contents and reload it. Older Taobao instructions below are historical references, not an available capture path.
+> Current support (October 19, 2026): new analyses support **1688 and Alibaba**. Taobao capture, URL submissions and HTML imports are temporarily paused because CAPTCHA blocks login. Existing Taobao reports remain readable. Download extension **0.7.3** from the signed-in **Tiện ích & hướng dẫn** page, replace the installed folder contents and reload it. Older Taobao instructions below are historical references, not an available capture path.
 
 
-This unpacked Chrome extension captures visible supplier evidence for a signed-in VCT Connect buyer. Version 0.7.2 supports visible Alibaba manufacturer capability cards (production lines and floor space) as well as table-based profiles. It guides 1688 product → shop → factory and Alibaba product → supplier storefront → Company overview capture. Use **Phân tích trang này**, **Lưu HTML cửa hàng**, then **Lưu HTML nhà máy và phân tích** (1688) or **Lưu HTML hồ sơ công ty và phân tích** (Alibaba). You may close a dismissible CAPTCHA with X when public company content remains visible; empty challenge pages cannot be captured. Cleaned HTML downloads at each capture and all captured sources upload together when the collection finishes.
+This unpacked Chrome extension captures visible supplier evidence for a signed-in VCT Connect buyer. Version 0.7.3 highlights the actual supplier storefront link after Alibaba product capture; Company overview is highlighted only at the following profile step. It supports visible Alibaba manufacturer capability cards (production lines and floor space) as well as table-based profiles. It guides 1688 product → shop → factory and Alibaba product → supplier storefront → Company overview capture. Use **Phân tích trang này**, **Lưu HTML cửa hàng**, then **Lưu HTML nhà máy và phân tích** (1688) or **Lưu HTML hồ sơ công ty và phân tích** (Alibaba). You may close a dismissible CAPTCHA with X when public company content remains visible; empty challenge pages cannot be captured. Cleaned HTML downloads at each capture and all captured sources upload together when the collection finishes.
 
 The supplied VCT brand icon appears in the toolbar and extension list. Reload the unpacked extension in chrome://extensions after upgrading. The local build targets http://127.0.0.1:3000; build-live targets the deployed HTTPS origin.
 
@@ -34,7 +34,7 @@ The active guided collectors support 1688 and Alibaba only. Retained Taobao adap
 
 The web home page provides extension downloads and guidance; it no longer offers standalone HTML import. The supported collectors upload bounded cleaned HTML together when the guided collection finishes. See the buyer acceptance guide for installation and report/history checks.
 
-## Alibaba guided capture — 0.7.2
+## Alibaba guided capture — 0.7.3
 
 On a desktop `www.alibaba.com/product-detail/..._<id>.html` product, load the visible product reviews and click **Phân tích trang này**. Follow the supplier cue or the storefront link in the popup. Mobile `<supplier>.m.en.alibaba.com` and desktop `<supplier>.en.alibaba.com` storefront/profile addresses resolve to the same supplier identity. Save the storefront, then follow the highlighted **Company overview / Company profile** link and choose **Lưu HTML hồ sơ công ty và phân tích**. If the product links directly to its profile, the profile can be captured for the same product without a storefront capture; the storefront remains explicitly unavailable.
 

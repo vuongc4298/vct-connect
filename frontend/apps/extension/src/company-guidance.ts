@@ -4,19 +4,27 @@ export function showCompanyGuidance(mode: "SHOP" | "FACTORY" | "SHOP_CAPTURE" | 
   previous?.dispatchEvent(new Event("vct-dismiss"));
   previous?.remove();
   const alibaba = expectedShop.endsWith(".en.alibaba.com/");
+  function visible(a: HTMLElement): boolean {
+    if (!a.getClientRects().length) return false;
+    if (!alibaba) return true;
+    if (a.closest('[hidden],[aria-hidden="true"]')) return false;
+    for (let node: HTMLElement | null = a; node; node = node.parentElement) {
+      const style = getComputedStyle(node);
+      if (style.display === "none" || style.visibility !== "visible" || style.opacity === "0") return false;
+    }
+    return true;
+  }
   const selector = alibaba ? mode === "SHOP" ? ".module_unifed_company_card a[href]" : ".nav-item a[href],a.menu-link[href]" : mode === "SHOP" ? "#shopNavigation a[href]" : "#hd a, #shopNavigation a, #pcTopNav a";
   const targets = Array.from(document.querySelectorAll<HTMLAnchorElement>(selector))
-    .filter(a => a.getClientRects().length && (alibaba ? (() => {
+    .filter(a => visible(a) && (alibaba ? (() => {
       const u = new URL(a.href), host = /^([a-z0-9-]+)\.(?:m\.)?en\.alibaba\.com$/.exec(u.hostname);
       return u.protocol === "https:" && !u.port && !u.username && !u.password && !!host && `https://${host[1]}.en.alibaba.com/` === expectedShop &&
-        (mode === "SHOP" ? ["/", "/index.html", "/company_profile.html"].includes(u.pathname) : u.pathname === "/company_profile.html");
+        (mode === "SHOP" ? ["/", "/index.html"].includes(u.pathname) : u.pathname === "/company_profile.html");
     })() : mode === "SHOP" ? new URL(a.href).origin + new URL(a.href).pathname === expectedShop
       : /^(工厂档案|工厂介绍|工厂名片|工厂资料|Factory profile)$/i.test((a.textContent || "").trim())));
   const target = targets.length >= 1 && ["SHOP", "FACTORY"].includes(mode) && (alibaba || mode === "SHOP" || targets.length === 1)
-    ? targets.find(a => a.classList.contains("shop-company-name")) || targets[0] : null;
-  const supplierName = alibaba && mode === "SHOP" ? Array.from(document.querySelectorAll<HTMLElement>(".module_unifed_company_card div,.module_unifed_company_card span"))
-    .find(n => !n.children.length && /(?:Co\.|Company|Limited|LTD)/i.test(n.textContent || "")) : null;
-  const highlight = supplierName || target?.querySelector<HTMLElement>("h1") || target;
+    ? (alibaba && mode === "SHOP" ? targets.find(a => a.textContent?.trim()) : targets.find(a => a.classList.contains("shop-company-name"))) || targets[0] : null;
+  const highlight = target?.querySelector<HTMLElement>("h1") || target;
   const originalStyle = highlight?.getAttribute("style");
   if (highlight) {
     // An inset ring remains visible inside the product card's clipped layout.
@@ -51,12 +59,12 @@ export function showCompanyGuidance(mode: "SHOP" | "FACTORY" | "SHOP_CAPTURE" | 
     FACTORY_CAPTURE: "When factory details are visible, open the extension and choose Save factory HTML & analyze.",
   };
   const alibabaMessages = language === "vi" ? {
-    SHOP: "Đã thu thập sản phẩm. Mở cửa hàng nhà cung cấp bằng liên kết bên dưới, rồi chọn Lưu HTML cửa hàng trong tiện ích.",
+    SHOP: "Đã thu thập sản phẩm. Nhấn liên kết cửa hàng nhà cung cấp được tô xanh hoặc liên kết bên dưới, rồi chọn Lưu HTML cửa hàng trong tiện ích.",
     FACTORY: "Đã lưu cửa hàng. Nhấn Company overview / Company profile được tô xanh, rồi chọn Lưu HTML hồ sơ công ty và phân tích.",
     SHOP_CAPTURE: "Khi tên nhà cung cấp hoặc phần giới thiệu hiển thị, chọn Lưu HTML cửa hàng trong tiện ích.",
     FACTORY_CAPTURE: "Khi thông tin công ty hiển thị, chọn Lưu HTML hồ sơ công ty và phân tích trong tiện ích.",
   } : {
-    SHOP: "Product captured. Open the supplier storefront using the link below, then choose Save shop HTML in the extension.",
+    SHOP: "Product captured. Click the highlighted supplier storefront link or the link below, then choose Save shop HTML in the extension.",
     FACTORY: "Shop saved. Click the highlighted Company overview / Company profile, then choose Save company HTML & analyze.",
     SHOP_CAPTURE: "When the supplier name or introduction is visible, choose Save shop HTML in the extension.",
     FACTORY_CAPTURE: "When company information is visible, choose Save company HTML & analyze in the extension.",

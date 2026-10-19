@@ -4,6 +4,75 @@ import { assertPermittedEvidence, captureSelectedDom, supportedOffer, type Legac
 import { captureLinkedDom } from "./linked-capture";
 import { showCompanyGuidance } from "./company-guidance";
 
+test("Alibaba cues highlight the clickable storefront, not Company Overview, and restore styles", () => {
+  const previous = globalThis.document;
+  const previousStyle = globalThis.getComputedStyle;
+  const shop = "https://supplier-example.en.alibaba.com/";
+  const nodes = new Map<string, any>();
+  const element = (textContent = "", href = "", shown = true) => {
+    const attributes = new Map<string, string>();
+    const handlers = new Map<string, () => void>();
+    return { textContent, href, children: [] as any[], classList: { contains: () => false, add() {} },
+      renderStyle: { display: "block", visibility: "visible", opacity: "1" }, parentElement: null as any,
+      closest: () => null,
+      style: { setProperty(name: string, value: string) { attributes.set("style", `${attributes.get("style") ?? ""}${name}:${value};`); } },
+      getClientRects: () => shown ? [{}] : [], querySelector: () => null,
+      setAttribute(name: string, value: string) { attributes.set(name, value); },
+      getAttribute: (name: string) => attributes.get(name) ?? null,
+      removeAttribute(name: string) { attributes.delete(name); }, scrollIntoView() {},
+      append(child: any) { this.children.push(child); },
+      addEventListener(name: string, handler: () => void) { handlers.set(name, handler); },
+      dispatchEvent(event: Event) { handlers.get(event.type)?.(); },
+      remove() { if ((this as any).id) nodes.delete((this as any).id); },
+    };
+  };
+  const overview = element("Company Overview", shop + "company_profile.html");
+  const logo = element("", shop);
+  const supplier = element("Example supplier", "https://supplier-example.m.en.alibaba.com/?productId=123");
+  const hidden = element("Hidden company", shop, false);
+  const foreign = element("Another supplier", "https://other.en.alibaba.com/");
+  const invisible = element("Invisible supplier", shop);
+  invisible.renderStyle.visibility = "hidden";
+  const transparent = element("Transparent supplier", shop);
+  transparent.parentElement = element();
+  transparent.parentElement.renderStyle.opacity = "0";
+  const decoy = element("Company Overview");
+  supplier.setAttribute("style", "color:red");
+  let anchors = [overview, hidden, foreign, invisible, transparent, logo, supplier];
+  try {
+    Object.defineProperty(globalThis, "getComputedStyle", { configurable: true, value: (node: any) => node.renderStyle });
+    Object.defineProperty(globalThis, "document", { configurable: true, value: {
+      getElementById: (id: string) => nodes.get(id),
+      querySelectorAll: (selector: string) => selector.includes("div,") ? [decoy] : anchors,
+      createElement: () => element(), body: { append: (item: any) => nodes.set(item.id, item) },
+    } });
+    assert.equal(showCompanyGuidance("SHOP", shop), true);
+    assert.match(supplier.getAttribute("style")!, /box-shadow/);
+    for (const other of [overview, hidden, foreign, invisible, transparent, logo, decoy]) assert.equal(other.getAttribute("style"), null);
+    assert.equal(nodes.get("vct-company-guidance").children.find((n: any) => n.href)?.href, shop);
+    // Replacing product guidance with the next stage must restore the original supplier style.
+    assert.equal(showCompanyGuidance("FACTORY", shop), true);
+    assert.equal(supplier.getAttribute("style"), "color:red");
+    assert.match(overview.getAttribute("style")!, /box-shadow/);
+    nodes.get("vct-company-guidance").dispatchEvent(new Event("vct-dismiss"));
+    assert.equal(overview.getAttribute("style"), null);
+    for (const path of ["/", "/index.html"]) {
+      anchors = [element("Company Overview", shop + "company_profile.html"), element("Supplier name", new URL(path, shop).href)];
+      assert.equal(showCompanyGuidance("SHOP", shop, "en"), true);
+      assert.equal(anchors[0].getAttribute("style"), null);
+      assert.match(anchors[1].getAttribute("style")!, /box-shadow/);
+    }
+    // Missing/hidden/wrong-shop storefronts cannot turn a profile link into a shop cue.
+    anchors = [overview, hidden, foreign, invisible, transparent];
+    assert.equal(showCompanyGuidance("SHOP", shop), false);
+    assert.equal(overview.getAttribute("style"), null);
+    assert.equal(nodes.get("vct-company-guidance").children.find((n: any) => n.href)?.href, shop);
+  } finally {
+    Object.defineProperty(globalThis, "document", { configurable: true, value: previous });
+    Object.defineProperty(globalThis, "getComputedStyle", { configurable: true, value: previousStyle });
+  }
+});
+
 test("factory cue defaults to Vietnamese and protects its entire body from page translation", () => {
   const previous = globalThis.document;
   const appended: any[] = [];
