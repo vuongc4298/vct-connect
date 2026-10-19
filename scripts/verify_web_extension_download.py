@@ -1,4 +1,4 @@
-"""Verify the actual web server's private ZIP with an isolated auth boundary.
+"""Verify the actual web server's public branding and private ZIP with isolated auth.
 
 The fake token never leaves loopback. No production identity, DB or model calls.
 """
@@ -6,6 +6,7 @@ import argparse
 import base64
 import hashlib
 from http.server import BaseHTTPRequestHandler, ThreadingHTTPServer
+from html.parser import HTMLParser
 from io import BytesIO
 import json
 import os
@@ -45,6 +46,53 @@ def fetch(url, token=None):
         return response
 
 
+class PageMetadata(HTMLParser):
+    def __init__(self):
+        super().__init__()
+        self.title = ""
+        self.in_title = False
+        self.icons = []
+        self.theme_color = None
+
+    def handle_starttag(self, tag, attrs):
+        attrs = dict(attrs)
+        if tag == "title":
+            self.in_title = True
+        elif tag == "link" and "icon" in attrs.get("rel", "").split():
+            self.icons.append(attrs)
+        elif tag == "meta" and attrs.get("name") == "theme-color":
+            self.theme_color = attrs.get("content")
+
+    def handle_endtag(self, tag):
+        if tag == "title":
+            self.in_title = False
+
+    def handle_data(self, data):
+        if self.in_title:
+            self.title += data
+
+
+def verify_branding(origin):
+    public = Path(__file__).resolve().parents[1] / "frontend" / "apps" / "web" / "public"
+    for filename, content_types in [
+        ("vct-logo.jpg", {"image/jpeg"}),
+        ("vct-icon.ico", {"image/x-icon", "image/vnd.microsoft.icon"}),
+    ]:
+        with fetch(f"{origin}/{filename}") as response:
+            assert response.status == 200, f"Anonymous branding asset missing: {filename}"
+            assert response.headers.get_content_type() in content_types, f"Wrong content type: {filename}"
+            assert response.read() == (public / filename).read_bytes(), f"Branding asset differs from source: {filename}"
+    with fetch(origin) as response:
+        assert response.status == 200
+        assert response.headers.get_content_type() == "text/html"
+        metadata = PageMetadata()
+        metadata.feed(response.read().decode("utf-8"))
+    assert metadata.title == "VCT Connect", "Missing frontend title"
+    assert metadata.theme_color == "#09234c", "Missing frontend theme color"
+    assert any(icon.get("href") == "/vct-icon.ico" and icon.get("type") == "image/x-icon"
+               and icon.get("sizes") == "56x56" for icon in metadata.icons), "Missing frontend browser icon"
+
+
 def main():
     parser = argparse.ArgumentParser()
     target = parser.add_mutually_exclusive_group(required=True)
@@ -71,6 +119,7 @@ def main():
                 if time.monotonic() > deadline or process.poll() is not None:
                     raise RuntimeError("Web server did not start")
                 time.sleep(.25)
+        verify_branding(f"http://127.0.0.1:{port}")
         with fetch(url, "invalid-fixture") as response:
             assert response.status == 401
             assert response.headers.get("Cache-Control") == "private, no-store"
@@ -96,7 +145,7 @@ def main():
         for path in ["/private/vct-connect-extension.zip", "/extension/vct-connect-extension.zip"]:
             with fetch(f"http://127.0.0.1:{port}{path}") as response:
                 assert response.status == 404
-        print("Actual web server: anonymous/invalid download denied, verified download CRC/manifest passed, private paths inaccessible. Auth uses a loopback fixture.")
+        print("Actual web server: anonymous branding bytes/content types and page metadata verified; anonymous/invalid download denied, verified download CRC/manifest passed, private paths inaccessible. Auth uses a loopback fixture.")
     finally:
         process.terminate()
         try:
