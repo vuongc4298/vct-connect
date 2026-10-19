@@ -1,0 +1,27 @@
+{
+  "selected": {
+    "source_url": "https://gzlianxian.en.alibaba.com/company_profile.html",
+    "canonical_url": "https://gzlianxian.en.alibaba.com/company_profile.html",
+    "shop_url": "https://gzlianxian.en.alibaba.com/",
+    "company_name": "Guangzhou Lianxian Electronic Technology Co., Ltd.",
+    "claims": [
+      {
+        "name": "Business type",
+        "value": "Custom Manufacturer"
+      },
+      {
+        "name": "No. of Production Lines",
+        "value": "2"
+      },
+      {
+        "name": "Factory Size",
+        "value": "5000 square metres"
+      }
+    ]
+  },
+  "snapshot": {
+    "page": "FACTORY",
+    "source_url": "https://gzlianxian.en.alibaba.com/company_profile.html",
+    "html": "<!doctype html><html><head><title>VCT public Alibaba evidence</title><link rel=\"canonical\" href=\"https://gzlianxian.en.alibaba.com/company_profile.html\"></head><body><section id=\"vct-alibaba-company-name\">Guangzhou Lianxian Electronic Technology Co., Ltd.</section><a id=\"vct-alibaba-own-shop\" href=\"https://gzlianxian.en.alibaba.com/\">Supplier storefront</a><section id=\"vct-alibaba-company-claims\"><dl><dt>Business type</dt><dd>Custom Manufacturer</dd></dl><dl><dt>No. of Production Lines</dt><dd>2</dd></dl><dl><dt>Factory Size</dt><dd>5000 square metres</dd></dl></section></body></html>"
+  }
+}

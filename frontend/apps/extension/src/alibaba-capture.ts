@@ -34,6 +34,79 @@ export function captureAlibabaDom(mode: "PRODUCT" | "PRODUCT_LINK" | "SHOP" | "F
     for (let t = walker.nextNode(); t; t = walker.nextNode()) if (t.parentElement && visible(t.parentElement)) parts.push(t.textContent || "");
     return Array.from(parts.join(" ").replace(/\s+/g, " ").trim()).slice(0, max).join("") || undefined;
   }
+  // Keep these rules identical in both injected functions: Chrome serializes each independently.
+  function profileClaims(nameNode: HTMLElement): { name: string; value: string }[] | null {
+    const allowed = ["Business type", "Country / Region", "Main Products", "Total employees", "Total Annual Revenue", "Year established", "Main Markets", "Factory Size", "Factory Country/Region", "No. of Production Lines", "Contract Manufacturing", "Annual Output Value", "Average Lead Time", "Accepted Delivery Terms", "Accepted Payment Currency", "Accepted payment methods"];
+    const claims: { name: string; value: string }[] = [];
+    let conflict = false;
+    function quantity(value: string, area: boolean) {
+      // Parse a complete bounded measurement, never a truncated numeric prefix.
+      const number = "(?:[0-9]{1,3}(?:,[0-9]{3})+|[0-9]+)(?:\\.[0-9]{1,3})?";
+      const match = new RegExp(`^(?:(about|approximately|approx\\.?|below|above|less than|more than|[~<>≤≥])\\s*)?(${number})(?:\\s*[-–—−]\\s*(${number}))?\\s*(.*?)$`, "i").exec(value);
+      if (!match) return null;
+      const rawNumbers = [match[2], ...(match[3] ? [match[3]] : [])];
+      if (rawNumbers.some(n => n.replace(/,/g, "").split(".")[0].length > 9)) return null;
+      const numbers = rawNumbers.map(n => Number(n.replace(/,/g, "")));
+      if (numbers.some(n => !Number.isFinite(n) || n <= 0 || n > 999_999_999 || !area && !Number.isInteger(n)) ||
+          numbers.length === 2 && numbers[0] > numbers[1]) return null;
+      const rawUnit = match[4].toLowerCase().replace(/\./g, "").replace(/\s+/g, " ");
+      const unit = !rawUnit ? "" : area
+        ? /^(?:㎡|m²|m2|sqm|sq m|square met(?:er|re)s?)$/.test(rawUnit) ? "m2"
+          : /^(?:ft²|ft2|sq ft|square (?:feet|foot))$/.test(rawUnit) ? "ft2"
+          : /^(?:acres?|hectares?|ha)$/.test(rawUnit) ? rawUnit.replace(/s$/, "").replace(/^ha$/, "hectare") : null
+        : /^(?:production )?lines?$/.test(rawUnit) ? "lines" : null;
+      return unit === null ? null : { key: JSON.stringify([match[1]?.toLowerCase() || "", numbers, unit || (area ? "" : "lines")]), unit };
+    }
+    function add(name: string | undefined, value: string | undefined, squareMetres = false) {
+      if (!name || !value || value === "-" || !allowed.includes(name)) return;
+      const measured = name === "Factory Size" || name === "No. of Production Lines";
+      if (measured) {
+        if (Array.from(value).length > 240) return;
+        const parsed = quantity(value, name === "Factory Size");
+        if (!parsed) return;
+        if (squareMetres && !parsed.unit) value += " square metres";
+        if (Array.from(value).length > 240) return;
+      }
+      const existing = claims.find(c => c.name === name);
+      const comparable = (v: string) => measured ? quantity(v, name === "Factory Size")?.key
+        : name === "Business type" ? v.split(",").map(role => role.trim()).sort().join(",") : v;
+      if (existing && comparable(existing.value) !== comparable(value)) conflict = true;
+      if (!existing) claims.push({ name, value });
+    }
+    const legacy = ".icbu-pc-cpCompanyOverview,.icbu-pc-cpProductionCapacity,.icbu-pc-cpTradeCapability";
+    for (const region of document.querySelectorAll<HTMLElement>(legacy)) {
+      for (const label of region.querySelectorAll<HTMLElement>("tr .field-title,tr.icbu-shop-table-col-item td.title")) {
+        const next = label.nextElementSibling as HTMLElement | null, key = text(label, 80);
+        add(key, text(next?.querySelector<HTMLElement>(".field-content") || next, key === "Factory Size" || key === "No. of Production Lines" ? 241 : 240));
+      }
+    }
+    const aliases: Record<string, string> = { "Number of production line": "No. of Production Lines", "Floor space(㎡)": "Factory Size" };
+    for (const section of document.querySelectorAll<HTMLElement>('#fresh-shop-content section[data-module-name="factoryCapability"]')) {
+      // Bind adjacent values to the supplier's manufacturer capability / Production card.
+      const spans = Array.from(section.querySelectorAll<HTMLElement>("span"));
+      if (!spans.some(n => n.closest("section") === section && text(n, 80) === "Manufacturer capability")) continue;
+      for (const label of spans) {
+        const key = aliases[text(label, 80) || ""];
+        if (!key) continue;
+        const row = label.parentElement, group = row?.parentElement?.parentElement;
+        if (row?.children.length !== 2 || row.firstElementChild !== label || row.lastElementChild?.tagName !== "SPAN" ||
+            group?.closest("section") !== section || text(group.firstElementChild?.querySelector<HTMLElement>("span") || null, 80) !== "Production") continue;
+        add(key, text(row.lastElementChild as HTMLElement, 241), key === "Factory Size");
+      }
+    }
+    if (!claims.length) return null; // A loaded supplier header is not a loaded company profile.
+    const hadBusinessType = claims.some(c => c.name === "Business type");
+    const header = nameNode.closest(".bc-shop-shopsign-new");
+    const roles = Array.from(header?.querySelectorAll<HTMLElement>(".company-type .business-type") || [])
+      .flatMap(type => (text(type, 240) || "").split(",").map(role => role.trim()).filter(Boolean));
+    const businessType = [...new Set(roles)].join(", ");
+    if (businessType.length <= 240) add("Business type", businessType);
+    if (!hadBusinessType) {
+      const index = claims.findIndex(c => c.name === "Business type");
+      if (index >= 0) claims.unshift(...claims.splice(index, 1));
+    }
+    return !conflict && claims.length <= 32 ? claims : null;
+  }
   function store(value: string): string | null {
     try {
       const u = new URL(value), m = /^([a-z0-9](?:[a-z0-9-]{0,61}[a-z0-9])?)\.(?:m\.)?en\.alibaba\.com$/.exec(u.hostname);
@@ -102,29 +175,24 @@ export function captureAlibabaDom(mode: "PRODUCT" | "PRODUCT_LINK" | "SHOP" | "F
     return { source_url: own, company_name: name, ...(profile ? { factory_url: profile } : {}) };
   }
   if (location.pathname !== "/company_profile.html") return null;
-  const allowed = ["Business type", "Country / Region", "Main Products", "Total employees", "Total Annual Revenue", "Year established", "Main Markets", "Factory Size", "Factory Country/Region", "No. of Production Lines", "Contract Manufacturing", "Annual Output Value", "Average Lead Time", "Accepted Delivery Terms", "Accepted Payment Currency", "Accepted payment methods"];
-  const claims: { name: string; value: string }[] = [];
-  for (const label of document.querySelectorAll<HTMLElement>("tr .field-title,tr.icbu-shop-table-col-item td.title")) {
-    const next = label.nextElementSibling as HTMLElement | null;
-    const content = next?.querySelector<HTMLElement>(".field-content") || next;
-    const key = text(label, 80), value = text(content);
-    if (key && value && value !== "-" && allowed.includes(key) && !claims.some(c => c.name === key && c.value === value)) claims.push({ name: key, value });
-  }
-  if (!claims.length || claims.length > 32) return null;
+  const claims = profileClaims(names[0]);
+  if (!claims) return null;
   const description = text(document.querySelector<HTMLElement>(".overview-redesign-introduction"), 1000);
   return { source_url: own + "company_profile.html", canonical_url: own + "company_profile.html", shop_url: own,
     company_name: name, claims, ...(description ? { description } : {}) };
 }
 
 // Build a small, inert HTML document with stable regions for server-side enrichment.
-export function captureAlibabaHtml(page: HtmlSource["page"], expected: string): HtmlSource | null {
+export function captureAlibabaHtml(page: HtmlSource["page"], expected: string, selectedProfile?: FactorySelection): HtmlSource | null {
   const current = new URL(location.href);
   const store = /^([a-z0-9](?:[a-z0-9-]{0,61}[a-z0-9])?)\.(?:m\.)?en\.alibaba\.com$/.exec(current.hostname);
   const own = store ? `https://${store[1]}.en.alibaba.com/` : null;
   if (current.protocol !== "https:" || current.port || current.username || current.password || current.hash) return null;
   if (page === "PRODUCT" ? current.origin + current.pathname !== expected : !own ||
       (page === "SHOP" ? !["/", "/index.html"].includes(current.pathname) || own !== expected : current.pathname !== "/company_profile.html" || own + "company_profile.html" !== expected)) return null;
-  const canonical = document.querySelector<HTMLLinkElement>('link[rel="canonical"]')?.href;
+  const hints = Array.from(document.querySelectorAll<HTMLLinkElement>('link[rel="canonical"]'));
+  if (hints.length > 1) return null;
+  const canonical = hints[0]?.href;
   if (canonical) {
     const hint = new URL(canonical), m = /^([a-z0-9](?:[a-z0-9-]{0,61}[a-z0-9])?)\.(?:m\.)?en\.alibaba\.com$/.exec(hint.hostname);
     if (hint.protocol !== "https:" || hint.port || hint.username || hint.password ||
@@ -140,6 +208,79 @@ export function captureAlibabaHtml(page: HtmlSource["page"], expected: string): 
     const walker = document.createTreeWalker(n, NodeFilter.SHOW_TEXT), parts: string[] = [];
     for (let t = walker.nextNode(); t; t = walker.nextNode()) if (t.parentElement && visible(t.parentElement)) parts.push(t.textContent || "");
     return Array.from(parts.join(" ").replace(/\s+/g, " ").trim()).slice(0, max).join("");
+  }
+  // Keep these rules identical in both injected functions: Chrome serializes each independently.
+  function profileClaims(nameNode: HTMLElement): { name: string; value: string }[] | null {
+    const allowed = ["Business type", "Country / Region", "Main Products", "Total employees", "Total Annual Revenue", "Year established", "Main Markets", "Factory Size", "Factory Country/Region", "No. of Production Lines", "Contract Manufacturing", "Annual Output Value", "Average Lead Time", "Accepted Delivery Terms", "Accepted Payment Currency", "Accepted payment methods"];
+    const claims: { name: string; value: string }[] = [];
+    let conflict = false;
+    function quantity(value: string, area: boolean) {
+      // Parse a complete bounded measurement, never a truncated numeric prefix.
+      const number = "(?:[0-9]{1,3}(?:,[0-9]{3})+|[0-9]+)(?:\\.[0-9]{1,3})?";
+      const match = new RegExp(`^(?:(about|approximately|approx\\.?|below|above|less than|more than|[~<>≤≥])\\s*)?(${number})(?:\\s*[-–—−]\\s*(${number}))?\\s*(.*?)$`, "i").exec(value);
+      if (!match) return null;
+      const rawNumbers = [match[2], ...(match[3] ? [match[3]] : [])];
+      if (rawNumbers.some(n => n.replace(/,/g, "").split(".")[0].length > 9)) return null;
+      const numbers = rawNumbers.map(n => Number(n.replace(/,/g, "")));
+      if (numbers.some(n => !Number.isFinite(n) || n <= 0 || n > 999_999_999 || !area && !Number.isInteger(n)) ||
+          numbers.length === 2 && numbers[0] > numbers[1]) return null;
+      const rawUnit = match[4].toLowerCase().replace(/\./g, "").replace(/\s+/g, " ");
+      const unit = !rawUnit ? "" : area
+        ? /^(?:㎡|m²|m2|sqm|sq m|square met(?:er|re)s?)$/.test(rawUnit) ? "m2"
+          : /^(?:ft²|ft2|sq ft|square (?:feet|foot))$/.test(rawUnit) ? "ft2"
+          : /^(?:acres?|hectares?|ha)$/.test(rawUnit) ? rawUnit.replace(/s$/, "").replace(/^ha$/, "hectare") : null
+        : /^(?:production )?lines?$/.test(rawUnit) ? "lines" : null;
+      return unit === null ? null : { key: JSON.stringify([match[1]?.toLowerCase() || "", numbers, unit || (area ? "" : "lines")]), unit };
+    }
+    function add(name: string | undefined, value: string | undefined, squareMetres = false) {
+      if (!name || !value || value === "-" || !allowed.includes(name)) return;
+      const measured = name === "Factory Size" || name === "No. of Production Lines";
+      if (measured) {
+        if (Array.from(value).length > 240) return;
+        const parsed = quantity(value, name === "Factory Size");
+        if (!parsed) return;
+        if (squareMetres && !parsed.unit) value += " square metres";
+        if (Array.from(value).length > 240) return;
+      }
+      const existing = claims.find(c => c.name === name);
+      const comparable = (v: string) => measured ? quantity(v, name === "Factory Size")?.key
+        : name === "Business type" ? v.split(",").map(role => role.trim()).sort().join(",") : v;
+      if (existing && comparable(existing.value) !== comparable(value)) conflict = true;
+      if (!existing) claims.push({ name, value });
+    }
+    const legacy = ".icbu-pc-cpCompanyOverview,.icbu-pc-cpProductionCapacity,.icbu-pc-cpTradeCapability";
+    for (const region of document.querySelectorAll<HTMLElement>(legacy)) {
+      for (const label of region.querySelectorAll<HTMLElement>("tr .field-title,tr.icbu-shop-table-col-item td.title")) {
+        const next = label.nextElementSibling as HTMLElement | null, key = text(label, 80);
+        add(key, text(next?.querySelector<HTMLElement>(".field-content") || next, key === "Factory Size" || key === "No. of Production Lines" ? 241 : 240));
+      }
+    }
+    const aliases: Record<string, string> = { "Number of production line": "No. of Production Lines", "Floor space(㎡)": "Factory Size" };
+    for (const section of document.querySelectorAll<HTMLElement>('#fresh-shop-content section[data-module-name="factoryCapability"]')) {
+      // Bind adjacent values to the supplier's manufacturer capability / Production card.
+      const spans = Array.from(section.querySelectorAll<HTMLElement>("span"));
+      if (!spans.some(n => n.closest("section") === section && text(n, 80) === "Manufacturer capability")) continue;
+      for (const label of spans) {
+        const key = aliases[text(label, 80) || ""];
+        if (!key) continue;
+        const row = label.parentElement, group = row?.parentElement?.parentElement;
+        if (row?.children.length !== 2 || row.firstElementChild !== label || row.lastElementChild?.tagName !== "SPAN" ||
+            group?.closest("section") !== section || text(group.firstElementChild?.querySelector<HTMLElement>("span") || null, 80) !== "Production") continue;
+        add(key, text(row.lastElementChild as HTMLElement, 241), key === "Factory Size");
+      }
+    }
+    if (!claims.length) return null; // A loaded supplier header is not a loaded company profile.
+    const hadBusinessType = claims.some(c => c.name === "Business type");
+    const header = nameNode.closest(".bc-shop-shopsign-new");
+    const roles = Array.from(header?.querySelectorAll<HTMLElement>(".company-type .business-type") || [])
+      .flatMap(type => (text(type, 240) || "").split(",").map(role => role.trim()).filter(Boolean));
+    const businessType = [...new Set(roles)].join(", ");
+    if (businessType.length <= 240) add("Business type", businessType);
+    if (!hadBusinessType) {
+      const index = claims.findIndex(c => c.name === "Business type");
+      if (index >= 0) claims.unshift(...claims.splice(index, 1));
+    }
+    return !conflict && claims.length <= 32 ? claims : null;
   }
   const safe = document.implementation.createHTMLDocument("VCT public Alibaba evidence");
   const link = safe.createElement("link"); link.rel = "canonical"; link.href = expected; safe.head.append(link);
@@ -186,13 +327,11 @@ export function captureAlibabaHtml(page: HtmlSource["page"], expected: string): 
       const values = Array.from(document.querySelectorAll<HTMLElement>(".verify-details a[href]")).filter(visible).map(n => text(n, 320));
       section("vct-alibaba-shop-claims", values.join("; "));
     } else {
-      const allowed = ["Business type", "Country / Region", "Main Products", "Total employees", "Total Annual Revenue", "Year established", "Main Markets", "Factory Size", "Factory Country/Region", "No. of Production Lines", "Contract Manufacturing", "Annual Output Value", "Average Lead Time", "Accepted Delivery Terms", "Accepted Payment Currency", "Accepted payment methods"];
-      const values = Array.from(document.querySelectorAll<HTMLElement>("tr .field-title,tr.icbu-shop-table-col-item td.title")).map(label => {
-        const next = label.nextElementSibling as HTMLElement | null;
-        return { name: text(label, 80), value: text(next?.querySelector<HTMLElement>(".field-content") || next, 240) };
-      })
-        .filter(p => allowed.includes(p.name) && p.value && p.value !== "-");
-      pairs("vct-alibaba-company-claims", values.slice(0, 32));
+      const claims = profileClaims(names[0]);
+      if (!claims || selectedProfile && (selectedProfile.source_url !== expected || selectedProfile.canonical_url !== expected ||
+          selectedProfile.shop_url !== own || selectedProfile.company_name !== text(names[0], 240) ||
+          selectedProfile.claims.length !== claims.length || claims.some(claim => !selectedProfile.claims.some(selected => selected.name === claim.name && selected.value === claim.value)))) return null;
+      pairs("vct-alibaba-company-claims", claims);
       // Retain supplier values only; never the neighboring industry-average column.
       section("vct-alibaba-profile-rating", text(document.querySelector(".merchant-performance-review"), 300));
     }

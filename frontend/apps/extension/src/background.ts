@@ -74,9 +74,12 @@ async function cue(tabId: number, mode: Parameters<typeof showCompanyGuidance>[0
     args: [mode, company, stored.uiLanguage === "en" ? "en" : "vi"] });
 }
 
-async function captureHtml(tabId: number, page: HtmlSource["page"], source: string, session: GuidedSession) {
+async function captureHtml(tabId: number, page: HtmlSource["page"], source: string, session: GuidedSession, selectedProfile?: FactorySelection) {
   try {
-    const [result] = await chrome.scripting.executeScript({ target: { tabId }, func: source.includes(".alibaba.com/") ? captureAlibabaHtml : capturePublicHtml, args: [page, source] });
+    const [result] = source.includes(".alibaba.com/")
+      ? await chrome.scripting.executeScript({ target: { tabId }, func: captureAlibabaHtml,
+        args: selectedProfile ? [page, source, selectedProfile] : [page, source] })
+      : await chrome.scripting.executeScript({ target: { tabId }, func: capturePublicHtml, args: [page, source] });
     const html = result?.result as HtmlSource | null;
     if (!html || html.page !== page || html.source_url !== source) return { captured: false, downloaded: false };
     assertPermittedEvidence(html);
@@ -188,12 +191,15 @@ async function guided(type: string, tabId: number, ownerId: string, sourceUrl?: 
       if (session.job.factoryUrl && session.job.factoryUrl !== profile) throw new Error("Open the factory profile linked from the captured shop.");
       const factory = await selected<FactorySelection>(tabId, "FACTORY");
       if (!factory || factory.source_url !== profile || factory.canonical_url !== profile || factory.shop_url !== company ||
+          session.bundle.platform === "ALIBABA" && (!factory.company_name ||
+            session.bundle.shop?.company_name && factory.company_name !== session.bundle.shop.company_name ||
+            session.bundle.product.fields.supplier_name && factory.company_name !== session.bundle.product.fields.supplier_name) ||
           factoryUrl((await chrome.tabs.get(tabId)).url || "") !== profile) {
         throw new Error("Factory company evidence is not visible or belongs to another supplier. Close the CAPTCHA with X if possible, wait for the company content, and retry Save factory HTML.");
       }
-      session.bundle.factory = factory;
-      const snapshot = await captureHtml(tabId, "FACTORY", profile, session);
+      const snapshot = await captureHtml(tabId, "FACTORY", profile, session, session.bundle.platform === "ALIBABA" ? factory : undefined);
       if (!snapshot.captured) throw new Error("No usable factory HTML was captured. Close the overlay and retry when company content is visible.");
+      session.bundle.factory = factory;
       if (!snapshot.downloaded) session.job = { ...session.job, error: "Factory HTML was uploaded, but its browser download did not start." };
       if (session.bundle.shop) session.bundle.shop.factory_url = profile;
       await saveSession(session); await finishSession(session);

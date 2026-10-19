@@ -43,10 +43,12 @@ def initial(value):
     return result
 
 
-def test_alibaba_guided_sources_reserve_once_replay_finish_and_reach_owned_report(client_store):
-    from backend.tests.test_alibaba_browser import selected as alibaba_selected
+@pytest.mark.parametrize('layout', ['table', 'capability'])
+def test_alibaba_guided_sources_reserve_once_replay_finish_and_reach_owned_report(client_store, layout):
+    from backend.tests.test_alibaba_browser import selected as alibaba_selected, capability_selected
     client, store, settings = client_store
-    value = alibaba_selected(); value['job_id'] = str(uuid4())
+    value = (alibaba_selected if layout == 'table' else capability_selected)(); value['job_id'] = str(uuid4())
+    production_lines = 4 if layout == 'table' else 2
     analysis_id = UUID(value['job_id'])
     try:
         for _ in range(2):
@@ -59,8 +61,11 @@ def test_alibaba_guided_sources_reserve_once_replay_finish_and_reach_owned_repor
             assert client.post('/api/v1/analyses/collection/finish', json=value).status_code == 202
         data = store.get(analysis_id)['supplier_data']
         assert data['platform'] == 'ALIBABA'
-        assert data['company_information']['production_line_count'] == 4
-        assert data['price_information']['minimum_order_quantity'] == 1
+        assert data['company_information']['production_line_count'] == production_lines
+        if layout == 'table':
+            assert data['price_information']['minimum_order_quantity'] == 1
+        else:
+            assert data['company_information']['factory_area_display_text'] == '5000 square metres'
         provider = WorkerProvider()
         assert process_local_once(store, settings, assess=lambda data: build_assessment(data, provider=provider, model='fixture'))
         with store.connect() as conn:
@@ -69,7 +74,7 @@ def test_alibaba_guided_sources_reserve_once_replay_finish_and_reach_owned_repor
             assert conn.execute('SELECT count(*) AS n FROM reports WHERE analysis_id=%s', (analysis_id,)).fetchone()['n'] == 1
         report = store.get_report_for_user(analysis_id, owner)['payload']
         assert any(e['evidence_id']=='supplier:html_sources' for e in report['evidence'])
-        assert any(e['source_field']=='company_information.production_line_count' and e['payload']['value']==4 for e in report['evidence'])
+        assert any(e['source_field']=='company_information.production_line_count' and e['payload']['value']==production_lines for e in report['evidence'])
         assert provider.chat_calls == 1
     finally: cleanup(store, analysis_id)
 
