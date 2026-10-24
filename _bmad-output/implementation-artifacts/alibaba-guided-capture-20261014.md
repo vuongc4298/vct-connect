@@ -22,4 +22,12 @@ Extension 0.7.0 includes Vietnamese Company overview labels and guidance. Local 
 
 First CI run verified begin/finish replay, one quota admission and one persisted owned report. It failed only on the new test's expected generic company evidence ID; the actual report uses specific identity-source IDs. The assertion was corrected to require the sourced production-line value, and product rating/count were additionally checked against captured HTML before the final CI run.
 
-Release status will be appended after CI and Azure verification.
+## Verified live release
+
+PR #41 merged as `4d59cd5bb3a23b7c87e960685a93074b1e09beb6`. PR CI `38535333931`, main CI `38541308785` and Azure deployment `38542499073` passed. Final CI totals: 1,185 backend checks passed / 32 skipped, 173 frontend checks, and the separate Chromium suites passed (78 sandbox and 12 PostgreSQL cases). The collection test verifies begin/finish replay, one quota admission, one persisted owned report and its sourced production-line evidence.
+
+Active ready revisions: API `--0000054`, web `--0000045`, dispatcher `--0000099`. API, dispatcher and Event analysis worker use backend digest `95464865ab7f2d2054cb3249171cfcd2e532edd7263a1eb3ce28575b5ee0f072`; web uses digest `33bfa82f2d8b397558f66152ca1cdef4043b3ac222fa4f4b60b06fbe1ff89906`. The workflow passed migrations, activation, ingress and guest-fixture checks.
+
+The read-only deployed-image execution `vct-connect-dev-analysis-4c3cpas` succeeded. Its assertions confirm Alibaba platform/extractor, all three parsed HTML pages, three review bodies / product total 78, 24 attributes, 15 company claims, four production lines and five factory evidence records. It reads only the public committed fixture, with no database access, report changes or LLM calls. The live homepage and served JS asset also confirm the updated Vietnamese Alibaba capture guidance (JavaScript Unicode/hex escapes decoded for inspection).
+
+The live extension folder and `tmp/vct-connect-live-extension-0.7.0.zip` match, target the existing HTTPS origin and retain the icon/extension identity. Reload 0.7.0 and start a fresh capture using the five-step guide; native signed-in Alibaba/Chrome navigation, downloads and session-sync acceptance remain the operator check.

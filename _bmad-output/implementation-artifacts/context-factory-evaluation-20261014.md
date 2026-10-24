@@ -40,3 +40,14 @@ Extension version 0.6.2 packages the supplied VCT mark for the toolbar and exten
 Local checks: backend 1015 passed / 165 infrastructure-dependent skipped before the final policy and capture-budget guard; final relevant policy tests passed; frontend 170 passed; type checking, production build and frontend secret scan passed. The exact downloaded bundle normalized with ten reviews preserved. Release CI and live revision verification are recorded after deployment.
 
 BMad launcher failed with Windows error 123; work continued under the user's existing waiver. This file records implementation/evaluation evidence and does not claim a completed BMad workflow.
+
+
+## Live release verification — 2026-10-14
+
+PR #40 merged as a4b0a6eb6ce48d1955498575e98805703483779d. Final PR CI 38476715408 and main CI 38503390121 passed. The Azure deployment 38504328869 passed rollout, migrations, activation, ingress and guest-fixture checks.
+
+Confirmed healthy active revisions: API --0000053, web --0000044, dispatcher --0000097. API, dispatcher and the restored Event worker share backend image sha256:860fef5c0d78d9676f6fedbfef6aef0beac70bcfd0630f4cf11a13ebbd78e3f5. Web uses image sha256:3266ae29c29133a68bec76bfda6653e62136fa23bea3a2a536670bf5e94f4139.
+
+A one-off read-only check against the actual deployed worker image confirmed supplier-interpretation.prompt.v7, analysis-intelligence.v0.6, three considered factory records and UNCERTAIN classification at confidence 0.125 for the saved sample. It made no database writes and no new LLM call. The signed-in live report visibly hides the former default 50/50 bars; its historical assessment remains unchanged.
+
+Final CI evidence: 1149 backend tests passed / 32 skipped, 170 frontend tests passed, and the separate Chromium checks passed with 78 and 12 cases respectively. Local live extension 0.6.2 is built and packaged. Reload it before starting a new product/shop/factory collection to exercise the corrected calculation.

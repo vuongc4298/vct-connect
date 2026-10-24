@@ -53,7 +53,7 @@ Never change backend code, algorithms, extraction, scoring, database, extension 
 - [x] Replace the generic mark, add original public artwork, metadata and Docker runtime asset inclusion.
 - [x] Apply coherent blue/orange branding throughout the web CSS with responsive brand framing and distinct semantic states.
 - [x] Parent performs frontend typecheck/build, client/archive scan, actual standalone deployment checks and desktop/mobile visual checks using real components; no backend suite.
-- [ ] Review presentation and deployment packaging, fix actionable issues, isolate release diff, publish the web image and verify live rendering/asset/theme/auth boundaries and unchanged backend images.
+- [x] Review presentation and deployment packaging, fix actionable issues, isolate release diff, publish the web image and verify live rendering/asset/theme/auth boundaries and unchanged backend images.
 
 Given the supplied artwork, when the web application loads at desktop/tablet/mobile sizes, then its generic V is replaced by a recognizable complete VCT logo and its blue/orange visual identity is consistent. Given the web image is deployed, when clients open the existing live URL, then branding assets and browser icon load, and backend/worker deployment identifiers remain unchanged. Given report risk/unknown states, then their semantic meaning remains clear and their saved values remain unchanged.
 
@@ -95,3 +95,7 @@ Production Next build completed with TypeScript validation. Client/archive/build
 ### Reviewed final frontend verification
 
 All actionable findings were patched and the unused evidence-summary finding was rejected after caller tracing. The final production build/typecheck and client/archive/build-log secret scan passed. Extended actual standalone frontend deployment check passed exact anonymous JPEG/ICO bytes and content types, title/icon/theme metadata, anonymous/invalid ZIP denial, verified ZIP CRC/manifest and private-path denial with isolated loopback auth. Final actual-component browser checks passed ten scenarios at 1440/900/390/320px, including mobile logo/account/navigation, guide switch, active history-search focus and green low-risk/red high-risk/striped unknown report states. No horizontal overflow or page runtime errors; primary-button contrast remains 8.15:1. Implementer also ran the nine existing Page interaction checks; no backend tests, migrations, extraction or model calls were run. Nothing functional was deferred. Native production rendering and deployment identifier checks remain release gates.
+
+### Live release verified
+
+PR #45 merged as `d56ecc0f592bcb00d82ffaca9a4ab336cfd87def`. Web-only ACR build `cm1` succeeded and image digest `sha256:88eba92a3191192a67469d3b56e2b77e68ae41473a8360d5cd631f216c3a4885` is running in healthy web revision 49. Live frontend HTTP/browser checks passed exact logo/icon delivery, metadata/palette, desktop/mobile rendering, anonymous download protection and private-path denial. API revision 57, dispatcher revision 105 and Event worker image remain identical to the pre-release baseline. No full-stack pipeline/backend tests were executed. Complete proof and native sign-in boundary are recorded in `web-branding-live-release-20261019.md`; all requested work is complete.

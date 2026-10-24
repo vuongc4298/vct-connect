@@ -257,6 +257,15 @@ Reload extension 0.5.1 and return to the linked shop. If its supplier header is 
 
 Validation: 158 frontend tests, TypeScript, extension build, 31 selected-bundle/HTML backend tests and 11 authenticated PostgreSQL collection checks passed. Offline browser capture with the introduction module removed produced header-only HTML accepted as PARSED with four header claims and unknown registered age. Screenshot: tmp/header-shop-proof.png. The operator's exact Shenzhen page was not available as saved HTML; its screenshot established the visible-header symptom, while fixture checks verify the supported header layout. Local API restarted with the new normalization support.
 
+
+### Live guided capture release — verified 2026-10-12
+
+1. The live extension directory is `C:\Users\eidel\Desktop\VCT Connect\frontend\apps\extension\build-live`; shareable archive is `tmp/vct-connect-live-extension-0.5.1.zip`. Remove the localhost unpacked installation before loading the live folder, so local cached/pending IDs are not reused against Azure. Friends can extract the archive and select its folder containing manifest.json in Load unpacked.
+2. Sign in on https://vct-connect-dev-web.blackdesert-0144dda1.southeastasia.azurecontainerapps.io using the same VCT account as the extension. Start a fresh product analysis; local captures/reports are not migrated to the live database.
+3. Follow the product → Save shop HTML → Save factory HTML & analyze flow above, or finish with captured product/shop. Dismiss overlays yourself when company content is already accessible. Expect cloud results, one analysis/quota and matching source provenance. Local servers are not needed by this live build.
+4. Confirm downloads and live report/source inspection, then reopen from history. Actual Chrome/Brave live supplier/session/download acceptance remains this operator check; offline fixtures and cloud saved-upload tests do not replace it.
+
+Release PR #31 merged as b4b5aeee70d0dcbc176a9ec03e6652b7a1ad3f27. 1,085 backend checks (32 skips), 158 frontend checks, TypeScript, production builds and credential scan passed. PR CI, main CI and Azure deployment run 38213244851 passed through migration 0017, activation and ingress/guest tests. Live collection preflight returned 204 for the fixed extension origin; unauthenticated begin was rejected with 401. A signed-in public-field saved HTML smoke produced full report 1f31f685-a71e-4a6b-b09a-be822b66f7c6 and reopened from cloud history with insufficient information and at most five items per list page. Proof: tmp/capture-production-report-proof.png. Previous extraction-only uploaded reports remain historical; submit fresh evidence to use the new reporting handoff.
 # Supplier evidence and risk-category linkage (2026-10-12)
 
 Create a **new analysis** after this release. Existing reports remain saved snapshots and are not recalculated by refreshing the page.
@@ -269,6 +278,31 @@ Create a **new analysis** after this release. Existing reports remain saved snap
 
 The captured phone supplier replay supported product-quality and delivery concerns (55/100 each, with reduced confidence); the other five categories stayed unknown and overall coverage stayed 40%. These are recorded replay results, not promised scores for subsequent model runs.
 
+Live verification completed after PR #33 deployment: the fresh product-only saved HTML report `240DAC7E` (12 October, 18:15) shows product quality 55/100, 39% overall confidence and 25% coverage. Its six other categories and overall risk remain unknown. Reopening it from history preserved the category rationale and exact buyer complaint quote. This verifies cloud saved-HTML reporting; the Chrome/Brave product → shop → factory capture still requires the operator test above. Screenshot: `tmp/supplier-risk-live-report-proof.png`.
+
+### Supplier prompt recovery — extension 0.5.2 (2026-10-13)
+
+Reload the unpacked live extension from `frontend/apps/extension/build-live` on `chrome://extensions` or `brave://extensions`; confirm version **0.5.2**. A website deployment does not update an unpacked extension. Start a fresh product capture. Expect **Product captured · company evidence needed**, then **Save shop HTML**, then **Save factory HTML & analyze**. If supplier navigation has not loaded or identifies multiple shops, expect a retry message and no submitted analysis, rather than an automatically opened product-only report. Scroll to the product supplier header and retry after it loads. Shop/factory identity checks and the 30-minute deadline still apply. Native operator acceptance remains required on the affected product.
+
+### Named supplier shops — extension 0.5.3 (2026-10-13)
+
+Product `778418840629` links to `https://hztxsy.1688.com/`, a named shop rather than a `shop…` hostname. Version **0.5.3** recognizes named shop hosts; backend validation must be released alongside it. After that release, reload the same live extension folder, reopen the umbrella product and choose **Analyze this page**. Expect the shop prompt linking to hztxsy, then **Save shop HTML**, and the factory capture prompt after saving the shop. Factory evidence still requires a matching shop backlink. Service hosts, foreign domains, credentials and ports remain rejected. A missing/ambiguous supplier link does not silently submit product-only evidence.
+
+Backend release is now live: PR #34, merge `1d5be9d2eb5ba0c44ecb0c45d1681fda83bce86a`, deployment 38293554504 passed including worker activation and live ingress/guest checks. API --0000048 and web --0000039 are ready. Reload `frontend/apps/extension/build-live` (confirm 0.5.3); shareable ZIP: `tmp/vct-connect-live-extension-0.5.3.zip`. Saved-product inspection and named three-source normalization passed; native Chrome/Brave acceptance remains the operator retest above.
+
+### Supplier cue, named factory and Vietnamese interface — extension 0.6.0
+
+After the corresponding backend/frontend release, reload the live extension and confirm **0.6.0**. Vietnamese is the default; **VI / EN** switches the extension language and remembers your choice.
+
+1. Analyze umbrella product `778418840629`. Expect a green inset highlight directly on **Hangzhou xing umbrella co., ltd**, with Vietnamese next-step guidance. Dismiss guidance to restore the page's original styling.
+2. Save the linked shop, then open `https://sale.1688.com/factory/card.html?memberId=hztxsy&facMemId=hztxsy`. Expect **Trang được hỗ trợ · Nhà máy** and **Lưu HTML nhà máy và phân tích**. Verify factory HTML downloads and the same report receives the factory evidence.
+3. Reopen the extension to check that the language preference and pending collection survive. A mismatched factory or shop must remain blocked.
+4. On the live web app, expect **Không gian làm việc**, **Theo dõi**, an empty URL field and **Chọn tệp HTML**. Demo data stays labeled when deliberately used, but it is no longer the default analysis.
+
+Offline validation used the saved factory's actual canonical URL, matching hztxsy shop backlink and eight supported source claims; sanitized factory HTML parsed. UI screenshots use the real components with a local test identity, not a native signed-in 1688 capture: `tmp/supplier-highlight-060-preview.png`, `tmp/vietnamese-factory-popup-060-preview.png`, `tmp/production-workspace-060-preview.png`.
+
+Release is live: PR #35 merged as `0eec5f74bf1a1fa08aaa3cd431c8eba805920e2d`; CI and deployment 38357424399 passed. Web --0000040/API --0000049 are ready and the worker uses the matching new backend image. Signed-in live workspace verified with an empty source field, Vietnamese file control/navigation and no demo badge or fake notification button. Live proof: `tmp/production-workspace-060-live.png`. Reload the unpacked live extension, confirm 0.6.0 and start a **fresh** product capture; earlier pending collections may have expired. ZIP: `tmp/vct-connect-live-extension-0.6.0.zip`.
+
 ### Five-factor assessment and captured evidence — extension 0.6.1
 
 1. Reload the unpacked live extension in Chrome/Brave and confirm **0.6.1**. Select **VI**, capture a product and save its shop HTML. Factory next-step guidance should remain Vietnamese when marketplace translation is enabled.
@@ -278,6 +312,9 @@ The captured phone supplier replay supported product-quality and delivery concer
 5. Reopen a historical report. Removed dimensions are hidden, while its saved overall score and coverage remain unchanged with a legacy-model notice. Create a new analysis for scoring version **v0.2.0**; refreshing cannot rerun the model.
 
 Read-only live inspection of report `9478c7c2-c2cb-47de-8b8f-9b7d2e536a84` verified 10 reviews, displayed 6000+ reviews, two prices (3.60 and 23.80), and MOQ one. These values are public source claims, not independent verification. This inspection did not change the report or run the provider. Native extension guidance remains an operator acceptance check.
+
+Release is live: PR #36 merged as `f1afa405687ffcd08714e436a75be63d28e1e1d7`; PR CI 38377113260, main CI 38379529393 and Azure deployment 38380541734 passed. Web --0000041/API --0000050 are healthy and active; the worker uses the matching backend image. Served web bundles contain the captured-data label, separate platform total and five-category notice. Deployed prompt-v4 replay of the exact umbrella snapshot produced a pricing input of 25/100 at 70% confidence, with no report/database writes; subsequent model runs can differ. Reload `frontend/apps/extension/build-live`, confirm **0.6.1**, and create a fresh analysis. ZIP: `tmp/vct-connect-live-extension-0.6.1.zip`. Native 1688 translation/capture acceptance remains the five-step operator check above.
+
 
 ### Preliminary public-review and after-sales assessment — scoring v0.2.1
 
@@ -291,6 +328,17 @@ After-sales may use relevant refund/return policies, correctly labeled service m
 4. Check that sparse evidence still leaves unsupported categories and potentially the overall score unknown.
 5. Reopen a historical report: its saved scores should not change. The extension remains version 0.6.1 because this update changes server scoring and the web report.
 
+
+Release verified live: scoring v0.2.1 / supplier prompt v5. PR #37 merge 01f3b73aadf2ec459b224a78396890c1289900e6 and disclosure PR #38 merge 1e33b5bb126f15bdc516d446ba238d72d1e01bbd passed CI. Final deployment 38406642639 succeeded with healthy API revision51 and web revision42; worker image matches API and Event processing is enabled. Served web code includes the preliminary-assessment notice. CI verified 1,128 backend tests (32 skips), 168 frontend tests and browser/PostgreSQL checks. The first deployment failed before resource convergence with an empty Azure response; final rollout recovered and passed health/guest smoke checks. Extension remains 0.6.1. Create a fresh analysis to use the new policy.
+
+Exact private saved-snapshot LLM replay has not been run: automatic approval review requires explicit permission to send that stored supplier/review payload to YEScale. This does not limit completed code/CI/live-bundle verification. Normal user-initiated analyses use the deployed policy; native marketplace capture and the sample's actual after-sales result remain operator acceptance.
+
+
+### Approved deployed-model verification replay — 2026-10-14
+
+User explicitly approved the saved supplier/review payload to YEScale. Initial execution2y07j0q failed on a provider read timeout. Bounded diagnostic retrydvkc0sk completed successfully using supplier promptv5 and scoringv0.2.1; the response timeout was120 seconds for this diagnostic only. Result: review credibility35/100 at40% effective confidence, product quality25/100 at49.5%, pricing25/100 at60%; supplier identity and after-sales remained unknown. After-sales interpretation cited no clear supporting policy evidence and did not generate a score. Preliminary aggregate27.4615/100, labelLOW, confidence82.92%, dimension coverage62.5%. Aggregate confidence is the composite scoring metric and does not replace the individual category confidence caps; unassessed identity/after-sales remain gaps. No saved report/database writes. This validates the new sample policy on the exact user-named snapshot, without claiming complete supplier verification. Proof: tmp/sample-risk-approved-replay-result.json. Existing saved report9478c7c2 stays unchanged; a fresh analysis uses the deployed policy, and subsequent model outputs may differ.
+
+
 ### Cleaned HTML context alongside structured evidence — supplier prompt v6
 
 The server now selects bounded text from identity-checked, sanitized product/shop/factory HTML already uploaded by the extension. Structured fields remain the primary model input. Supplemental context prioritizes policies, terms and labeled claims, retains section IDs/source URLs/HTML hashes, and is capped at24 sections/12KB (shrunk further when required by the model input budget). Extra text does not increase the12-field extraction completeness or review sample count. No page scripts execute and no additional source pages/assets are fetched.
@@ -300,6 +348,9 @@ The server now selects bounded text from identity-checked, sanitized product/sho
 3. When pricing or after-sales uses context, inspect its model-evidence card for the exact quote and linked original section. A metadata-only or fabricated quote must never produce a score; ambiguous return-rate/generic-service signals remain restricted.
 4. Confirm the report discloses bounded/possibly truncated context. Content outside captured public sections, hidden behind unavailable pages, or beyond budgets remains unavailable; absence from context is not proof a policy does not exist.
 5. Reopen from history. Context and cited evidence remain tied to the snapshot; old reports are not retroactively enriched. A fresh capture is required to use promptv6/pipelinev0.5.
+
+
+Live release verified2026-10-14: PR39 merged as a8b92a3750ec378235e9cfebaedbc600c171ebbc. PR CI38445699191, main CI38447225394 and Azure deployment38448680206 passed (1,139 backend checks/32 skips;169 frontend;78 sandbox browser;12 PostgreSQL browser). API revision52/web revision43 Healthy/Running/active; Event worker matches new backend image. Served web bundle confirms context source cards and truncation disclosure. Proof: tmp/page-context-live-release.json and tmp/page-context-web-bundle-check.json. Supplier promptv6/pipelinev0.5 is deployed; extension0.6.1 remains compatible. Fresh product→shop→factory HTML capture is required; old reports/snapshots are not retroactively enriched. Context policy recovery and exact-source quote rules verified through eleven targeted tests, including short Chinese policies and complete label/value groups. Native marketplace capture and actual model interpretation of newly captured context remain operator acceptance; no stored-data external replay was performed for this feature.
 
 
 ## Context and factory checks — extension 0.6.2

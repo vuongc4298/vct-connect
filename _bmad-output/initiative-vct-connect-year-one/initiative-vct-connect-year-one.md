@@ -59,6 +59,7 @@ The MVP covers the web app, Chrome extension, FastAPI/worker, and Azure pilot fo
 
 ## Notes
 
+- Decision: 2026-10-03 - prioritize the Tuesday, October 6 product demo: reuse deployed foundation/extraction and existing illustrative UI; focus on one buyer journey with a bounded text interpretation/report slice if needed. Defer human evaluation, formal pilot validation, most production product workflows, and advanced/multimodal analysis until after the demo. Monday remains available for development. All seven epics remain in the full MVP scope; current status and demo acceptance are recorded in [DEVELOPMENT_PIPELINE.md](DEVELOPMENT_PIPELINE.md).
 - Assumption: the development pipeline follows the specification's recommended sequence, while independent stories may run concurrently when their contracts are ready.
 - Assumption: the four-week sprint is a planning target, not a release commitment; extraction difficulty may extend it (specification p. 13).
 - Open question: exact LLM/model configuration is chosen after the labeled benchmark, not before it (Decision 7B).

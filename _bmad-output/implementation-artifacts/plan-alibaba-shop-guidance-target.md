@@ -35,3 +35,7 @@ Focused frontend checks: 43 capture/background tests passed with no skips. Actua
 - Medium / patch: the quick reviewer reproduced an invisible named storefront winning because getClientRects remains nonempty for visibility:hidden/opacity:0. Added the same rendered-visibility/ancestor checks used by the existing Alibaba capture inside the serializable guidance function, restricted to Alibaba so 1688 behavior remains unchanged. Added hidden-self and transparent-parent regression cases; all 43 focused frontend checks passed again. Actual Chromium injection confirmed those links remain unhighlighted while the visible storefront wins. No functional work deferred.
 
 Final production frontend build/typecheck and actual standalone branding/metadata/protected-package check passed with extension 0.7.3 and the same extension ID/live origin. The local build-live directory has the reviewed guidance. The client/archive secret scan and live web-only package publication remain the last release gates; no backend source, tests, migrations or scoring calls are involved.
+
+### Live release complete
+
+Final secret scan and independent review follow-up passed. PR46 merged as `d6bb5b287d2dba32e2691d9d5b214f68f3ba45f7`; frontend-only ACR build cm2 succeeded. Healthy web revision50 serves the actual inspected 0.7.3 ZIP. Live desktop/mobile frontend checks passed; API revision57, dispatcher revision105 and worker image/trigger remain unchanged. Full evidence and extension-reload instructions are in `alibaba-shop-cue-live-release-20261019.md`. No product changes remain deferred.
