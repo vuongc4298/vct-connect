@@ -18,6 +18,30 @@ Earlier demo planning records are historical. The current checkout includes late
 
 There is also an older untracked `in-progress` statistical-review plan alongside the later built review-analysis plans. This audit preserves it as existing work; its status is not evidence that the implemented review engine is absent or that the old draft has been independently accepted.
 
+## Historical demo decision — 2026-10-03
+
+The user approved a reduced demonstration scope for **Tuesday, October 6, 2026 (Asia/Bangkok)**. The immediate goal is one dependable buyer journey: submit evidence, see progress, open a Vietnamese report, inspect findings and sources, and understand recommended pre-order actions. Monday, October 5 remains available for development. This decision changes delivery priority; all seven epics remain in the full MVP scope.
+
+| Epic | Current evidence | Priority through Tuesday's demo |
+| --- | --- | --- |
+| 1. Platform foundation | Azure development baseline, queue, identity/access controls, CI, and deployed guest fixture are working. Manual signed-in acceptance remains an existing follow-up. | Reuse the deployed system; verify the chosen demo path and retain access, secret, and budget controls. |
+| 2. Extraction | Story 2.8 is done and deployed. Three-platform queue checks and 82 deployed-image parity/extension checks passed. Live sampled URLs returned `BLOCKED / ACCESS_CHALLENGE`; browser enrichment remains disabled in Azure. | Use existing extraction and a prepared saved-evidence example. Show explicit access/insufficiency outcomes. |
+| 3. Analysis intelligence | Real model interpretation, assessment, and scoring are not yet integrated into the worker. | Limit potential new work to a bounded text interpretation path if real AI is needed for the demo. Defer advanced review clustering, full scoring, and image/video analysis. |
+| 4. Reporting | Vietnamese illustrative report screens and evidence drill-down already exist; production assessment-backed reporting is pending. | Prioritize one clear report with evidence, limitations, and actions. Distinguish real output from illustrative findings and scores. |
+| 5. Product workflows | Demo history and notes are available in user-scoped browser storage. Production history, Watchlist, trial, and full extension workflows remain pending. | Reuse demo history/notes. Defer production workflows and extension polish. |
+| 6. Human evaluation | Reviewer console, adjudication, and model comparison work is planned. | Defer to after the demo. |
+| 7. Pilot validation | Formal pilot execution and evaluation are planned. | Defer recruitment, usage targets, dashboards, and formal validation. Preserve existing operational and budget protections. |
+
+### Demo acceptance and next work
+
+- Reuse the existing product demo as the baseline. Its current risk scores and findings are illustrative; a successful fixture queue run is not evidence that real assessment is implemented.
+- Prepare a saved evidence example for the main journey because live platform access is unreliable. Label evidence origin and freshness, and clearly separate captured evidence, real model output if added, and illustrative scores.
+- Verify the selected authentication, submission, progress, report, and evidence-inspection flow. Rehearse it and keep a recording or saved-result fallback available.
+- The next implementation should be scoped around this demo journey. Story 3.1 is the existing starting point for real text interpretation; worker/report integration must be explicitly included if needed. It does not by itself implement the complete assessment or risk scoring pipeline. Existing story dependencies and acceptance criteria still apply to the original MVP work.
+- Extraction retrospective, formal epic closure, and deferred work can follow the demo. Deferred items are pending work, not completed acceptance gates. No implementation is started by this status update.
+
+## Full MVP pipeline
+
 | Stage | Epic | Demonstrable gate | Main handoff |
 | --- | --- | --- | --- |
 | 1. Foundation | 1 - Platform foundation | A submitted analysis reaches a durable queue, worker, persisted state, and authenticated polling path in Azure dev. | Versioned API/data contract, auth/role rules, Service Bus behavior. |
